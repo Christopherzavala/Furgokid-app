@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "expo",
+    "@react-native-community",
+    "prettier"
+  ],
+  "plugins": [
+    "react",
+    "react-native",
+    "react-hooks"
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react-native/no-unused-styles": "warn",
+    "react-native/no-inline-styles": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "env": {
+    "react-native/react-native": true
+  }
+}

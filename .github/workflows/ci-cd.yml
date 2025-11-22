@@ -1,0 +1,50 @@
+name: CI/CD FurGoKid Senior
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Build Android
+      run: |
+        eas build --platform android --profile production --non-interactive
+    
+    - name: Build iOS
+      run: |
+        eas build --platform ios --profile production --non-interactive
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to Play Store
+      run: |
+        eas submit --platform android --profile production --non-interactive
+    
+    - name: Deploy to App Store
+      run: |
+        eas submit --platform ios --profile production --non-interactive
