@@ -70,7 +70,7 @@ const LoginScreen = ({ navigation }) => {
       }
     } catch (error) {
       let errorMessage = 'Error desconocido';
-      
+
       switch (error.code) {
         case 'auth/user-not-found':
           errorMessage = 'No existe una cuenta con este email';
@@ -90,7 +90,7 @@ const LoginScreen = ({ navigation }) => {
         default:
           errorMessage = error.message;
       }
-      
+
       Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
@@ -104,7 +104,7 @@ const LoginScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
@@ -114,8 +114,8 @@ const LoginScreen = ({ navigation }) => {
       >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
           <View style={styles.header}>
-            <Image 
-              source={require('../../assets/logo.png')} 
+            <Image
+              source={require('../../assets/logo.png')}
               style={styles.logo}
               onError={() => {
                 // Logo placeholder si no existe
@@ -151,10 +151,10 @@ const LoginScreen = ({ navigation }) => {
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(!showPassword)}
               >
-                <Ionicons 
-                  name={showPassword ? 'eye-off' : 'eye'} 
-                  size={24} 
-                  color="#666" 
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="#666"
                 />
               </TouchableOpacity>
             </View>
@@ -191,8 +191,8 @@ const LoginScreen = ({ navigation }) => {
               onPress={toggleMode}
             >
               <Text style={styles.switchText}>
-                {isSignUp 
-                  ? '¿Ya tienes cuenta? Inicia Sesión' 
+                {isSignUp
+                  ? '¿Ya tienes cuenta? Inicia Sesión'
                   : '¿No tienes cuenta? Regístrate'
                 }
               </Text>
