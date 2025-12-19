@@ -20,8 +20,7 @@ import { handleFirebaseError } from '../utils/errorHandler';
 
 const LoginScreen = ({ navigation }) => {
  const [email, setEmail] = useState('test@furgokid.com'); const [password, setPassword] = useState('Test1234');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+ const [confirmPassword, setConfirmPassword] = useState('Test1234');  const [isSignUp, setIsSignUp] = useState(false);
   const [role, setRole] = useState('parent'); // 'parent' or 'driver'
   const [showPassword, setShowPassword] = useState(false);
 
