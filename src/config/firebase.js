@@ -1,38 +1,86 @@
-// firebase.js - Configuración de Firebase para FurgoKid
+// src/config/firebase.js
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import {
+    initializeAuth,
+    getReactNativePersistence,
+    getAuth
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging } from 'firebase/messaging';
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Configuración de Firebase (reemplazar con tus credenciales reales)
+// ============================================
+// CONFIGURACIÓN DE FIREBASE
+// ============================================
+
+// Validar que las variables de entorno existan
+const extra = Constants.expoConfig?.extra;
+
+if (!extra) {
+    console.error('❌ Error crítico: No se encontró configuración en Constants.expoConfig.extra');
+    console.error('Asegúrate de tener un archivo .env y app.config.js configurado correctamente.');
+}
+
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUI",
-  authDomain: "furgokid.firebaseapp.com",
-  projectId: "furgokid",
-  storageBucket: "furgokid.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456789012"
+    apiKey: extra?.firebaseApiKey,
+    authDomain: extra?.firebaseAuthDomain,
+    projectId: extra?.firebaseProjectId,
+    storageBucket: extra?.firebaseStorageBucket,
+    messagingSenderId: extra?.firebaseMessagingSenderId,
+    appId: extra?.firebaseAppId
 };
 
-// Inicializar Firebase
-const app = initializeApp(firebaseConfig);
-
-// Exportar servicios de Firebase
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-
-// Solo inicializar messaging en dispositivos móviles
-let messaging = null;
-if (Platform.OS !== 'web') {
-  try {
-    messaging = getMessaging(app);
-  } catch (error) {
-    console.log('Messaging not supported on this device');
-  }
+// ============================================
+// INICIALIZAR FIREBASE APP
+// ============================================
+let app;
+try {
+    app = initializeApp(firebaseConfig);
+    console.log('✅ Firebase inicializado correctamente');
+} catch (error) {
+    console.error('❌ Error inicializando Firebase. Verifica tus credenciales en el .env:', error);
+    throw error;
 }
-export { messaging };
 
+// ============================================
+// AUTH CON PERSISTENCIA
+// ============================================
+let auth;
+try {
+    auth = initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage)
+    });
+    console.log('✅ Firebase Auth con persistencia configurado');
+} catch (error) {
+    console.log('⚠️ Auth ya inicializado, usando instancia existente');
+    auth = getAuth(app);
+}
+
+// ============================================
+// FIRESTORE & STORAGE
+// ============================================
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+// ============================================
+// EXPORTS
+// ============================================
+export { auth, db, storage };
 export default app;
+
+// ============================================
+// HELPERS
+// ============================================
+
+export const isAuthenticated = () => {
+    return auth.currentUser !== null;
+};
+
+export const getCurrentUser = () => {
+    return auth.currentUser;
+};
+
+export const getCurrentUserId = () => {
+    return auth.currentUser?.uid || null;
+};

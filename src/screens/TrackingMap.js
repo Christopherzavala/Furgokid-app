@@ -26,7 +26,7 @@ const TrackingMap = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [followMode, setFollowMode] = useState(false);
   const [trackingPoints, setTrackingPoints] = useState([]);
-  
+
   const mapRef = useRef(null);
   const watchId = useRef(null);
 
@@ -109,7 +109,7 @@ const TrackingMap = ({ route, navigation }) => {
 
       // Cargar hijos
       const userRef = doc(db, 'parents', user.uid);
-      
+
       setLoading(false);
     } catch (error) {
       console.error('Error loading initial data:', error);
@@ -133,7 +133,7 @@ const TrackingMap = ({ route, navigation }) => {
         ...doc.data(),
         timestamp: new Date()
       }));
-      
+
       setVehicles(vehiclesData);
 
       // Si hay un vehículo seleccionado, actualizar la vista del mapa
@@ -169,7 +169,7 @@ const TrackingMap = ({ route, navigation }) => {
           id: doc.id,
           ...doc.data()
         }));
-        
+
         setTrackingPoints(points.reverse());
       });
     } catch (error) {
@@ -211,7 +211,7 @@ const TrackingMap = ({ route, navigation }) => {
 
   const renderUserLocation = () => {
     if (!region) return null;
-    
+
     return (
       <Marker
         coordinate={{
@@ -293,10 +293,10 @@ const TrackingMap = ({ route, navigation }) => {
           style={[styles.controlButton, followMode && styles.activeButton]}
           onPress={toggleFollowMode}
         >
-          <Ionicons 
-            name={followMode ? "radio-button-on" : "radio-button-off"} 
-            size={24} 
-            color={followMode ? "#fff" : "#2196F3"} 
+          <Ionicons
+            name={followMode ? "radio-button-on" : "radio-button-off"}
+            size={24}
+            color={followMode ? "#fff" : "#2196F3"}
           />
           <Text style={[
             styles.controlButtonText,

@@ -29,8 +29,8 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   const renderSettingItem = (icon, title, subtitle, onPress, showSwitch = false, switchValue = false, onSwitchChange = null) => (
-    <TouchableOpacity 
-      style={styles.settingItem} 
+    <TouchableOpacity
+      style={styles.settingItem}
       onPress={onPress}
       disabled={showSwitch}
     >
@@ -132,7 +132,7 @@ const SettingsScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.actionButton, styles.dangerButton]}
             onPress={handleSignOut}
           >

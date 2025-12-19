@@ -1,8 +1,7 @@
 // locationService.js - Servicio de Ubicación Optimizado
 import * as Location from 'expo-location';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { auth } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 
 export const initializeLocationService = async () => {
   try {
@@ -69,14 +68,14 @@ export const calculateDistance = (coord1, coord2) => {
   const R = 6371; // Radio de la Tierra en km
   const dLat = toRadians(coord2.latitude - coord1.latitude);
   const dLon = toRadians(coord2.longitude - coord1.longitude);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(toRadians(coord1.latitude)) * Math.cos(toRadians(coord2.latitude)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(coord1.latitude)) * Math.cos(toRadians(coord2.latitude)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c; // Distancia en km
 };
 
 const toRadians = (degrees) => {
-  return degrees * (Math.PI/180);
+  return degrees * (Math.PI / 180);
 };

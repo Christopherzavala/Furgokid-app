@@ -19,6 +19,34 @@ npm install
 Write-Host "🔧 Ejecutando Expo Fix para alinear versiones..." -ForegroundColor Green
 npx expo install --fix
 
+# 4.5 Configuración de Android SDK
+Write-Host "🤖 Verificando configuración de Android SDK..." -ForegroundColor Green
+$possiblePaths = @(
+    "$env:LOCALAPPDATA\Android\Sdk",
+    "C:\Android\Sdk",
+    "C:\Program Files\Android\Android Studio\sdk",
+    "C:\Program Files (x86)\Android\android-sdk"
+)
+
+$sdkPath = $null
+foreach ($path in $possiblePaths) {
+    if (Test-Path $path) {
+        $sdkPath = $path
+        break
+    }
+}
+
+if ($sdkPath) {
+    Write-Host "✅ Android SDK encontrado en: $sdkPath" -ForegroundColor Green
+    [System.Environment]::SetEnvironmentVariable("ANDROID_HOME", $sdkPath, "User")
+    $env:ANDROID_HOME = $sdkPath
+    Write-Host "✅ Variable ANDROID_HOME configurada." -ForegroundColor Green
+}
+else {
+    Write-Host "⚠️ No se encontró el Android SDK en las rutas estándar." -ForegroundColor Red
+    Write-Host "   Por favor instala Android Studio o configura ANDROID_HOME manualmente." -ForegroundColor Yellow
+}
+
 # 5. Verificación final
 Write-Host "✅ Reparación completada." -ForegroundColor Cyan
 Write-Host "👉 Para iniciar tu app, ejecuta: npx expo start --clear" -ForegroundColor White

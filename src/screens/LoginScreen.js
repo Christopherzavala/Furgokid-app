@@ -1,4 +1,4 @@
-// LoginScreen.js - Pantalla de Login Profesional con Firebase
+// LoginScreen.js - Pantalla de Login Profesional
 import React, { useState } from 'react';
 import {
   View,
@@ -15,16 +15,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import useAuth from '../hooks/useAuth';
+import { handleFirebaseError } from '../utils/errorHandler';
 
 const LoginScreen = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('Christopher.zaval4@gmail.com');
+  const [password, setPassword] = useState('Chrisdaniel94');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [role, setRole] = useState('parent'); // 'parent' or 'driver'
   const [showPassword, setShowPassword] = useState(false);
+
+  const { login, signup, loading } = useAuth(); // Usando el hook actualizado
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,49 +53,25 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
-    setLoading(true);
-
     try {
       if (isSignUp) {
         if (password !== confirmPassword) {
           Alert.alert('Error', 'Las contraseñas no coinciden');
-          setLoading(false);
           return;
         }
-        await createUserWithEmailAndPassword(auth, email, password);
-        Alert.alert('¡Éxito!', 'Cuenta creada correctamente. Ahora puedes iniciar sesión.');
-        setIsSignUp(false);
-        setPassword('');
-        setConfirmPassword('');
+
+        const result = await signup(email, password, role);
+        if (result.success) {
+          Alert.alert('¡Éxito!', 'Cuenta creada correctamente.');
+        } else {
+          // El error ya se maneja en el hook pero podemos mostrar alert extra si falla algo muy específico
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        await login(email, password);
       }
     } catch (error) {
-      let errorMessage = 'Error desconocido';
-
-      switch (error.code) {
-        case 'auth/user-not-found':
-          errorMessage = 'No existe una cuenta con este email';
-          break;
-        case 'auth/wrong-password':
-          errorMessage = 'Contraseña incorrecta';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Email inválido';
-          break;
-        case 'auth/email-already-in-use':
-          errorMessage = 'Este email ya está registrado';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'La contraseña es muy débil';
-          break;
-        default:
-          errorMessage = error.message;
-      }
-
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
+      // Errores no capturados por el hook
+      Alert.alert('Error', handleFirebaseError(error));
     }
   };
 
@@ -117,9 +95,7 @@ const LoginScreen = ({ navigation }) => {
             <Image
               source={require('../../assets/logo.png')}
               style={styles.logo}
-              onError={() => {
-                // Logo placeholder si no existe
-              }}
+              onError={() => { }}
             />
             <Text style={styles.title}>FurgoKid</Text>
             <Text style={styles.subtitle}>
@@ -128,6 +104,7 @@ const LoginScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.form}>
+            {/* EMAIL INPUT */}
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -138,6 +115,7 @@ const LoginScreen = ({ navigation }) => {
               autoCorrect={false}
             />
 
+            {/* PASSWORD INPUT */}
             <View style={styles.passwordContainer}>
               <TextInput
                 style={styles.passwordInput}
@@ -159,19 +137,44 @@ const LoginScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
+            {/* CONFIRM PASSWORD & ROLE (SIGN UP ONLY) */}
             {isSignUp && (
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Confirmar Contraseña"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
-              </View>
+              <>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Confirmar Contraseña"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                {/* ROLE SELECTOR */}
+                <View style={styles.roleContainer}>
+                  <Text style={styles.roleLabel}>Quiero registrarme como:</Text>
+                  <View style={styles.roleButtons}>
+                    <TouchableOpacity
+                      style={[styles.roleButton, role === 'parent' && styles.roleButtonActive]}
+                      onPress={() => setRole('parent')}
+                    >
+                      <Ionicons name="people" size={20} color={role === 'parent' ? '#fff' : '#666'} />
+                      <Text style={[styles.roleButtonText, role === 'parent' && styles.roleButtonTextActive]}>Padre/Madre</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.roleButton, role === 'driver' && styles.roleButtonActive]}
+                      onPress={() => setRole('driver')}
+                    >
+                      <Ionicons name="bus" size={20} color={role === 'driver' ? '#fff' : '#666'} />
+                      <Text style={[styles.roleButtonText, role === 'driver' && styles.roleButtonTextActive]}>Conductor</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
             )}
 
+            {/* SUBMIT BUTTON */}
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleLogin}
@@ -186,6 +189,7 @@ const LoginScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
 
+            {/* TOGGLE MODE */}
             <TouchableOpacity
               style={styles.switchButton}
               onPress={toggleMode}
@@ -336,6 +340,42 @@ const styles = StyleSheet.create({
     color: '#E3F2FD',
     marginLeft: 10,
     fontSize: 14,
+  },
+  roleContainer: {
+    marginBottom: 20,
+  },
+  roleLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10,
+    marginLeft: 5,
+  },
+  roleButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  roleButton: {
+    flex: 0.48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#f9f9f9',
+  },
+  roleButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  roleButtonText: {
+    marginLeft: 8,
+    color: '#666',
+    fontWeight: '500',
+  },
+  roleButtonTextActive: {
+    color: '#fff',
   },
 });
 

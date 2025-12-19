@@ -65,6 +65,8 @@ jspm_packages/
 .firebase/
 firebase-debug.log
 firebase-debug.*.log
+google-services.json
+GoogleService-Info.plist
 
 # EAS
 .easignore
