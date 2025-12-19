@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1061722538586",
+    "project_id": "furgokid",
+    "storage_bucket": "furgokid.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1061722538586:android:d7bb00da1e6c334fd30e63",
+        "android_client_info": {
+          "package_name": "Com.Furgokid.App"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDASJhdpXLU95W4bHWYlMD_5qKsZhxV5xI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
