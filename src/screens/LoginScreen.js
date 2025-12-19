@@ -19,8 +19,7 @@ import useAuth from '../hooks/useAuth';
 import { handleFirebaseError } from '../utils/errorHandler';
 
 const LoginScreen = ({ navigation }) => {
-  const [email, setEmail] = useState('Christopher.zaval4@gmail.com');
-  const [password, setPassword] = useState('Chrisdaniel94');
+ const [email, setEmail] = useState('christopher.zaval4@gmail.com');  const [password, setPassword] = useState('Chrisdaniel94');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [role, setRole] = useState('parent'); // 'parent' or 'driver'
