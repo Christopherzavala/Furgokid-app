@@ -9,6 +9,11 @@ import LoadingView from './src/components/LoadingView';
 import { GoogleMobileAdsSDK } from 'google-mobile-ads';
 import { useEffect } from 'react';
 
+// Importar Providers de Contextos
+import { AuthProvider } from './src/context/AuthContext';
+import { LocationProvider } from './src/context/LocationContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 // Importar pantallas
 import LoginScreen from './src/screens/LoginScreen';
 import ParentHomeScreen from './src/screens/ParentHomeScreen';
@@ -23,7 +28,6 @@ const Tab = createBottomTabNavigator();
 const screenOptions = ({ route }) => ({
   tabBarIcon: ({ focused, color, size }) => {
     let iconName;
-
     if (route.name === 'Inicio') {
       iconName = focused ? 'home' : 'home-outline';
     } else if (route.name === 'GPS') {
@@ -33,7 +37,6 @@ const screenOptions = ({ route }) => ({
     } else if (route.name === 'Configuración') {
       iconName = focused ? 'settings' : 'settings-outline';
     }
-
     return <Ionicons name={iconName} size={size} color={color} />;
   },
   tabBarActiveTintColor: '#2196F3',
@@ -98,44 +101,53 @@ function DriverTabNavigator() {
   );
 }
 
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-export default function App() {
-  const { user, loading } = useAuth(); // Usar el hook refactorizado
-   // Inicializar Google Mobile Ads
-   useEffect(() => {
-        GoogleMobileAdsSDK.initialize();
-      }, []);
-  
+// Componente principal de navegación
+function AppNavigator() {
+  const { user, loading } = useAuth();
 
   if (loading) {
     return <LoadingView message="Iniciando FurgoKid..." />;
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="light" backgroundColor="#1976D2" />
+    <NavigationContainer>
+      <StatusBar style="light" backgroundColor="#1976D2" />
+      {user ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {user.role === 'driver' ? (
+            <Stack.Screen name="DriverApp" component={DriverTabNavigator} />
+          ) : (
+            <Stack.Screen name="ParentApp" component={ParentTabNavigator} />
+          )}
+        </Stack.Navigator>
+      ) : (
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            cardStyle: { backgroundColor: '#fff' },
+          }}
+        >
+          <Stack.Screen name="Login" component={LoginScreen} />
+        </Stack.Navigator>
+      )}
+    </NavigationContainer>
+  );
+}
 
-        {user ? (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {user.role === 'driver' ? (
-              <Stack.Screen name="DriverApp" component={DriverTabNavigator} />
-            ) : (
-              <Stack.Screen name="ParentApp" component={ParentTabNavigator} />
-            )}
-          </Stack.Navigator>
-        ) : (
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              cardStyle: { backgroundColor: '#fff' }
-            }}
-          >
-            <Stack.Screen name="Login" component={LoginScreen} />
-          </Stack.Navigator>
-        )}
-      </NavigationContainer>
+// Componente raíz con TODOS los Providers
+export default function App() {
+  // Inicializar Google Mobile Ads
+  useEffect(() => {
+    GoogleMobileAdsSDK.initialize();
+  }, []);
+
+  return (
+    <SafeAreaProvider>
+      <AuthProvider>
+        <LocationProvider>
+          <AppNavigator />
+        </LocationProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
