@@ -49,7 +49,6 @@ export default {
       ],
       'expo-font',
       [
-        'react-native-google-mobile-ads',
         {
           androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-6159936734580851~7339939476',
           iosAppId: process.env.ADMOB_IOS_APP_ID || 'ca-app-pub-6159936734580851~7339939476'
