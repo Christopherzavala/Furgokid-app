@@ -1,20 +1,20 @@
 /**
  * AdMobConfig.js - Configuracion centralizada de Google AdMob para FurgoKid
- * Ultra Senior Architect: IDs reales + testing configurados
+ * Ultra Senior Architect: IDs REALES de AdMob configurados - PRODUCCION READY
  */
 
 const AD_UNITS = {
   // Banner Ads - Mostrador pequeno en parte inferior/superior
-  BANNER_HOME: __DEV__ ? 'ca-app-pub-3940256099942544/6300978111' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_APP_AD_UNIT_ID',
-  BANNER_MAP: __DEV__ ? 'ca-app-pub-3940256099942544/6300978111' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_APP_AD_UNIT_ID',
-  BANNER_SETTINGS: __DEV__ ? 'ca-app-pub-3940256099942544/6300978111' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_APP_AD_UNIT_ID',
+  BANNER_HOME: 'ca-app-pub-6159996738450051/5061917035',
+  BANNER_MAP: 'ca-app-pub-6159996738450051/5061917035',
+  BANNER_SETTINGS: 'ca-app-pub-6159996738450051/5061917035',
   
   // Interstitial Ads - Pantalla completa (cuando cambian de pantalla)
-  INTERSTITIAL_NAV: __DEV__ ? 'ca-app-pub-3940256099942544/1033173712' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_INTERSTITIAL_AD_UNIT_ID',
-  INTERSTITIAL_TRACKING: __DEV__ ? 'ca-app-pub-3940256099942544/1033173712' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_INTERSTITIAL_AD_UNIT_ID',
+  INTERSTITIAL_NAV: 'ca-app-pub-6159996738450051/9969972240',
+  INTERSTITIAL_TRACKING: 'ca-app-pub-6159996738450051/9969972240',
   
   // Rewarded Ads - Anuncios con recompensa
-  REWARDED_FEATURE: __DEV__ ? 'ca-app-pub-3940256099942544/5224354917' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID/REPLACE_WITH_REWARDED_AD_UNIT_ID',
+  REWARDED_FEATURE: 'ca-app-pub-6159996738450051/5608055408',
 };
 
 const AD_CONFIG = {
@@ -31,8 +31,8 @@ const AD_CONFIG = {
   // Frecuencia de banners
   BANNER_LOAD_DELAY: 3000, // 3 segundos entre banner loads
   
-  // ID de la aplicacion (obtener de Google Play Console)
-  APP_ID: __DEV__ ? 'ca-app-pub-xxxxxxxxxxxxxxxx~zzzzzzzzzz' : 'ca-app-pub-REPLACE_WITH_PUBLISHER_ID~REPLACE_WITH_APP_ID',
+  // ID de la aplicacion - REAL de Google Play Console
+  APP_ID: 'ca-app-pub-6159996738450051~7339939476',
 };
 
 let lastInterstitialTime = 0;
