@@ -12,29 +12,39 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import useAuth from '../hooks/useAuth';
 import EmptyState from '../components/EmptyState';
+import { startBackgroundLocation, stopBackgroundLocation } from '../services/backgroundLocation';
 
 const DriverScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [isRouteActive, setIsRouteActive] = useState(false);
   const [students, setStudents] = useState([]); // Empty for now
 
-  const toggleRoute = () => {
-    if (isRouteActive) {
-      Alert.alert(
-        'Terminar Ruta',
-        '¿Estás seguro de que deseas terminar el recorrido?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Terminar',
-            style: 'destructive',
-            onPress: () => setIsRouteActive(false)
-          }
-        ]
-      );
-    } else {
-      setIsRouteActive(true);
-      Alert.alert('Ruta Iniciada', 'Tu ubicación ahora es visible para los padres.');
+  const toggleRoute = async () => {
+    try {
+      if (isRouteActive) {
+        Alert.alert(
+          'Terminar Ruta',
+          '¿Estás seguro de que deseas terminar el recorrido?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Terminar',
+              style: 'destructive',
+              onPress: async () => {
+                await stopBackgroundLocation();
+                setIsRouteActive(false);
+              }
+            }
+          ]
+        );
+      } else {
+        await startBackgroundLocation();
+        setIsRouteActive(true);
+        Alert.alert('Ruta Iniciada', 'Tu ubicación ahora es visible para los padres en tiempo real.');
+      }
+    } catch (error) {
+      console.error('Error toggling route:', error);
+      Alert.alert('Error', 'No se pudo iniciar el GPS: ' + error.message);
     }
   };
 

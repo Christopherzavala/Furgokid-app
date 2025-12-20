@@ -8,6 +8,7 @@ import useAuth from './src/hooks/useAuth';
 import LoadingView from './src/components/LoadingView';
 import { GoogleMobileAdsSDK } from 'google-mobile-ads';
 import { useEffect } from 'react';
+import './src/services/backgroundLocation';
 
 // Importar Providers de Contextos
 import { AuthProvider } from './src/context/AuthContext';
