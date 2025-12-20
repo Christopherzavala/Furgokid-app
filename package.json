@@ -6,7 +6,12 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "security:audit": "powershell -ExecutionPolicy Bypass -File ./scripts/security-audit.ps1",
+    "eas:migrate": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate-to-eas.ps1",
+    "eas:migrate:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate-to-eas.ps1 -DryRun",
+    "validate:config": "npx expo config --type public",
+    "prepare": "husky install"
   },
   "dependencies": {
     "@expo/cli": "^54.0.20",
@@ -25,7 +30,7 @@
     "expo-notifications": "~0.32.13",
     "expo-splash-screen": "~31.0.11",
     "expo-status-bar": "~3.0.8",
-        "expo-task-manager": "~14.0.10",
+    "expo-task-manager": "~14.0.9",
     "firebase": "^12.6.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
@@ -45,6 +50,7 @@
     "babel-preset-expo": "^54.0.7",
     "eslint": "^8.44.0",
     "eslint-config-expo": "~10.0.0",
+    "husky": "^8.0.0",
     "jest": "^29.2.1",
     "jest-expo": "~54.0.13",
     "prettier": "^2.8.8",

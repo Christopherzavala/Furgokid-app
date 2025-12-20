@@ -1,14 +1,17 @@
 {
   "cli": {
-    "version": ">= 3.0.0",
-    "appVersionSource": "remote"
+    "version": ">= 5.2.0"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      }
     },
     "preview": {
+      "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
@@ -18,8 +21,8 @@
     },
     "production": {
       "android": {
-      "buildType": "app-bundle"      },,
-      "autoIncrement": true
+        "buildType": "app-bundle"
+      },
       "ios": {
         "distribution": "store"
       }
@@ -28,11 +31,7 @@
   "submit": {
     "production": {
       "android": {
-        "serviceAccountKeyPath": "../path/to/api-key.json",
         "track": "internal"
-      },
-      "ios": {
-        "appleId": "your-apple-id@example.com",
       }
     }
   }

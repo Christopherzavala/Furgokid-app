@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Validando configuración de Expo antes del commit..."
+
+# Validar que app.config.js no tenga errores de sintaxis
+npx expo config --type public > /dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+  echo "❌ ERROR: app.config.js tiene errores de sintaxis"
+  echo "Ejecuta: npx expo config --type public para ver detalles"
+  exit 1
+fi
+
+echo "✅ app.config.js válido"
+
+# Validar que no se estén commiteando secrets
+echo "🔐 Verificando que no se commiteen secrets..."
+
+if git diff --cached --name-only | grep -q "^\.env$"; then
+  echo "❌ ERROR: Intentando commitear .env"
+  echo "Los secrets NO deben ir a Git. Usa EAS Secrets para producción."
+  exit 1
+fi
+
+# Verificar que no haya API keys hardcodeadas
+if git diff --cached -U0 | grep -E "(AIza[0-9A-Za-z-_]{35}|AAAA[0-9A-Za-z-_:]{100,}|ca-app-pub-[0-9]{16})"; then
+  echo "⚠️  WARNING: Se detectaron posibles API keys en el código"
+  echo "Verifica que no estés hardcodeando secrets"
+  read -p "¿Continuar de todos modos? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+echo "✅ Validación de seguridad completada"
+exit 0
