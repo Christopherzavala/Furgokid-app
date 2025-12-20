@@ -91,8 +91,7 @@ const LoginScreen = ({ navigation }) => {
         <ScrollView contentContainerStyle={styles.scrollContainer}>
           <View style={styles.header}>
             <Image
-              source={require('../../assets/logo.png')}
-              style={styles.logo}
+                source={require('.././assets/icon.png')}              style={styles.logo}
               onError={() => { }}
             />
             <Text style={styles.title}>FurgoKid</Text>
