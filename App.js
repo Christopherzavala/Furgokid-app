@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import useAuth from './src/hooks/useAuth';
 import LoadingView from './src/components/LoadingView';
+import { GoogleMobileAdsSDK } from 'google-mobile-ads';
+import { useEffect } from 'react';
 
 // Importar pantallas
 import LoginScreen from './src/screens/LoginScreen';
@@ -100,6 +102,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function App() {
   const { user, loading } = useAuth(); // Usar el hook refactorizado
+   // Inicializar Google Mobile Ads
+   useEffect(() => {
+        GoogleMobileAdsSDK.initialize();
+      }, []);
+  
 
   if (loading) {
     return <LoadingView message="Iniciando FurgoKid..." />;
