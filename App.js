@@ -6,8 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import useAuth from './src/hooks/useAuth';
 import LoadingView from './src/components/LoadingView';
-import { GoogleMobileAdsSDK } from 'google-mobile-ads';
-import { useEffect } from 'react';
+// import { GoogleMobileAdsSDK } from 'google-mobile-ads'; // No es necesario aquíimport { useEffect } from 'react';
 import './src/services/backgroundLocation';
 
 // Importar Providers de Contextos
@@ -138,9 +137,6 @@ function AppNavigator() {
 // Componente raíz con TODOS los Providers
 export default function App() {
   // Inicializar Google Mobile Ads
-  useEffect(() => {
-    GoogleMobileAdsSDK.initialize();
-  }, []);
 
   return (
     <SafeAreaProvider>
