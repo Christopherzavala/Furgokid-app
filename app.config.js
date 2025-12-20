@@ -51,22 +51,24 @@ export default {
       [
         'react-native-google-mobile-ads',
         {
-        androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-3940256099942544~3347511713',          iosAppId: 'ca-app-pub-3940256099942544~1458002511'
-        iosAppId: process.env.ADMOB_IOS_APP_ID || 'ca-app-pub-3940256099942544~1458002511'      ]
+          androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-6159936734580851~7339939476',
+          iosAppId: process.env.ADMOB_IOS_APP_ID || 'ca-app-pub-6159936734580851~7339939476'
+        }
+      ]
     ],
     extra: {
-      firebaseApiKey: process.env.FIREBASE_API_KEY,
-      firebaseAuthDomain: process.env.FIREBASE_AUTH_DOMAIN,
-      firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
-      firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-      firebaseMessagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-      firebaseAppId: process.env.FIREBASE_APP_ID,,
-    admobAndroidAppId: process.env.ADMOB_ANDROID_APP_ID,
-    admobIosAppId: process.env.ADMOB_IOS_APP_ID,
-    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY
-          eas: {
-      projectId: "a73187e9-3163-4996-bc85-9ad0e038d81e"
-    }
+      firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+      firebaseAuthDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+      firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+      firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+      admobAndroidAppId: process.env.ADMOB_ANDROID_APP_ID,
+      admobIosAppId: process.env.ADMOB_IOS_APP_ID,
+      googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+      eas: {
+        projectId: "a73187e9-3163-4996-bc85-9ad0e038d81e"
+      }
     }
   }
 };
