@@ -27,7 +27,6 @@ export default {
         backgroundColor: '#FFFFFF'
       },
       package: 'com.furgokid.app',
-      googleServicesFile: './google-services.json',
       permissions: [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',
@@ -49,9 +48,11 @@ export default {
       ],
       'expo-font',
       [
+        'expo-build-properties',
         {
-          androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-6159936734580851~7339939476',
-          iosAppId: process.env.ADMOB_IOS_APP_ID || 'ca-app-pub-6159936734580851~7339939476'
+          android: {
+            usesCleartextTraffic: false
+          }
         }
       ]
     ],
@@ -66,7 +67,7 @@ export default {
       admobIosAppId: process.env.ADMOB_IOS_APP_ID,
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
       eas: {
-        projectId: "a73187e9-3163-4996-bc85-9ad0e038d81e"
+        projectId: 'a73187e9-3163-4996-bc85-9ad0e038d81e'
       }
     }
   }
