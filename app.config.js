@@ -46,15 +46,7 @@ export default {
           locationAlwaysAndWhenInUsePermission: 'Permitir FurgoKid usar tu ubicación para rastrear el transporte escolar.'
         }
       ],
-      'expo-font',
-      [
-        'expo-build-properties',
-        {
-          android: {
-            usesCleartextTraffic: false
-          }
-        }
-      ]
+      'expo-font'
     ],
     extra: {
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
