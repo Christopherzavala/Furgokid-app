@@ -1,0 +1,31 @@
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(uid);
+    }
+
+    match /requests/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.parentId == request.auth.uid;
+    }
+
+    match /vacancies/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.driverId == request.auth.uid;
+    }
+
+    match /matches/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+  }
+}
