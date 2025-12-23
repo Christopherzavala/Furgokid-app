@@ -7,14 +7,13 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ParentHomeScreen from './src/screens/ParentHomeScreen';
 import DriverScreen from './src/screens/DriverScreen';
 import LoadingView from './src/components/LoadingView';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 const Stack = createStackNavigator();
 
 function Navigation() {
-  const { user, loading, userData } = useAuth();
-
+  const { user, loading, userProfile } = useAuth();
   if (loading) return <LoadingView />;
-
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
@@ -23,11 +22,9 @@ function Navigation() {
           <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       ) : (
-        userData?.role === 'conductor' ? (
-          <Stack.Screen name="DriverHome" component={DriverScreen} />
-        ) : (
-          <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
-        )
+        userProfile?.role === 'driver'
+          ? <Stack.Screen name="DriverHome" component={DriverScreen} />
+          : <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
       )}
     </Stack.Navigator>
   );
@@ -35,10 +32,12 @@ function Navigation() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <Navigation />
-      </NavigationContainer>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <NavigationContainer>
+          <Navigation />
+        </NavigationContainer>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
