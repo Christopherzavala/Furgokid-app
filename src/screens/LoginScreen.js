@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Button, StyleSheet, Text, Alert, ActivityIndicator } from 'react-native';
+import { View, TextInput, Button, StyleSheet, Text, Alert } from 'react-native';
 import { auth } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -10,16 +10,36 @@ export default function LoginScreen({ navigation }) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Por favor completa todos los campos");
+      Alert.alert('Campos incompletos', 'Ingresa email y contrasena.');
       return;
     }
-
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // La navegación ocurrirá automáticamente al autenticarse
+      await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (error) {
-      Alert.alert("Error de acceso", "Credenciales incorrectas o error de conexión");
+      let message = 'Error al iniciar sesion.';
+      switch (error?.code) {
+        case 'auth/invalid-email':
+          message = 'Email invalido.';
+          break;
+        case 'auth/user-disabled':
+          message = 'Usuario deshabilitado.';
+          break;
+        case 'auth/user-not-found':
+          message = 'Usuario no encontrado.';
+          break;
+        case 'auth/wrong-password':
+          message = 'Contrasena incorrecta.';
+          break;
+        case 'auth/network-request-failed':
+          message = 'Problema de red. Intenta nuevamente.';
+          break;
+        default:
+          message = 'No se pudo iniciar sesion. Revisa tus datos.';
+      }
+      Alert.alert('Error de inicio de sesion', message);
+      console.log('login error', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -27,72 +47,54 @@ export default function LoginScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>FurgoKid</Text>
-      <TextInput 
-        placeholder="Email" 
-        style={styles.input} 
-        onChangeText={setEmail}
-        editable={!loading}
+      <TextInput
+        placeholder="Email"
+        style={styles.input}
         value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        editable={!loading}
       />
-      <TextInput 
-        placeholder="Contraseña" 
-        style={styles.input} 
+      <TextInput
+        placeholder="Contrasena"
+        style={styles.input}
+        value={password}
         onChangeText={setPassword}
         secureTextEntry
         editable={!loading}
-        value={password}
       />
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2c3e50" />
-          <Text style={styles.loadingText}>Iniciando sesión...</Text>
-        </View>
-      ) : (
-        <Button 
-          title="Entrar" 
-          onPress={handleLogin} 
-          color="#2c3e50" 
-          disabled={loading}
-        />
-      )}
-      <Text 
-        style={{ marginTop: 20, textAlign: 'center', color: 'blue' }}
-        onPress={() => !loading && navigation.navigate('Register')}
-      >
-        ¿No tienes cuenta? Regístrate aquí
+      <Button title={loading ? 'Ingresando...' : 'Entrar'} onPress={handleLogin} color="#2c3e50" disabled={loading} />
+      <Text style={styles.linkText} onPress={() => !loading && navigation.navigate('Register')}>
+        No tienes cuenta? Registrate aqui
       </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    padding: 20, 
-    justifyContent: 'center'
-  },
-  title: { 
-    fontSize: 32, 
-    fontWeight: 'bold', 
-    textAlign: 'center', 
-    marginBottom: 40, 
-    color: '#f1c40f' 
-  },
-  input: { 
-    borderBottomWidth: 1, 
-    marginBottom: 20, 
-    padding: 10 
-  },
-  loadingContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
+  container: {
+    flex: 1,
+    padding: 20,
     justifyContent: 'center',
-    paddingVertical: 20,
   },
-  loadingText: {
-    marginTop: 10,
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 40,
+    color: '#f1c40f',
+  },
+  input: {
+    borderBottomWidth: 1,
+    borderColor: '#ccc',
+    marginBottom: 20,
+    padding: 10,
+    fontSize: 16,
+  },
+  linkText: {
+    marginTop: 20,
+    textAlign: 'center',
+    color: 'blue',
     fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '600'
-  }
+  },
 });
