@@ -1,22 +1,27 @@
-import { initializeApp } from "firebase/app";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { initializeApp, getApps } from "firebase/app";
+import { initializeAuth, getReactNativePersistence, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC4Qkq7uhLgXtdtmZkpTIeTJlyGq26Kazk",
-  authDomain: "furgokid.firebaseapp.com",
-  projectId: "furgokid",
-  storageBucket: "furgokid.firebasestorage.app",
-  messagingSenderId: "1061722538586",
-  appId: "1:1061722538586:web:25dba05616d10e86d30e63",
-  measurementId: "G-P4QGS8D5JM"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
-const db = getFirestore(app);
+if (__DEV__) {
+  const missing = Object.entries(firebaseConfig).filter(([_, v]) => !v).map(([k]) => k);
+  if (missing.length) console.warn("Firebase env vars faltantes:", missing);
+}
 
-export { auth, db };
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+
+export const auth = getApps().length
+  ? getAuth(app)
+  : initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+
+export const db = getFirestore(app);
