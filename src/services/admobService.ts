@@ -72,8 +72,6 @@ class AdMobService {
     try {
       if (this.interstitialAd) {
         await this.interstitialAd.show();
-        this.interstitialAd = null;
-        this.loadInterstitialAd();
       }
     } catch (error) {
       console.error('[AdMob] Error mostrando intersticial:', error);
