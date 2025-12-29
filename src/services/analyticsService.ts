@@ -1,33 +1,62 @@
 ﻿import Constants, { ExecutionEnvironment } from 'expo-constants';
+import {
+  getAnalytics,
+  isSupported,
+  logEvent,
+  setUserId,
+  setUserProperties,
+} from 'firebase/analytics';
+import { getApps } from 'firebase/app';
 
 // Detecta si estamos en Expo Go (no soporta módulos nativos compilados)
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-let analyticsModule: any = null;
-
-// Solo intenta importar Firebase Analytics en builds nativos (no en Expo Go)
-if (!isExpoGo) {
-  try {
-    analyticsModule = require('@react-native-firebase/analytics').default;
-  } catch (error) {
-    console.warn('[Analytics] Firebase Analytics no disponible:', error);
-  }
-}
-
 /**
  * Servicio centralizado para tracking de eventos de negocio y monetización.
- * Prioridad: MVP, estabilidad y base para crecimiento.
+ * Usa Firebase JS SDK (firebase/analytics) que es compatible con Expo.
  *
- * Nota: En Expo Go, los métodos son no-ops (no hacen nada).
- * En builds nativos, trackean eventos a Firebase Analytics.
+ * Nota: Analytics solo funciona en web y builds nativos, no en Expo Go.
  */
 class AnalyticsService {
-  private initialized = !isExpoGo && !!analyticsModule;
+  private analytics: ReturnType<typeof getAnalytics> | null = null;
+  private initialized = false;
+
+  constructor() {
+    this.initAnalytics();
+  }
+
+  private async initAnalytics(): Promise<void> {
+    // No inicializar en Expo Go
+    if (isExpoGo) {
+      console.log('[Analytics] Expo Go detectado - Analytics deshabilitado');
+      return;
+    }
+
+    try {
+      // Verificar si analytics es soportado en esta plataforma
+      const supported = await isSupported();
+      if (!supported) {
+        console.log('[Analytics] Firebase Analytics no soportado en esta plataforma');
+        return;
+      }
+
+      // Solo inicializar si Firebase App ya está inicializado
+      if (getApps().length > 0) {
+        this.analytics = getAnalytics();
+        this.initialized = true;
+        console.log('[Analytics] Firebase Analytics inicializado correctamente');
+      } else {
+        console.warn('[Analytics] Firebase App no inicializado');
+      }
+    } catch (error) {
+      console.warn('[Analytics] Error inicializando Analytics:', error);
+    }
+  }
 
   private async logEventSafe(eventName: string, params: Record<string, any>): Promise<void> {
-    if (!this.initialized || !analyticsModule) return;
+    if (!this.initialized || !this.analytics) return;
     try {
-      await analyticsModule.logEvent(eventName, {
+      await logEvent(this.analytics, eventName, {
         ...params,
         timestamp: new Date().toISOString(),
       });
@@ -40,13 +69,13 @@ class AnalyticsService {
    * Asocia el userId a los eventos para análisis de cohortes y retención.
    */
   async setUserId(userId: string): Promise<void> {
-    if (!this.initialized) {
-      console.log('[Analytics] No-op (Expo Go o Firebase no disponible)');
+    if (!this.initialized || !this.analytics) {
+      console.log('[Analytics] No-op (no inicializado)');
       return;
     }
     try {
-      if (userId && analyticsModule) {
-        await analyticsModule.setUserId(userId);
+      if (userId) {
+        setUserId(this.analytics, userId);
         console.log('[Analytics] setUserId:', userId);
       }
     } catch (error) {
@@ -66,10 +95,10 @@ class AnalyticsService {
   }
 
   async setUserProperty(key: string, value: string): Promise<void> {
-    if (!this.initialized || !analyticsModule) return;
+    if (!this.initialized || !this.analytics) return;
     if (!key) return;
     try {
-      await analyticsModule.setUserProperty(key, value);
+      setUserProperties(this.analytics, { [key]: value });
     } catch (error) {
       console.warn('[Analytics] Error setting user property:', error);
     }
@@ -323,12 +352,7 @@ class AnalyticsService {
    * Trackea segmento de usuario (premium/no premium).
    */
   async trackUserSegment(isPremium: boolean): Promise<void> {
-    if (!this.initialized) return;
-    try {
-      await analyticsModule.setUserProperty('is_premium', isPremium ? 'true' : 'false');
-    } catch (error) {
-      console.warn('[Analytics] Error setting user property:', error);
-    }
+    await this.setUserProperty('is_premium', isPremium ? 'true' : 'false');
   }
 
   /**
