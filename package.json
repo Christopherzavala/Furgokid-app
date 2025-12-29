@@ -12,14 +12,14 @@
     "eas:migrate": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate-to-eas.ps1",
     "eas:migrate:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate-to-eas.ps1 -DryRun",
     "validate:config": "npx expo config --type public",
-    "prepare": "husky install"
+    "prepare": "node -e \"try { require('husky').install() } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e }\""
   },
   "dependencies": {
     "@expo/cli": "^54.0.20",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-firebase/analytics": "^23.7.0",
-    "@react-native-picker/picker": "^2.11.4",
+    "@react-native-picker/picker": "2.11.1",
     "@react-navigation/bottom-tabs": "^6.5.8",
     "@react-navigation/native": "^6.1.7",
     "@react-navigation/stack": "^6.3.17",
