@@ -66,6 +66,9 @@ export default {
       adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
       adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+      eas: {
+        projectId: 'a73187e9-3163-4996-bc85-9ad0e038d81e',
+      },
     },
     owner: 'christopher69',
     updates: {
