@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import analyticsService from '../services/analyticsService';
 
 describe('AnalyticsService', () => {
