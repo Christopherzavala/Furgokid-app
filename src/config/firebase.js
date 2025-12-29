@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-// eslint-disable-next-line import/no-unresolved
 import { getReactNativePersistence, initializeAuth } from 'firebase/auth/react-native';
 import { getFirestore } from 'firebase/firestore';
 

@@ -8,7 +8,6 @@ let analyticsModule: any = null;
 // Solo intenta importar Firebase Analytics en builds nativos (no en Expo Go)
 if (!isExpoGo) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     analyticsModule = require('@react-native-firebase/analytics').default;
   } catch (error) {
     console.warn('[Analytics] Firebase Analytics no disponible:', error);
