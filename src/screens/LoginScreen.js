@@ -1,48 +1,49 @@
-import React, { useState } from 'react';
-import { View, TextInput, Button, StyleSheet, Text, Alert } from 'react-native';
-import { auth } from '../config/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+  const { signIn, loading: authLoading } = useAuth();
+
+  // Email validation
+  const validateEmail = (candidate) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(candidate);
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Campos incompletos', 'Ingresa email y contrasena.');
+      Alert.alert('Campos incompletos', 'Ingresa email y contraseña.');
       return;
     }
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-    } catch (error) {
-      let message = 'Error al iniciar sesion.';
-      switch (error?.code) {
-        case 'auth/invalid-email':
-          message = 'Email invalido.';
-          break;
-        case 'auth/user-disabled':
-          message = 'Usuario deshabilitado.';
-          break;
-        case 'auth/user-not-found':
-          message = 'Usuario no encontrado.';
-          break;
-        case 'auth/wrong-password':
-          message = 'Contrasena incorrecta.';
-          break;
-        case 'auth/network-request-failed':
-          message = 'Problema de red. Intenta nuevamente.';
-          break;
-        default:
-          message = 'No se pudo iniciar sesion. Revisa tus datos.';
-      }
-      Alert.alert('Error de inicio de sesion', message);
-      console.log('login error', error);
-    } finally {
-      setLoading(false);
+    if (!validateEmail(email)) {
+      Alert.alert('Email inválido', 'Por favor ingresa un email válido.');
+      return;
     }
+    setLocalLoading(true);
+    const result = await signIn(email.trim(), password);
+    if (result.success) {
+      // Navigate is handled by auth state listener
+    } else {
+      let message = result.error || 'Error al iniciar sesión.';
+      if (result.error?.includes('auth/invalid-email')) {
+        message = 'Email inválido.';
+      } else if (result.error?.includes('auth/user-not-found')) {
+        message = 'Usuario no encontrado.';
+      } else if (result.error?.includes('auth/wrong-password')) {
+        message = 'Contraseña incorrecta.';
+      } else if (result.error?.includes('network')) {
+        message = 'Problema de red. Intenta nuevamente.';
+      }
+      Alert.alert('Error de inicio de sesión', message);
+    }
+    setLocalLoading(false);
   };
+
+  const isLoading = localLoading || authLoading;
 
   return (
     <View style={styles.container}>
@@ -53,19 +54,26 @@ export default function LoginScreen({ navigation }) {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
-        editable={!loading}
+        keyboardType="email-address"
+        editable={!isLoading}
+        placeholderTextColor="#999"
       />
       <TextInput
-        placeholder="Contrasena"
+        placeholder="Contraseña"
         style={styles.input}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        editable={!loading}
+        editable={!isLoading}
+        placeholderTextColor="#999"
       />
-      <Button title={loading ? 'Ingresando...' : 'Entrar'} onPress={handleLogin} color="#2c3e50" disabled={loading} />
-      <Text style={styles.linkText} onPress={() => !loading && navigation.navigate('Register')}>
-        No tienes cuenta? Registrate aqui
+      {isLoading ? (
+        <ActivityIndicator size="large" color="#2c3e50" style={{ marginVertical: 20 }} />
+      ) : (
+        <Button title="Entrar" onPress={handleLogin} color="#2c3e50" disabled={isLoading} />
+      )}
+      <Text style={styles.linkText} onPress={() => !isLoading && navigation.navigate('Register')}>
+        ¿No tienes cuenta? Regístrate aquí
       </Text>
     </View>
   );

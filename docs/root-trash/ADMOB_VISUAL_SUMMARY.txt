@@ -1,0 +1,7 @@
+MOVED
+
+This document is maintained at:
+- docs/root-info/ADMOB_VISUAL_SUMMARY.txt
+
+Start here:
+- docs/root-info/INDEX.md

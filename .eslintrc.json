@@ -1,14 +1,6 @@
 {
-  "extends": [
-    "expo",
-    "@react-native-community",
-    "prettier"
-  ],
-  "plugins": [
-    "react",
-    "react-native",
-    "react-hooks"
-  ],
+  "extends": ["expo", "@react-native-community", "prettier"],
+  "plugins": ["react", "react-native", "react-hooks"],
   "rules": {
     "react/react-in-jsx-scope": "off",
     "react-native/no-unused-styles": "warn",
@@ -18,5 +10,13 @@
   },
   "env": {
     "react-native/react-native": true
-  }
+  },
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx"],
+      "rules": {
+        "@typescript-eslint/no-useless-constructor": "off"
+      }
+    }
+  ]
 }

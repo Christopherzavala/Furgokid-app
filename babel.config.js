@@ -1,5 +1,5 @@
 // babel.config.js - Configuración de Babel Optimizada para FurgoKid
-module.exports = function(api) {
+module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],

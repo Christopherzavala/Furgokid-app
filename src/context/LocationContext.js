@@ -1,8 +1,8 @@
 // LocationContext.js - Context API for GPS Location State Management
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import * as locationService from '../services/locationService';
 import { auth } from '../config/firebase';
+import * as locationService from '../services/locationService';
 
 const LocationContext = createContext();
 
@@ -20,7 +20,7 @@ export const LocationProvider = ({ children }) => {
   const [locationHistory, setLocationHistory] = useState([]);
   const [permissions, setPermissions] = useState({
     foreground: false,
-    background: false
+    background: false,
   });
   const [error, setError] = useState(null);
   const appState = useRef(AppState.currentState);
@@ -30,14 +30,16 @@ export const LocationProvider = ({ children }) => {
    */
   useEffect(() => {
     checkPermissions();
-    
+
     // Listen to app state changes
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-    
+
     return () => {
       subscription.remove();
       stopTracking(); // Cleanup on unmount
     };
+    // handleAppStateChange is stable for our use, suppress exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -59,15 +61,12 @@ export const LocationProvider = ({ children }) => {
    * Handle app state changes (foreground/background)
    */
   const handleAppStateChange = async (nextAppState) => {
-    if (
-      appState.current.match(/inactive|background/) &&
-      nextAppState === 'active'
-    ) {
+    if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
       // App came to foreground
       console.log('App came to foreground');
       await refreshLocation();
     }
-    
+
     appState.current = nextAppState;
   };
 
@@ -77,22 +76,22 @@ export const LocationProvider = ({ children }) => {
   const startTracking = async () => {
     try {
       setError(null);
-      
+
       const perms = await checkPermissions();
-      
+
       if (!perms.foreground) {
         throw new Error('Location permission required');
       }
-      
+
       let success;
-      
+
       // Try background tracking first, fallback to foreground
       if (perms.background) {
         success = await locationService.startBackgroundLocationTracking();
       } else {
         success = await locationService.startForegroundLocationTracking();
       }
-      
+
       if (success) {
         setIsTracking(true);
         await refreshLocation();
@@ -154,7 +153,7 @@ export const LocationProvider = ({ children }) => {
    */
   const getDistanceTo = (targetCoords) => {
     if (!currentLocation) return null;
-    
+
     return locationService.calculateDistance(currentLocation, targetCoords);
   };
 
@@ -179,7 +178,7 @@ export const LocationProvider = ({ children }) => {
     locationHistory,
     permissions,
     error,
-    
+
     // Actions
     startTracking,
     stopTracking,
@@ -190,11 +189,7 @@ export const LocationProvider = ({ children }) => {
     checkTrackingStatus,
   };
 
-  return (
-    <LocationContext.Provider value={value}>
-      {children}
-    </LocationContext.Provider>
-  );
+  return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 };
 
 export default LocationContext;

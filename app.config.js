@@ -12,41 +12,47 @@ export default {
     splash: {
       image: './assets/splash.png',
       resizeMode: 'contain',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
     },
-    assetBundlePatterns: [
-      '**/*'
-    ],
+    assetBundlePatterns: ['**/*'],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.furgokid.app'
+      bundleIdentifier: 'Com.Furgokid.App',
     },
     android: {
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#FFFFFF'
+        backgroundColor: '#FFFFFF',
       },
-      package: 'com.furgokid.app',
+      package: 'Com.Furgokid.App',
       permissions: [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',
         'ACCESS_BACKGROUND_LOCATION',
         'FOREGROUND_SERVICE',
         'FOREGROUND_SERVICE_LOCATION',
-        'POST_NOTIFICATIONS'
-      ]
+        'POST_NOTIFICATIONS',
+      ],
     },
     web: {
-      favicon: './assets/favicon.png'
+      favicon: './assets/favicon.png',
     },
     plugins: [
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'Permitir FurgoKid usar tu ubicación para rastrear el transporte escolar.'
-        }
+          locationAlwaysAndWhenInUsePermission:
+            'Permitir FurgoKid usar tu ubicación para rastrear el transporte escolar.',
+        },
       ],
-      'expo-font'
+      'expo-font',
+      [
+        'react-native-google-mobile-ads',
+        {
+          androidAppId: process.env.ADMOB_ANDROID_APP_ID,
+          iosAppId: process.env.ADMOB_IOS_APP_ID,
+        },
+      ],
     ],
     extra: {
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -57,10 +63,12 @@ export default {
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
       admobAndroidAppId: process.env.ADMOB_ANDROID_APP_ID,
       admobIosAppId: process.env.ADMOB_IOS_APP_ID,
+      adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
+      adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
       eas: {
-        projectId: 'a73187e9-3163-4996-bc85-9ad0e038d81e'
-      }
-    }
-  }
+        projectId: 'a73187e9-3163-4996-bc85-9ad0e038d81e',
+      },
+    },
+  },
 };

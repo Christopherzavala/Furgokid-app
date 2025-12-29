@@ -1,0 +1,57 @@
+# Índice — Documentación (root-info)
+
+Esta carpeta contiene copias “centralizadas” de los archivos informativos que estaban en el root del repo. La idea es que tengas **un solo punto de entrada** sin mover/borrar todavía nada del root.
+
+## Empezar
+
+- [INICIO_AQUI.txt](INICIO_AQUI.txt)
+- [DESARROLLO_LOCAL.md](DESARROLLO_LOCAL.md)
+- [README-CONFIGURACION.md](README-CONFIGURACION.md)
+
+## Testing
+
+- [TESTING.md](TESTING.md)
+- [MASTER_CHECKLIST.md](MASTER_CHECKLIST.md)
+- [SUMMARY.txt](SUMMARY.txt)
+
+## MVP
+
+- [MVP_COMPLETADO.md](MVP_COMPLETADO.md)
+- [IMPLEMENTACION_COMPLETADA.md](IMPLEMENTACION_COMPLETADA.md)
+- [FINALIZACION_MVP.md](FINALIZACION_MVP.md)
+- [README_MVP_SUMMARY.md](README_MVP_SUMMARY.md)
+
+## Auditoría
+
+- [README_AUDITORÍA.md](README_AUDITORÍA.md)
+- [AUDITORÍA_RESUMEN_TÉCNICO.md](AUDITORÍA_RESUMEN_TÉCNICO.md)
+- [AUDITORÍA_FINAL_SUMARIO.txt](AUDITORÍA_FINAL_SUMARIO.txt)
+- [AUDITORÍA_VISUAL_SUMMARY.txt](AUDITORÍA_VISUAL_SUMMARY.txt)
+- [CODIGO_AUDIT_REPORTE.md](CODIGO_AUDIT_REPORTE.md)
+- [CHECKLIST_POST_AUDITORIA.md](CHECKLIST_POST_AUDITORIA.md)
+- [FIXES_APLICADOS.md](FIXES_APLICADOS.md)
+- [ERRORES-CORREGIDOS.md](ERRORES-CORREGIDOS.md)
+- [REFERENCIA_RAPIDA_FIXES.md](REFERENCIA_RAPIDA_FIXES.md)
+
+## AdMob
+
+- [ADMOB_SETUP.md](ADMOB_SETUP.md)
+- [ADMOB_SETUP_GUIDE.md](../ADMOB_SETUP_GUIDE.md)
+- [ADMOB_STRATEGY_COMPLETA.md](ADMOB_STRATEGY_COMPLETA.md)
+- [ADMOB_IMPLEMENTATION_READY.md](ADMOB_IMPLEMENTATION_READY.md)
+- [ADMOB_RESPUESTAS_USUARIO.md](ADMOB_RESPUESTAS_USUARIO.md)
+- [ADMOB_VISUAL_SUMMARY.txt](ADMOB_VISUAL_SUMMARY.txt)
+
+## Producción
+
+- [INSTRUCCIONES_PRODUCTION_BUILD.md](INSTRUCCIONES_PRODUCTION_BUILD.md)
+- [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+
+## Reparaciones
+
+- [REPORTE_REPARACION.md](REPORTE_REPARACION.md)
+- [REPARACION_COMPLETADA.md](REPARACION_COMPLETADA.md)
+
+## Notas
+
+- Si quieres, el siguiente paso es **mover** (no copiar) estos archivos fuera del root y dejar stubs/redirects, pero por ahora este enfoque evita romper referencias.

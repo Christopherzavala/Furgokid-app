@@ -1,7 +1,10 @@
 ﻿import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import admobService from '../services/admobService';
 import analyticsService from '../services/analyticsService';
+
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 interface AdBannerProps {
   unitId: string;
@@ -9,20 +12,26 @@ interface AdBannerProps {
   style?: any;
 }
 
-export const AdBanner: React.FC<AdBannerProps> = ({
-  unitId,
-  screenName,
-  style,
-}) => {
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+export const AdBanner: React.FC<AdBannerProps> = ({ unitId, screenName, style }) => {
   const adRef = useRef(null);
   const impressionTracked = useRef(false);
 
   useEffect(() => {
-    if (!impressionTracked.current) {
-      analyticsService.trackAdImpression('banner', screenName);
-      impressionTracked.current = true;
+    if (!isExpoGo) {
+      admobService.initialize();
+      analyticsService.trackAdLoadAttempt('banner', screenName);
     }
   }, [screenName]);
+
+  if (isExpoGo) {
+    return (
+      <View style={[styles.container, style, { backgroundColor: '#e0e0e0', padding: 10 }]}>
+        <Text style={{ fontSize: 10, color: '#666' }}>[AdMob Banner - Disabled in Expo Go]</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, style]}>
@@ -31,15 +40,44 @@ export const AdBanner: React.FC<AdBannerProps> = ({
         unitId={unitId}
         size={BannerAdSize.FULL_BANNER}
         requestOptions={{
-          requestNonPersonalizedAds: false,
+          requestNonPersonalizedAdsOnly: false,
           keywords: ['parenting', 'children', 'education', 'tracking'],
         }}
+        onAdLoaded={() => {
+          analyticsService.trackAdLoaded('banner', screenName);
+        }}
         onAdFailedToLoad={(error) => {
-          console.log([AdBanner] Error: \);
+          if (__DEV__) {
+            console.log(`[AdBanner] Error: ${error}`);
+          }
+          analyticsService.trackAdLoadFailed('banner', screenName, String(error?.message || error));
+        }}
+        onAdImpression={() => {
+          if (!impressionTracked.current) {
+            analyticsService.trackAdImpression('banner', screenName);
+            impressionTracked.current = true;
+          }
+        }}
+        onAdClicked={() => {
+          analyticsService.trackAdClick('banner', unitId, screenName);
+        }}
+        onPaid={(event: any) => {
+          try {
+            analyticsService.trackAdPaid(
+              'banner',
+              screenName,
+              Number(event?.valueMicros || 0),
+              String(event?.currencyCode || 'USD'),
+              event?.precision
+            );
+          } catch {
+            // no-op
+          }
         }}
         onAdOpened={() => {
-          console.log('[AdBanner] Ad opened');
-          analyticsService.trackAdClick('banner', unitId, screenName);
+          if (__DEV__) {
+            console.log('[AdBanner] Ad opened');
+          }
         }}
       />
     </View>

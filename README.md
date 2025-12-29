@@ -4,8 +4,9 @@
 [![React Native 0.81.5](https://img.shields.io/badge/React%20Native-0.81.5-green.svg)](https://reactnative.dev/)
 [![Firebase](https://img.shields.io/badge/Firebase-12.6.0-orange.svg)](https://firebase.google.com/)
 
-> [!IMPORTANT]
-> **Proyecto en fase de desarrollo.** Antes de deployment a producción, sigue las guías de **Seguridad** y **Monetización** en `/docs`.
+> [!IMPORTANT] > **Proyecto en fase de desarrollo.** Antes de deployment a producción, sigue las guías de **Seguridad** y **Monetización** en `/docs`.
+>
+> **Índice de documentación (centralizado):** `docs/root-info/INDEX.md`
 
 ---
 
@@ -55,14 +56,14 @@ furgokid/
 
 ## 🛠️ Scripts NPM Disponibles
 
-| Script | Descripción | Cuándo usarlo |
-|--------|-------------|---------------|
-| `npm start` | Inicia servidor Expo | Desarrollo local |
-| `npm run android` | Build Android nativo | Testing en emulador/device |
-| `npm run security:audit` | Auditoría de seguridad | **Antes de cada commit importante** |
-| `npm run validate:config` | Valida `app.config.js` | Después de editar configuración |
-| `npm run eas:migrate` | Migra secrets a EAS | **Antes del primer deploy a producción** |
-| `npm run eas:migrate:dry` | Preview de migración | Testing sin cambios reales |
+| Script                    | Descripción            | Cuándo usarlo                            |
+| ------------------------- | ---------------------- | ---------------------------------------- |
+| `npm start`               | Inicia servidor Expo   | Desarrollo local                         |
+| `npm run android`         | Build Android nativo   | Testing en emulador/device               |
+| `npm run security:audit`  | Auditoría de seguridad | **Antes de cada commit importante**      |
+| `npm run validate:config` | Valida `app.config.js` | Después de editar configuración          |
+| `npm run eas:migrate`     | Migra secrets a EAS    | **Antes del primer deploy a producción** |
+| `npm run eas:migrate:dry` | Preview de migración   | Testing sin cambios reales               |
 
 ---
 
@@ -71,20 +72,23 @@ furgokid/
 ### ⚠️ CRÍTICO: Antes de Deployment
 
 1. **Ejecutar auditoría:**
+
    ```bash
    npm run security:audit
    ```
 
 2. **Migrar secrets a EAS:**
+
    ```bash
    # Login a Expo
    eas login
-   
+
    # Migrar secrets (producción)
    npm run eas:migrate
    ```
 
 3. **Verificar .gitignore:**
+
    - ✅ `.env` debe estar en `.gitignore`
    - ✅ No debe haber secrets en historial de Git
    - ✅ Firebase keys con restricciones de app configuradas
@@ -95,6 +99,7 @@ furgokid/
 ### Pre-commit Hooks (Automático)
 
 El proyecto tiene Git hooks configurados que validan:
+
 - ✅ Sintaxis de `app.config.js`
 - ✅ No se commitee `.env`
 - ✅ No hay API keys hardcodeadas
@@ -108,11 +113,13 @@ El proyecto tiene Git hooks configurados que validan:
 ### Quick Setup
 
 1. **Crear cuenta AdMob:**
+
    - Ir a [admob.google.com](https://admob.google.com)
    - Registrar app Android/iOS
    - Crear ad units (Banner, Interstitial, Rewarded)
 
 2. **Actualizar `.env`:**
+
    ```bash
    ADMOB_ANDROID_APP_ID=ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX
    ADMOB_IOS_APP_ID=ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX
@@ -152,33 +159,39 @@ El proyecto tiene Git hooks configurados que validan:
 ## 📊 Roadmap de Desarrollo
 
 ### ✅ Fase 1: MVP y Estabilización (Completado)
+
 - Reparación de errores críticos de configuración
 - Setup de entorno de desarrollo
 - Validación de dependencias
 
 ### ✅ Fase 2: Automatización (Completado)
+
 - Pre-commit hooks con validación de configs
 - Scripts de automatización (auditoría, migración)
 - Documentación técnica completa
 
 ### ✅ Fase 3: Hardening de Seguridad (Completado)
+
 - Auditoría de secrets
 - Guía de migración a EAS Secrets
 - Validación automática en CI
 
 ### 🔄 Fase 4: Monetización (En Progreso)
+
 - [x] Guía de setup de AdMob
 - [x] Documentación de ad units
 - [ ] Testing de ads en producción
 - [ ] Optimización de eCPM
 
 ### 🚀 Fase 5: Production Release (Próximo)
+
 - [ ] Build de producción con EAS
 - [ ] Submit a Google Play Store
 - [ ] Submit a Apple App Store
 - [ ] Configuración de analytics y crash reporting
 
 ### 📈 Fase 6: Optimización y Escalabilidad
+
 - [ ] A/B testing de frecuencia de ads
 - [ ] Implementación de mediation (AppLovin, Meta)
 - [ ] Optimización de performance (reduce bundle size)
@@ -212,11 +225,11 @@ eas build --profile development --platform ios --local
 
 ## 📚 Documentación Adicional
 
-| Archivo | Descripción |
-|---------|-------------|
-| [ADMOB_SETUP_GUIDE.md](docs/ADMOB_SETUP_GUIDE.md) | Guía completa de monetización con benchmarks |
+| Archivo                                                   | Descripción                                      |
+| --------------------------------------------------------- | ------------------------------------------------ |
+| [ADMOB_SETUP_GUIDE.md](docs/ADMOB_SETUP_GUIDE.md)         | Guía completa de monetización con benchmarks     |
 | [EAS_SECRETS_MIGRATION.md](docs/EAS_SECRETS_MIGRATION.md) | Migración de secrets con security best practices |
-| [DESARROLLO_LOCAL.md](DESARROLLO_LOCAL.md) | Setup inicial y troubleshooting |
+| [DESARROLLO_LOCAL.md](DESARROLLO_LOCAL.md)                | Setup inicial y troubleshooting                  |
 
 ---
 
@@ -225,6 +238,7 @@ eas build --profile development --platform ios --local
 ### "expo-task-manager version not found"
 
 **Solución:**
+
 ```bash
 npm uninstall expo-task-manager
 npx expo install expo-task-manager
@@ -238,6 +252,7 @@ npx expo install expo-task-manager
 ### Pre-commit hook falla
 
 **Solución:**
+
 ```bash
 # Verificar sintaxis de app.config.js
 npm run validate:config
@@ -252,7 +267,7 @@ npm run validate:config
 Este proyecto sigue las siguientes convenciones:
 
 - **Commits:** Conventional Commits (feat:, fix:, docs:, etc)
-- **Branches:** feature/*, bugfix/*, hotfix/*
+- **Branches:** feature/_, bugfix/_, hotfix/\*
 - **Code Style:** Prettier + ESLint (ejecutar automáticamente en pre-commit)
 
 ---

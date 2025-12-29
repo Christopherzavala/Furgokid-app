@@ -143,7 +143,7 @@ if (adInterstitialManager.isReady()) {
 For questions or issues:
 1. Check [Google AdMob Documentation](https://support.google.com/admob/)
 2. Review code comments in config files
-3. Follow inline TODO markers for library integration
+3. Follow inline TODO markers for library integration points
 
 ---
 

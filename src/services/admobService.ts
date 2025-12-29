@@ -1,9 +1,11 @@
-﻿import MobileAds, {
-  BannerAd,
-  BannerAdSize,
+﻿import Constants, { ExecutionEnvironment } from 'expo-constants';
+import MobileAds, {
+  AdEventType,
   InterstitialAd,
   RewardedAd,
+  RewardedAdEventType,
 } from 'react-native-google-mobile-ads';
+import analyticsService from './analyticsService';
 
 const TEST_IDS = {
   BANNER: 'ca-app-pub-3940256099942544/6300978111',
@@ -17,13 +19,22 @@ const PRODUCTION_IDS = {
   REWARDED: process.env.REWARDED_AD_UNIT_ID || TEST_IDS.REWARDED,
 };
 
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
 class AdMobService {
   private initialized = false;
   private interstitialAd: InterstitialAd | null = null;
   private rewardedAd: RewardedAd | null = null;
   private isProduction = process.env.NODE_ENV === 'production';
+  private lastInterstitialAdUnitId: string | null = null;
+  private lastRewardedAdUnitId: string | null = null;
 
   async initialize(): Promise<void> {
+    if (isExpoGo) {
+      console.log('[AdMob] Expo Go detectado - AdMob deshabilitado');
+      return;
+    }
+
     if (this.initialized) return;
     try {
       await MobileAds().initialize();
@@ -41,87 +52,206 @@ class AdMobService {
     return TEST_IDS[adType.toUpperCase() as keyof typeof TEST_IDS];
   }
 
-  async loadInterstitialAd(): Promise<void> {
+  async loadInterstitialAd(adUnitIdOverride?: string): Promise<boolean> {
+    if (isExpoGo) return false;
+
     try {
-      const adUnitId = this.getAdUnitId('interstitial');
+      const adUnitId = adUnitIdOverride || this.getAdUnitId('interstitial');
       const interstitialAd = InterstitialAd.createForAdRequest(adUnitId);
+      this.lastInterstitialAdUnitId = adUnitId;
 
       await new Promise<void>((resolve, reject) => {
-        const unsubscribe = interstitialAd.onAdEvent((type) => {
-          if (type === 'loaded') {
-            this.interstitialAd = interstitialAd;
-            unsubscribe();
-            resolve();
+        let done = false;
+        let unsubscribeLoaded: (() => void) | null = null;
+        let unsubscribeError: (() => void) | null = null;
+
+        const finish = (fn: (value?: any) => void, value?: any) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timeoutId);
+          try {
+            unsubscribeLoaded?.();
+          } catch {
+            // no-op
           }
+          try {
+            unsubscribeError?.();
+          } catch {
+            // no-op
+          }
+          fn(value);
+        };
+
+        unsubscribeLoaded = interstitialAd.addAdEventListener(AdEventType.LOADED, () => {
+          this.interstitialAd = interstitialAd;
+          finish(resolve);
+        });
+
+        unsubscribeError = interstitialAd.addAdEventListener(AdEventType.ERROR, (error) => {
+          console.error('[AdMob] Error cargando interstitial:', error);
+          finish(reject, error);
         });
 
         interstitialAd.load();
 
-        setTimeout(() => {
-          reject(new Error('Intersticial no cargó a tiempo'));
-        }, 5000);
+        const timeoutId = setTimeout(() => {
+          finish(reject, new Error('Intersticial no cargó a tiempo'));
+        }, 8000);
       });
 
       console.log('[AdMob] Intersticial precargado');
+      return true;
     } catch (error) {
       console.error('[AdMob] Error precargando intersticial:', error);
+      return false;
     }
   }
 
-  async showInterstitialAd(): Promise<void> {
+  async showInterstitialAd(placement: string = 'INTERSTITIAL'): Promise<boolean> {
+    if (isExpoGo) {
+      console.log('[AdMob] Expo Go - Simulación de Interstitial');
+      return false;
+    }
+
     try {
       if (this.interstitialAd) {
+        const adUnitIdForEvent = this.lastInterstitialAdUnitId || 'unknown';
+
+        const unsubscribeOpened = this.interstitialAd.addAdEventListener(AdEventType.OPENED, () => {
+          analyticsService.trackAdImpression('interstitial', placement);
+        });
+
+        const unsubscribeClicked = this.interstitialAd.addAdEventListener(
+          AdEventType.CLICKED,
+          () => {
+            analyticsService.trackAdClick('interstitial', adUnitIdForEvent, placement);
+          }
+        );
+
+        const unsubscribePaid = this.interstitialAd.addAdEventListener(
+          AdEventType.PAID,
+          (event) => {
+            try {
+              analyticsService.trackAdPaid(
+                'interstitial',
+                placement,
+                Number((event as any)?.valueMicros || 0),
+                String((event as any)?.currencyCode || 'USD'),
+                (event as any)?.precision
+              );
+            } catch {
+              // no-op
+            }
+          }
+        );
+
+        const unsubscribeClosed = this.interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+          unsubscribeClosed();
+          unsubscribeOpened();
+          unsubscribeClicked();
+          unsubscribePaid();
+          this.interstitialAd = null;
+          if (this.lastInterstitialAdUnitId) {
+            this.loadInterstitialAd(this.lastInterstitialAdUnitId);
+          } else {
+            this.loadInterstitialAd();
+          }
+        });
+
         await this.interstitialAd.show();
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('[AdMob] Error mostrando intersticial:', error);
+      return false;
     }
   }
 
-  async loadRewardedAd(): Promise<void> {
+  async loadRewardedAd(adUnitIdOverride?: string): Promise<boolean> {
+    if (isExpoGo) return false;
+
     try {
-      const adUnitId = this.getAdUnitId('rewarded');
+      const adUnitId = adUnitIdOverride || this.getAdUnitId('rewarded');
       const rewardedAd = RewardedAd.createForAdRequest(adUnitId);
+      this.lastRewardedAdUnitId = adUnitId;
 
       await new Promise<void>((resolve, reject) => {
-        const unsubscribe = rewardedAd.onAdEvent((type) => {
-          if (type === 'loaded') {
-            this.rewardedAd = rewardedAd;
-            unsubscribe();
-            resolve();
+        let done = false;
+        let unsubscribeLoaded: (() => void) | null = null;
+        let unsubscribeError: (() => void) | null = null;
+
+        const finish = (fn: (value?: any) => void, value?: any) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timeoutId);
+          try {
+            unsubscribeLoaded?.();
+          } catch {
+            // no-op
           }
+          try {
+            unsubscribeError?.();
+          } catch {
+            // no-op
+          }
+          fn(value);
+        };
+
+        unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+          this.rewardedAd = rewardedAd;
+          finish(resolve);
+        });
+
+        unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, (error) => {
+          console.error('[AdMob] Error cargando rewarded:', error);
+          finish(reject, error);
         });
 
         rewardedAd.load();
 
-        setTimeout(() => {
-          reject(new Error('Recompensado no cargó a tiempo'));
-        }, 5000);
+        const timeoutId = setTimeout(() => {
+          finish(reject, new Error('Recompensado no cargó a tiempo'));
+        }, 8000);
       });
 
       console.log('[AdMob] Anuncio recompensado precargado');
+      return true;
     } catch (error) {
       console.error('[AdMob] Error precargando recompensado:', error);
+      return false;
     }
   }
 
   async showRewardedAd(): Promise<boolean> {
+    if (isExpoGo) {
+      console.log('[AdMob] Expo Go - Simulación de Rewarded (Recompensa otorgada)');
+      return true;
+    }
+
     return new Promise((resolve) => {
       try {
         if (this.rewardedAd) {
-          const unsubscribe = this.rewardedAd.onAdEvent((type, error) => {
-            if (type === 'earned_reward') {
-              console.log('[AdMob] ¡Recompensa otorgada!');
-              unsubscribe();
-              this.rewardedAd = null;
-              this.loadRewardedAd();
-              resolve(true);
-            } else if (type === 'closed') {
-              unsubscribe();
-              this.rewardedAd = null;
-              this.loadRewardedAd();
-              resolve(false);
+          let earned = false;
+
+          const unsubscribeEarned = this.rewardedAd.addAdEventListener(
+            RewardedAdEventType.EARNED_REWARD,
+            (reward) => {
+              console.log('[AdMob] ¡Recompensa otorgada!', reward);
+              earned = true;
             }
+          );
+
+          const unsubscribeClosed = this.rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+            unsubscribeEarned();
+            unsubscribeClosed();
+            this.rewardedAd = null;
+            if (this.lastRewardedAdUnitId) {
+              this.loadRewardedAd(this.lastRewardedAdUnitId);
+            } else {
+              this.loadRewardedAd();
+            }
+            resolve(earned);
           });
 
           this.rewardedAd.show();

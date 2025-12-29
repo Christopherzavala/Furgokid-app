@@ -5,11 +5,27 @@ export const useAdMob = () => {
   const [adLoaded, setAdLoaded] = useState(false);
 
   useEffect(() => {
-    admobService.initialize().then(() => {
-      admobService.loadInterstitialAd();
-      admobService.loadRewardedAd();
-      setAdLoaded(true);
-    });
+    let cancelled = false;
+
+    admobService
+      .initialize()
+      .then(async () => {
+        const [interstitialOk, rewardedOk] = await Promise.all([
+          admobService.loadInterstitialAd(),
+          admobService.loadRewardedAd(),
+        ]);
+
+        if (!cancelled) {
+          setAdLoaded(Boolean(interstitialOk || rewardedOk));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAdLoaded(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {

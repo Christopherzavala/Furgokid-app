@@ -1,57 +1,71 @@
 // locationService.js - GPS Background Tracking Service with expo-task-manager
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
-import { collection, addDoc, updateDoc, doc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { auth, db } from '../config/firebase';
+import analyticsService from './analyticsService';
 
-const LOCATION_TASK_NAME = 'background-location-task';
-const LOCATION_TRACKING_ENABLED = 'location_tracking_enabled';
-
-// Definir la tarea de background ANTES de cualquier otra función
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
-  if (error) {
-    console.error('Background location task error:', error);
-    return;
-  }
-  
-  if (data) {
-    const { locations } = data;
-    const location = locations[0];
-    
-    try {
-      const user = auth.currentUser;
-      if (user && location) {
-        await saveLocationToFirebase(location.coords, user.uid, true);
-        console.log('Background location saved:', location.coords);
-      }
-    } catch (err) {
-      console.error('Error saving background location:', err);
-    }
-  }
-});
+import {
+  LOCATION_TASK_NAME,
+  startBackgroundLocation,
+  stopBackgroundLocation,
+} from './backgroundLocation';
 
 /**
  * Solicita permisos de ubicación foreground y background
  */
 export const requestLocationPermissions = async () => {
+  const startedAt = Date.now();
   try {
     // Primero permisos de foreground
     const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-    
+
     if (foregroundStatus !== 'granted') {
       console.log('Foreground permission denied');
+      analyticsService.trackPerformance('location_permissions_ms', Date.now() - startedAt, {
+        ok: false,
+      });
+      analyticsService.trackAppError('location_permission_denied', {
+        tag: 'location_service',
+        action: 'foreground_permission_denied',
+        fatal: false,
+      });
       return { foreground: false, background: false };
     }
-    
+
     // Luego permisos de background (solo si foreground fue otorgado)
     const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-    
+
+    analyticsService.trackPerformance('location_permissions_ms', Date.now() - startedAt, {
+      ok: true,
+    });
+
     return {
       foreground: true,
-      background: backgroundStatus === 'granted'
+      background: backgroundStatus === 'granted',
     };
   } catch (error) {
     console.error('Error requesting permissions:', error);
+    analyticsService.trackPerformance('location_permissions_ms', Date.now() - startedAt, {
+      ok: false,
+    });
+    analyticsService.trackAppError('location_permissions_error', {
+      name: error?.name,
+      stack: error?.stack,
+      tag: 'location_service',
+      action: 'request_permissions',
+      fatal: false,
+    });
     return { foreground: false, background: false };
   }
 };
@@ -60,46 +74,36 @@ export const requestLocationPermissions = async () => {
  * Iniciar tracking de ubicación en background
  */
 export const startBackgroundLocationTracking = async () => {
+  const startedAt = Date.now();
   try {
     const permissions = await requestLocationPermissions();
-    
+
     if (!permissions.background) {
       console.warn('Background permission not granted. Starting foreground tracking only.');
-      return await startForegroundLocationTracking();
+      const ok = await startForegroundLocationTracking();
+      analyticsService.trackPerformance('location_start_bg_ms', Date.now() - startedAt, {
+        ok: !!ok,
+      });
+      return ok;
     }
-    
-    // Verificar si ya está corriendo
-    const isTaskDefined = await TaskManager.isTaskDefined(LOCATION_TASK_NAME);
-    if (!isTaskDefined) {
-      console.error('Background task not defined');
-      return false;
-    }
-    
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (hasStarted) {
-      console.log('Background tracking already running');
-      return true;
-    }
-    
-    // Iniciar tracking background
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 30000, // 30 segundos
-      distanceInterval: 50, // 50 metros
-      foregroundService: {
-        notificationTitle: 'FurgoKid GPS Activo',
-        notificationBody: 'Rastreando ubicación de forma segura',
-        notificationColor: '#4A90E2',
-      },
-      pausesUpdatesAutomatically: false,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      showsBackgroundLocationIndicator: true,
-    });
-    
+    await startBackgroundLocation();
     console.log('Background location tracking started');
+    analyticsService.trackPerformance('location_start_bg_ms', Date.now() - startedAt, {
+      ok: true,
+    });
     return true;
   } catch (error) {
     console.error('Error starting background tracking:', error);
+    analyticsService.trackPerformance('location_start_bg_ms', Date.now() - startedAt, {
+      ok: false,
+    });
+    analyticsService.trackAppError('location_start_bg_error', {
+      name: error?.name,
+      stack: error?.stack,
+      tag: 'location_service',
+      action: 'start_background',
+      fatal: false,
+    });
     return false;
   }
 };
@@ -110,19 +114,27 @@ export const startBackgroundLocationTracking = async () => {
 let foregroundSubscription = null;
 
 export const startForegroundLocationTracking = async () => {
+  const startedAt = Date.now();
   try {
     const permissions = await requestLocationPermissions();
-    
+
     if (!permissions.foreground) {
       console.error('Foreground permission denied');
+      analyticsService.trackPerformance('location_start_fg_ms', Date.now() - startedAt, {
+        ok: false,
+      });
       return false;
     }
-    
+
+    // ✅ Enhanced: Prevent duplicate subscriptions
     if (foregroundSubscription) {
-      console.log('Foreground tracking already active');
+      console.log('Foreground tracking already active, skipping duplicate');
+      analyticsService.trackPerformance('location_start_fg_ms', Date.now() - startedAt, {
+        ok: true,
+      });
       return true;
     }
-    
+
     foregroundSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
@@ -137,11 +149,29 @@ export const startForegroundLocationTracking = async () => {
         }
       }
     );
-    
+
     console.log('Foreground location tracking started');
+    analyticsService.trackPerformance('location_start_fg_ms', Date.now() - startedAt, {
+      ok: true,
+    });
     return true;
   } catch (error) {
     console.error('Error starting foreground tracking:', error);
+    analyticsService.trackPerformance('location_start_fg_ms', Date.now() - startedAt, {
+      ok: false,
+    });
+    analyticsService.trackAppError('location_start_fg_error', {
+      name: error?.name,
+      stack: error?.stack,
+      tag: 'location_service',
+      action: 'start_foreground',
+      fatal: false,
+    });
+    // ✅ Enhanced: Cleanup on error
+    if (foregroundSubscription) {
+      foregroundSubscription.remove();
+      foregroundSubscription = null;
+    }
     return false;
   }
 };
@@ -150,25 +180,32 @@ export const startForegroundLocationTracking = async () => {
  * Detener tracking de ubicación
  */
 export const stopLocationTracking = async () => {
+  const startedAt = Date.now();
   try {
-    // Detener background tracking
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (hasStarted) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-      console.log('Background tracking stopped');
-    }
-    
+    await stopBackgroundLocation();
+
     // Detener foreground tracking
     if (foregroundSubscription) {
       foregroundSubscription.remove();
       foregroundSubscription = null;
       console.log('Foreground tracking stopped');
     }
-    
+
     return true;
   } catch (error) {
     console.error('Error stopping tracking:', error);
+    analyticsService.trackAppError('location_stop_error', {
+      name: error?.name,
+      stack: error?.stack,
+      tag: 'location_service',
+      action: 'stop_tracking',
+      fatal: false,
+    });
     return false;
+  } finally {
+    analyticsService.trackPerformance('location_stop_ms', Date.now() - startedAt, {
+      ok: true,
+    });
   }
 };
 
@@ -177,6 +214,17 @@ export const stopLocationTracking = async () => {
  */
 const saveLocationToFirebase = async (coordinates, userId, isBackground = false) => {
   try {
+    await setDoc(
+      doc(db, 'tracking', 'current'),
+      {
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        speed: coordinates.speed ?? 0,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
     await addDoc(collection(db, 'locations'), {
       userId,
       latitude: coordinates.latitude,
@@ -191,6 +239,13 @@ const saveLocationToFirebase = async (coordinates, userId, isBackground = false)
     });
   } catch (error) {
     console.error('Error saving location to Firebase:', error);
+    analyticsService.trackAppError('location_save_error', {
+      name: error?.name,
+      stack: error?.stack,
+      tag: 'location_service',
+      action: isBackground ? 'save_location_background' : 'save_location_foreground',
+      fatal: false,
+    });
   }
 };
 
@@ -220,14 +275,14 @@ export const getLastLocations = async (userId, limitCount = 10) => {
       orderBy('timestamp', 'desc'),
       limit(limitCount)
     );
-    
+
     const querySnapshot = await getDocs(q);
     const locations = [];
-    
-    querySnapshot.forEach((doc) => {
-      locations.push({ id: doc.id, ...doc.data() });
+
+    querySnapshot.forEach((docSnap) => {
+      locations.push({ id: docSnap.id, ...docSnap.data() });
     });
-    
+
     return locations;
   } catch (error) {
     console.error('Error getting last locations:', error);
@@ -242,14 +297,14 @@ export const calculateDistance = (coord1, coord2) => {
   const R = 6371; // Radio de la Tierra en km
   const dLat = toRadians(coord2.latitude - coord1.latitude);
   const dLon = toRadians(coord2.longitude - coord1.longitude);
-  
+
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRadians(coord1.latitude)) *
       Math.cos(toRadians(coord2.latitude)) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c; // Distancia en km
 };
@@ -265,11 +320,11 @@ export const isTrackingActive = async () => {
   try {
     const backgroundActive = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     const foregroundActive = foregroundSubscription !== null;
-    
+
     return {
       background: backgroundActive,
       foreground: foregroundActive,
-      any: backgroundActive || foregroundActive
+      any: backgroundActive || foregroundActive,
     };
   } catch (error) {
     console.error('Error checking tracking status:', error);

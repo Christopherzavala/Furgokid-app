@@ -1,28 +1,20 @@
 // src/screens/TrackingMap.js
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Alert,
-  TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
-} from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
 import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  limit,
-  doc,
-  getDoc
-} from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+  ActivityIndicator,
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { db } from '../config/firebase';
+import analyticsService from '../services/analyticsService';
+import notificationService from '../utils/notificationService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -36,27 +28,92 @@ const TrackingMap = ({ route, navigation }) => {
   const [driverName, setDriverName] = useState('Conductor');
 
   const mapRef = useRef(null);
+  const lastAnimateTsRef = useRef(0);
+  const lastPointRef = useRef(null);
+  const lastPolylineTsRef = useRef(0);
+
+  // "Faltan 5 minutos" (aproximado): se toma como referencia la ubicación actual del apoderado
+  const pickupPointRef = useRef(null);
+  const arrivalNotifiedRef = useRef(false);
+
+  const MIN_MOVE_METERS = 8;
+  const POLYLINE_MIN_INTERVAL_MS = 1500;
+  const ARRIVAL_THRESHOLD_SECONDS = 5 * 60;
+  const DEFAULT_SPEED_MPS = 8.33; // ~30 km/h
+
+  const approxDistanceMeters = (a, b) => {
+    if (!a || !b) return Infinity;
+    const toRad = (x) => (x * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const lat1 = toRad(a.latitude);
+    const lat2 = toRad(b.latitude);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLon = Math.sin(dLon / 2);
+    const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
 
   useEffect(() => {
     setupInitialMap();
-    subscribeToGlobalTracking();
-    return () => { };
+    const unsubscribe = subscribeToGlobalTracking();
+    return () => {
+      try {
+        if (typeof unsubscribe === 'function') unsubscribe();
+      } catch {
+        // no-op
+      }
+    };
+    // subscribeToGlobalTracking is stable for mount-time subscription
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setupInitialMap = async () => {
+    const startedAt = Date.now();
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const location = await Location.getCurrentPositionAsync({});
+        pickupPointRef.current = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
         setRegion({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           latitudeDelta: 0.012,
           longitudeDelta: 0.012,
         });
+
+        analyticsService.trackPerformance('tracking_initial_location_ms', Date.now() - startedAt, {
+          screen: 'TrackingMap',
+          ok: true,
+        });
+      } else {
+        analyticsService.trackPerformance('tracking_initial_location_ms', Date.now() - startedAt, {
+          screen: 'TrackingMap',
+          ok: false,
+        });
+        analyticsService.trackAppError('tracking_permission_denied', {
+          tag: 'tracking_map',
+          action: 'foreground_permission_denied',
+          fatal: false,
+        });
       }
     } catch (e) {
       console.error('Error getting initial location:', e);
+      analyticsService.trackPerformance('tracking_initial_location_ms', Date.now() - startedAt, {
+        screen: 'TrackingMap',
+        ok: false,
+      });
+      analyticsService.trackAppError('tracking_initial_location_error', {
+        name: e?.name,
+        stack: e?.stack,
+        tag: 'tracking_map',
+        action: 'initial_location',
+        fatal: false,
+      });
     }
   };
 
@@ -66,47 +123,142 @@ const TrackingMap = ({ route, navigation }) => {
   const subscribeToGlobalTracking = () => {
     const docRef = doc(db, 'tracking', 'current');
 
-    return onSnapshot(docRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const point = {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          speed: data.speed || 0,
-          id: 'current'
-        };
+    const subscribeStartedAt = Date.now();
+    const firstSnapshotLoggedRef = { current: false };
+    const lastSnapshotAtRef = { current: null };
 
-        setDriverLocation(point);
-        setDriverName('Furgo en Ruta');
-        setActiveRouteId('test-session');
+    return onSnapshot(
+      docRef,
+      async (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
+            setLoading(false);
+            return;
+          }
 
-        // Actualizar histórico para la polilínea
-        setTrackingPoints(prev => {
-          const newPoints = [...prev, point].slice(-50);
-          return newPoints;
-        });
+          if (!firstSnapshotLoggedRef.current) {
+            firstSnapshotLoggedRef.current = true;
+            analyticsService.trackPerformance(
+              'tracking_first_snapshot_ms',
+              Date.now() - subscribeStartedAt,
+              { screen: 'TrackingMap', ok: true }
+            );
+          }
 
-        if (followMode && mapRef.current) {
-          mapRef.current.animateToRegion({
+          const nowSnapshot = Date.now();
+          if (typeof lastSnapshotAtRef.current === 'number') {
+            const delta = nowSnapshot - lastSnapshotAtRef.current;
+            if (delta > 15000) {
+              analyticsService.trackPerformance('tracking_snapshot_stall_ms', delta, {
+                screen: 'TrackingMap',
+                ok: false,
+              });
+            }
+          }
+          lastSnapshotAtRef.current = nowSnapshot;
+
+          const point = {
             latitude: data.latitude,
             longitude: data.longitude,
-            latitudeDelta: 0.008,
-            longitudeDelta: 0.008,
-          }, 1000);
+            speed: data.speed || 0,
+            id: 'current',
+          };
+
+          const last = lastPointRef.current;
+          const isSamePoint =
+            last && last.latitude === point.latitude && last.longitude === point.longitude;
+          const movedMeters = approxDistanceMeters(last, point);
+          lastPointRef.current = point;
+
+          if (!isSamePoint && movedMeters >= MIN_MOVE_METERS) {
+            setDriverLocation(point);
+            setDriverName('Furgo en Ruta');
+            setActiveRouteId('test-session');
+
+            // Actualizar histórico para la polilínea
+            const nowForPolyline = Date.now();
+            if (nowForPolyline - lastPolylineTsRef.current > POLYLINE_MIN_INTERVAL_MS) {
+              lastPolylineTsRef.current = nowForPolyline;
+              setTrackingPoints((prev) => {
+                const newPoints = [...prev, point].slice(-50);
+                return newPoints;
+              });
+            }
+          }
+
+          // Alerta "faltan 5 minutos" (una sola vez)
+          try {
+            if (!arrivalNotifiedRef.current && pickupPointRef.current) {
+              const distanceToPickup = approxDistanceMeters(point, pickupPointRef.current);
+              const speedMps =
+                typeof point.speed === 'number' && point.speed > 1
+                  ? point.speed
+                  : DEFAULT_SPEED_MPS;
+              const etaSeconds = Math.round(distanceToPickup / speedMps);
+
+              if (etaSeconds > 0 && etaSeconds <= ARRIVAL_THRESHOLD_SECONDS) {
+                arrivalNotifiedRef.current = true;
+                await notificationService.showNotification(
+                  'FurgoKid',
+                  'Faltan ~5 minutos para llegar al punto de recogida.',
+                  { type: 'arrival_soon', etaSeconds }
+                );
+              }
+            }
+          } catch (e) {
+            // No bloquear tracking por notificaciones
+            if (__DEV__) console.log('[TrackingMap] Notification error:', e);
+            analyticsService.trackAppError('tracking_arrival_notification_error', {
+              name: e?.name,
+              stack: e?.stack,
+              tag: 'tracking_map',
+              action: 'arrival_notification',
+              fatal: false,
+            });
+          }
+
+          // Throttle de animación (evita jank si llegan snapshots muy seguidos)
+          const now = Date.now();
+          if (followMode && mapRef.current && now - lastAnimateTsRef.current > 800) {
+            lastAnimateTsRef.current = now;
+            mapRef.current.animateToRegion(
+              {
+                latitude: data.latitude,
+                longitude: data.longitude,
+                latitudeDelta: 0.008,
+                longitudeDelta: 0.008,
+              },
+              1000
+            );
+          }
         }
+        setLoading(false);
+      },
+      (error) => {
+        setLoading(false);
+        analyticsService.trackAppError('tracking_snapshot_error', {
+          name: error?.name,
+          stack: error?.stack,
+          tag: 'tracking_map',
+          action: 'on_snapshot',
+          fatal: false,
+        });
       }
-      setLoading(false);
-    });
+    );
   };
 
   const centerOnDriver = () => {
     if (driverLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: driverLocation.latitude,
-        longitude: driverLocation.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 1000);
+      mapRef.current.animateToRegion(
+        {
+          latitude: driverLocation.latitude,
+          longitude: driverLocation.longitude,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        },
+        1000
+      );
     }
   };
 
@@ -121,12 +273,7 @@ const TrackingMap = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={region}
-        provider={PROVIDER_GOOGLE}
-      >
+      <MapView ref={mapRef} style={styles.map} initialRegion={region} provider={PROVIDER_GOOGLE}>
         {/* Marcador del Conductor (Furgo) */}
         {driverLocation && (
           <Marker
@@ -146,9 +293,9 @@ const TrackingMap = ({ route, navigation }) => {
         {/* Polilínea de la ruta recorrida */}
         {trackingPoints.length > 1 && (
           <Polyline
-            coordinates={trackingPoints.map(p => ({
+            coordinates={trackingPoints.map((p) => ({
               latitude: p.latitude,
-              longitude: p.longitude
+              longitude: p.longitude,
             }))}
             strokeColor="#FF6B35"
             strokeWidth={4}
@@ -159,17 +306,12 @@ const TrackingMap = ({ route, navigation }) => {
 
       {/* CONTROLES FLOTANTES */}
       <View style={styles.topControls}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <View style={styles.statusBadge}>
           <View style={[styles.dot, activeRouteId ? styles.dotActive : styles.dotInactive]} />
-          <Text style={styles.statusText}>
-            {activeRouteId ? 'EN VIVO' : 'SIN RUTA ACTIVA'}
-          </Text>
+          <Text style={styles.statusText}>{activeRouteId ? 'EN VIVO' : 'SIN RUTA ACTIVA'}</Text>
         </View>
       </View>
 
@@ -178,14 +320,11 @@ const TrackingMap = ({ route, navigation }) => {
           style={[styles.controlButton, followMode && styles.activeButton]}
           onPress={() => setFollowMode(!followMode)}
         >
-          <Ionicons name="locate" size={26} color={followMode ? "#fff" : "#FF6B35"} />
+          <Ionicons name="locate" size={26} color={followMode ? '#fff' : '#FF6B35'} />
         </TouchableOpacity>
 
         {driverLocation && (
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={centerOnDriver}
-          >
+          <TouchableOpacity style={styles.controlButton} onPress={centerOnDriver}>
             <Ionicons name="car" size={26} color="#FF6B35" />
           </TouchableOpacity>
         )}
@@ -206,7 +345,9 @@ const TrackingMap = ({ route, navigation }) => {
           )}
         </View>
         {!activeRouteId && (
-          <Text style={styles.waitingText}>Esperando a que el conductor inicie el recorrido...</Text>
+          <Text style={styles.waitingText}>
+            Esperando a que el conductor inicie el recorrido...
+          </Text>
         )}
       </View>
     </View>

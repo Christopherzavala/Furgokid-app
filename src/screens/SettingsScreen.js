@@ -1,14 +1,6 @@
 // SettingsScreen.js - Pantalla de Configuración
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Switch,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../config/firebase';
@@ -28,12 +20,16 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const renderSettingItem = (icon, title, subtitle, onPress, showSwitch = false, switchValue = false, onSwitchChange = null) => (
-    <TouchableOpacity
-      style={styles.settingItem}
-      onPress={onPress}
-      disabled={showSwitch}
-    >
+  const renderSettingItem = (
+    icon,
+    title,
+    subtitle,
+    onPress,
+    showSwitch = false,
+    switchValue = false,
+    onSwitchChange = null
+  ) => (
+    <TouchableOpacity style={styles.settingItem} onPress={onPress} disabled={showSwitch}>
       <View style={styles.settingIcon}>
         <Ionicons name={icon} size={24} color="#2196F3" />
       </View>

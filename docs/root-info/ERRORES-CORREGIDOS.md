@@ -7,10 +7,12 @@
 **Causa:** La app buscaba el archivo `google-services.json` pero no existía.
 
 **Solución Aplicada:**
+
 - ✅ Removida temporalmente la referencia en `app.json`
 - ⚠️ Cuando descargues el archivo real de Firebase, descoméntalalo
 
 **Código modificado en `app.json`:**
+
 ```json
 // ANTES (causaba error):
 "android": {
@@ -24,6 +26,7 @@
 ```
 
 **Para restaurar cuando tengas Firebase:**
+
 1. Descarga `google-services.json` desde Firebase Console
 2. Colócalo en la raíz del proyecto
 3. Agrega de nuevo: `"googleServicesFile": "./google-services.json"`
@@ -35,16 +38,18 @@
 **Causa:** `App.js` intentaba cargar fuentes que no existen en Expo.
 
 **Solución Aplicada:**
+
 - ✅ Eliminada carga incorrecta de fuentes en `App.js`
 - ✅ `@expo/vector-icons` ya trae sus propias fuentes, no necesita carga manual
 
 **Código eliminado de `App.js`:**
+
 ```javascript
 // ELIMINADO (causaba error):
 import * as Font from 'expo-font';
 
 await Font.loadAsync({
-  'Roboto': require('react-native-vector-icons/Fonts/Roboto.ttf'), // ❌
+  Roboto: require('react-native-vector-icons/Fonts/Roboto.ttf'), // ❌
   'Roboto-Medium': require('react-native-vector-icons/Fonts/Roboto-Medium.ttf'), // ❌
 });
 ```
@@ -56,14 +61,16 @@ await Font.loadAsync({
 **Causa:** `firebase.js` intentaba usar `getMessaging()` que solo funciona en web.
 
 **Solución Aplicada:**
+
 - ✅ Eliminado `getMessaging` de `firebase.js`
 - ✅ Mantiene Auth, Firestore y Storage funcionando
 - ✅ Para notificaciones, usa `expo-notifications` en su lugar
 
 **Código simplificado en `src/config/firebase.js`:**
+
 ```javascript
 // ANTES (causaba error):
-import { getMessaging } from 'firebase/messaging';  // ❌ No funciona en RN
+import { getMessaging } from 'firebase/messaging'; // ❌ No funciona en RN
 const messaging = getMessaging(app);
 
 // DESPUÉS (funciona):
@@ -77,11 +84,13 @@ const messaging = getMessaging(app);
 **Estado:** ⚠️ Es solo un WARNING, no impide que funcione
 
 **Explicación:**
+
 - Firebase Auth recomienda AsyncStorage para persistir sesión
 - Ya está instalado en `package.json`
 - El warning es informativo, la app funciona igual
 
 **Si quieres eliminarlo (opcional):**
+
 ```javascript
 // En src/config/firebase.js, importar:
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -89,7 +98,7 @@ import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 
 // Y cambiar:
 export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
+  persistence: getReactNativePersistence(AsyncStorage),
 });
 ```
 
@@ -97,12 +106,12 @@ export const auth = initializeAuth(app, {
 
 ## 🚀 ESTADO ACTUAL
 
-| Error | Estado | Acción |
-|-------|--------|--------|
+| Error                | Estado      | Acción                 |
+| -------------------- | ----------- | ---------------------- |
 | google-services.json | ✅ RESUELTO | Removido temporalmente |
-| Roboto.ttf | ✅ RESUELTO | Código eliminado |
-| Firebase messaging | ✅ RESUELTO | Código simplificado |
-| AsyncStorage warning | ⚠️ WARNING | Opcional arreglarlo |
+| Roboto.ttf           | ✅ RESUELTO | Código eliminado       |
+| Firebase messaging   | ✅ RESUELTO | Código simplificado    |
+| AsyncStorage warning | ⚠️ WARNING  | Opcional arreglarlo    |
 
 ---
 
@@ -142,24 +151,26 @@ npx expo start --clear
 Estos mensajes aparecerán pero **NO SON ERRORES**:
 
 ✅ `expo-notifications functionality is not fully supported in Expo Go`
-   → Normal, usa una build nativa para funcionalidad completa
+→ Normal, usa una build nativa para funcionalidad completa
 
 ✅ `Messaging not supported on this device`
-   → Normal, removimos messaging intencionalmente
+→ Normal, removimos messaging intencionalmente
 
 ✅ `Use a development build instead of Expo Go`
-   → Es solo una recomendación, Expo Go funciona bien para desarrollo
+→ Es solo una recomendación, Expo Go funciona bien para desarrollo
 
 ---
 
 ## 📞 SI AÚN HAY ERRORES
 
 1. **Detén el servidor:**
+
    ```powershell
    Get-Process -Name "node" | Stop-Process -Force
    ```
 
 2. **Ejecuta diagnóstico:**
+
    ```powershell
    .\diagnostico-y-reparacion.ps1
    ```

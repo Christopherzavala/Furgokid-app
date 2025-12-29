@@ -1,29 +1,45 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  StatusBar,
-  Dimensions
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import useAuth from '../hooks/useAuth';
+import { useEffect, useState } from 'react';
+import {
+  Alert,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import AdBannerComponent from '../components/AdBannerComponent';
 import EmptyState from '../components/EmptyState';
-
-const { width } = Dimensions.get('window');
+import { useAuth } from '../context/AuthContext';
 
 const ParentHomeScreen = ({ navigation }) => {
-  const { user } = useAuth();
-  const [children, setChildren] = useState([]); // Empty for now to show EmptyState
+  const { user, userProfile, signOut } = useAuth();
+  const [children] = useState([]); // Empty for now to show EmptyState
 
   useEffect(() => {
     // In the future, fetch children from Firestore here
   }, []);
 
+  const handleLogout = async () => {
+    Alert.alert('Cerrar Sesión', '¿Estás seguro de que deseas cerrar sesión?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar Sesión',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await signOut();
+          if (result.success) {
+            Alert.alert('Sesión cerrada', 'Has cerrado sesión correctamente.');
+          } else {
+            Alert.alert('Error', 'No se pudo cerrar sesión: ' + result.error);
+          }
+        },
+      },
+    ]);
+  };
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2196F3" />
@@ -35,14 +51,17 @@ const ParentHomeScreen = ({ navigation }) => {
       >
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.welcomeText}>
-              {user?.isOffline ? 'Modo Offline' : 'Hola,'}
-            </Text>
+            <Text style={styles.welcomeText}>{user?.isOffline ? 'Modo Offline' : 'Hola,'}</Text>
             <Text style={styles.userName}>{user?.email?.split('@')[0] || 'Padre'}</Text>
           </View>
-          <TouchableOpacity style={styles.profileButton}>
-            <Ionicons name="person-circle" size={40} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.profileButton}>
+              <Ionicons name="person-circle" size={40} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
@@ -65,21 +84,36 @@ const ParentHomeScreen = ({ navigation }) => {
 
         {/* QUICK ACTIONS */}
         <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton} onPress={() => { }}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ParentRequest')}
+          >
             <View style={[styles.iconContainer, { backgroundColor: '#E3F2FD' }]}>
               <Ionicons name="add" size={24} color="#2196F3" />
             </View>
-            <Text style={styles.actionText}>Agregar Hijo</Text>
+            <Text style={styles.actionText}>Publicar Necesidad</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('GPS')}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Search')}
+          >
             <View style={[styles.iconContainer, { backgroundColor: '#E8F5E9' }]}>
-              <Ionicons name="map" size={24} color="#4CAF50" />
+              <Ionicons name="search" size={24} color="#4CAF50" />
             </View>
-            <Text style={styles.actionText}>Ver Mapa</Text>
+            <Text style={styles.actionText}>Buscar Conductores</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* BANNER AD - MONETIZACIÓN */}
+      <AdBannerComponent
+        placement="BANNER_HOME"
+        userRole="parent"
+        adsDisabled={Boolean(
+          userProfile?.isPremium || userProfile?.subscriptionActive || userProfile?.noAds
+        )}
+      />
     </SafeAreaView>
   );
 };
@@ -101,6 +135,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   welcomeText: {
     color: '#E3F2FD',
     fontSize: 14,
@@ -112,6 +151,11 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     padding: 5,
+  },
+  logoutButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
   },
   content: {
     flex: 1,
