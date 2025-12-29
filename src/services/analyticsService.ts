@@ -1,117 +1,50 @@
-﻿import Constants, { ExecutionEnvironment } from 'expo-constants';
-import {
-  getAnalytics,
-  isSupported,
-  logEvent,
-  setUserId,
-  setUserProperties,
-} from 'firebase/analytics';
-import { getApps } from 'firebase/app';
-
-// Detecta si estamos en Expo Go (no soporta módulos nativos compilados)
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-
-/**
- * Servicio centralizado para tracking de eventos de negocio y monetización.
- * Usa Firebase JS SDK (firebase/analytics) que es compatible con Expo.
+﻿/**
+ * Servicio de Analytics - Stub/No-op para React Native
  *
- * Nota: Analytics solo funciona en web y builds nativos, no en Expo Go.
+ * Firebase Analytics del JS SDK (firebase/analytics) NO es compatible con React Native,
+ * solo funciona en web. Para usar analytics en React Native se necesita:
+ * - @react-native-firebase/analytics (requiere configuración nativa)
+ *
+ * Este servicio actúa como stub - todas las llamadas son no-op (no hacen nada)
+ * pero mantienen la misma API para no romper el código existente.
+ *
+ * TODO: Implementar analytics real cuando se configure el proyecto con
+ * @react-native-firebase/analytics o una alternativa como Amplitude/Mixpanel.
  */
 class AnalyticsService {
-  private analytics: ReturnType<typeof getAnalytics> | null = null;
-  private initialized = false;
-
   constructor() {
-    this.initAnalytics();
+    console.log('[Analytics] Stub service initialized - no tracking active');
   }
 
-  private async initAnalytics(): Promise<void> {
-    // No inicializar en Expo Go
-    if (isExpoGo) {
-      console.log('[Analytics] Expo Go detectado - Analytics deshabilitado');
-      return;
-    }
-
-    try {
-      // Verificar si analytics es soportado en esta plataforma
-      const supported = await isSupported();
-      if (!supported) {
-        console.log('[Analytics] Firebase Analytics no soportado en esta plataforma');
-        return;
-      }
-
-      // Solo inicializar si Firebase App ya está inicializado
-      if (getApps().length > 0) {
-        this.analytics = getAnalytics();
-        this.initialized = true;
-        console.log('[Analytics] Firebase Analytics inicializado correctamente');
-      } else {
-        console.warn('[Analytics] Firebase App no inicializado');
-      }
-    } catch (error) {
-      console.warn('[Analytics] Error inicializando Analytics:', error);
-    }
-  }
-
-  private async logEventSafe(eventName: string, params: Record<string, any>): Promise<void> {
-    if (!this.initialized || !this.analytics) return;
-    try {
-      await logEvent(this.analytics, eventName, {
-        ...params,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.warn(`[Analytics] Error logging ${eventName}:`, error);
-    }
-  }
-
-  /**
-   * Asocia el userId a los eventos para análisis de cohortes y retención.
-   */
-  async setUserId(userId: string): Promise<void> {
-    if (!this.initialized || !this.analytics) {
-      console.log('[Analytics] No-op (no inicializado)');
-      return;
-    }
-    try {
-      if (userId) {
-        setUserId(this.analytics, userId);
-        console.log('[Analytics] setUserId:', userId);
-      }
-    } catch (error) {
-      console.warn('[Analytics] Error setting userId:', error);
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async setUserId(_userId: string): Promise<void> {
+    // No-op
   }
 
   async trackSessionStart(): Promise<void> {
-    await this.logEventSafe('session_start', {});
+    // No-op
   }
 
-  async trackScreenView(screenName: string): Promise<void> {
-    if (!screenName) return;
-    await this.logEventSafe('screen_view', {
-      screen_name: screenName,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackScreenView(_screenName: string): Promise<void> {
+    // No-op
   }
 
-  async setUserProperty(key: string, value: string): Promise<void> {
-    if (!this.initialized || !this.analytics) return;
-    if (!key) return;
-    try {
-      setUserProperties(this.analytics, { [key]: value });
-    } catch (error) {
-      console.warn('[Analytics] Error setting user property:', error);
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async setUserProperty(_key: string, _value: string): Promise<void> {
+    // No-op
   }
 
-  async trackUserRole(role: string): Promise<void> {
-    if (!role) return;
-    await this.setUserProperty('user_role', String(role));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackUserRole(_role: string): Promise<void> {
+    // No-op
   }
 
   async trackAppError(
-    message: string,
-    details?: {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _message: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _details?: {
       name?: string;
       stack?: string;
       componentStack?: string;
@@ -120,289 +53,225 @@ class AnalyticsService {
       action?: string;
     }
   ): Promise<void> {
-    if (!message) return;
-    await this.logEventSafe('app_error', {
-      message: String(message),
-      name: details?.name ? String(details.name) : undefined,
-      tag: details?.tag ? String(details.tag) : undefined,
-      action: details?.action ? String(details.action) : undefined,
-      fatal: details?.fatal ? 'true' : 'false',
-      stack: details?.stack ? String(details.stack).slice(0, 1000) : undefined,
-      component_stack: details?.componentStack
-        ? String(details.componentStack).slice(0, 1000)
-        : undefined,
-    });
+    // No-op
   }
 
-  // -----------------
-  // Health (perf)
-  // -----------------
   async trackPerformance(
-    name: string,
-    durationMs: number,
-    props?: {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _name: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _durationMs: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _props?: {
       screen?: string;
       role?: string;
       resultCount?: number;
       ok?: boolean;
     }
   ): Promise<void> {
-    if (!name) return;
-    const duration = Number.isFinite(durationMs) ? Math.max(0, Math.round(durationMs)) : undefined;
-    await this.logEventSafe('perf', {
-      name,
-      duration_ms: duration,
-      screen: props?.screen,
-      role: props?.role,
-      ok: typeof props?.ok === 'boolean' ? (props.ok ? 'true' : 'false') : undefined,
-      result_count:
-        typeof props?.resultCount === 'number' && Number.isFinite(props.resultCount)
-          ? props.resultCount
-          : undefined,
-    });
+    // No-op
   }
 
-  /**
-   * Trackea impresión de anuncio.
-   */
   async trackAdImpression(
-    adType: 'banner' | 'interstitial' | 'rewarded',
-    screenName: string
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _screenName: string
   ): Promise<void> {
-    if (!adType || !screenName) return;
-    await this.logEventSafe('ad_impression', {
-      ad_type: adType,
-      placement: screenName,
-    });
+    // No-op
   }
 
-  /**
-   * Trackea clic en anuncio.
-   */
-  async trackAdClick(adType: string, adUnitId: string, screenName: string): Promise<void> {
-    if (!adType || !adUnitId || !screenName) return;
-    await this.logEventSafe('ad_click', {
-      ad_type: adType,
-      ad_unit: adUnitId,
-      placement: screenName,
-    });
+  async trackAdClick(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adUnitId: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _screenName: string
+  ): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea recompensa ganada por usuario.
-   */
-  async trackRewardEarned(rewardType: string, rewardValue: number): Promise<void> {
-    if (!rewardType || rewardValue == null) return;
-    await this.logEventSafe('reward_earned', {
-      reward_type: rewardType,
-      reward_value: rewardValue,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackRewardEarned(_rewardType: string, _rewardValue: number): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea revenue generado por anuncios.
-   */
-  async trackAdRevenue(amount: number, adType: string, currency: string = 'USD'): Promise<void> {
-    if (!amount || !adType) return;
-    await this.logEventSafe('ad_revenue', {
-      value: amount,
-      currency: currency,
-      ad_type: adType,
-    });
+  async trackAdRevenue(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _amount: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _currency: string = 'USD'
+  ): Promise<void> {
+    // No-op
   }
 
-  async trackAdLoadAttempt(adType: 'banner' | 'interstitial' | 'rewarded', placement: string) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_load_attempt', {
-      ad_type: adType,
-      placement,
-    });
+  async trackAdLoadAttempt(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string
+  ): Promise<void> {
+    // No-op
   }
 
-  async trackAdLoaded(adType: 'banner' | 'interstitial' | 'rewarded', placement: string) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_loaded', {
-      ad_type: adType,
-      placement,
-    });
+  async trackAdLoaded(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string
+  ): Promise<void> {
+    // No-op
   }
 
   async trackAdLoadFailed(
-    adType: 'banner' | 'interstitial' | 'rewarded',
-    placement: string,
-    errorMessage?: string
-  ) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_load_failed', {
-      ad_type: adType,
-      placement,
-      error_message: errorMessage || 'unknown',
-    });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _errorMessage?: string
+  ): Promise<void> {
+    // No-op
   }
 
-  async trackAdShowAttempt(adType: 'banner' | 'interstitial' | 'rewarded', placement: string) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_show_attempt', {
-      ad_type: adType,
-      placement,
-    });
+  async trackAdShowAttempt(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string
+  ): Promise<void> {
+    // No-op
   }
 
-  async trackAdShown(adType: 'banner' | 'interstitial' | 'rewarded', placement: string) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_shown', {
-      ad_type: adType,
-      placement,
-    });
+  async trackAdShown(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string
+  ): Promise<void> {
+    // No-op
   }
 
   async trackAdShowFailed(
-    adType: 'banner' | 'interstitial' | 'rewarded',
-    placement: string,
-    errorMessage?: string
-  ) {
-    if (!adType || !placement) return;
-    await this.logEventSafe('ad_show_failed', {
-      ad_type: adType,
-      placement,
-      error_message: errorMessage || 'unknown',
-    });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _errorMessage?: string
+  ): Promise<void> {
+    // No-op
   }
 
   async trackAdPaid(
-    adType: 'banner' | 'interstitial' | 'rewarded',
-    placement: string,
-    valueMicros: number,
-    currencyCode: string,
-    precision?: string | number
-  ) {
-    if (!adType || !placement || !valueMicros || !currencyCode) return;
-    const value = valueMicros / 1_000_000;
-    await this.logEventSafe('ad_revenue', {
-      ad_type: adType,
-      placement,
-      value,
-      value_micros: valueMicros,
-      currency: currencyCode,
-      precision: precision ?? 'unknown',
-    });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _adType: 'banner' | 'interstitial' | 'rewarded',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _valueMicros: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _currencyCode: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _precision?: string | number
+  ): Promise<void> {
+    // No-op
   }
 
-  // -----------------
-  // Funnel (growth)
-  // -----------------
-  async trackSearchAttempt(role: string, zone: string, schedule: string): Promise<void> {
-    await this.logEventSafe('search_attempt', {
-      role: role || 'unknown',
-      zone: zone || 'unknown',
-      schedule: schedule || 'unknown',
-    });
+  async trackSearchAttempt(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _role: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _zone: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _schedule: string
+  ): Promise<void> {
+    // No-op
   }
 
   async trackSearchResults(
-    role: string,
-    zone: string,
-    schedule: string,
-    resultCount: number
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _role: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _zone: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _schedule: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _resultCount: number
   ): Promise<void> {
-    await this.logEventSafe('search_results', {
-      role: role || 'unknown',
-      zone: zone || 'unknown',
-      schedule: schedule || 'unknown',
-      result_count: Number.isFinite(resultCount) ? resultCount : 0,
-      empty: resultCount > 0 ? 'false' : 'true',
-    });
+    // No-op
   }
 
-  async trackReturnAfterContact(role: string, elapsedMs: number): Promise<void> {
-    await this.logEventSafe('return_after_contact', {
-      role: role || 'unknown',
-      elapsed_ms: Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : undefined,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackReturnAfterContact(_role: string, _elapsedMs: number): Promise<void> {
+    // No-op
   }
 
   async trackPostContactAd(
-    placement: string,
-    props: {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _placement: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _props: {
       adsDisabled: boolean;
       loaded: boolean;
       shown: boolean;
     }
   ): Promise<void> {
-    await this.logEventSafe('post_contact_ad', {
-      placement: placement || 'unknown',
-      ads_disabled: props.adsDisabled ? 'true' : 'false',
-      loaded: props.loaded ? 'true' : 'false',
-      shown: props.shown ? 'true' : 'false',
-    });
+    // No-op
   }
 
-  /**
-   * Trackea tiempo de pantalla por usuario.
-   */
-  async trackScreenTime(screenName: string, timeInSeconds: number): Promise<void> {
-    if (!screenName || timeInSeconds == null) return;
-    await this.logEventSafe('screen_time', {
-      screen_name: screenName,
-      screen_duration_seconds: timeInSeconds,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackScreenTime(_screenName: string, _timeInSeconds: number): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea segmento de usuario (premium/no premium).
-   */
-  async trackUserSegment(isPremium: boolean): Promise<void> {
-    await this.setUserProperty('is_premium', isPremium ? 'true' : 'false');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackUserSegment(_isPremium: boolean): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea publicación de necesidad por padre.
-   */
-  async trackParentRequest(school: string, zone: string, schedule: string): Promise<void> {
-    await this.logEventSafe('parent_request', {
-      school,
-      zone,
-      schedule,
-    });
+  async trackParentRequest(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _school: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _zone: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _schedule: string
+  ): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea publicación de cupo por conductor.
-   */
-  async trackDriverVacancy(school: string, zone: string, seats: number): Promise<void> {
-    await this.logEventSafe('driver_vacancy', {
-      school,
-      zone,
-      seats,
-    });
+  async trackDriverVacancy(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _school: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _zone: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _seats: number
+  ): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea contacto realizado (WhatsApp).
-   */
-  async trackContactInitiated(role: 'parent' | 'driver', targetUserId: string): Promise<void> {
-    await this.logEventSafe('contact_initiated', {
-      role,
-      target_user_id: targetUserId,
-    });
+  async trackContactInitiated(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _role: 'parent' | 'driver',
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _targetUserId: string
+  ): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea registro exitoso.
-   */
-  async trackSignUp(role: 'parent' | 'driver'): Promise<void> {
-    await this.logEventSafe('sign_up', {
-      role,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackSignUp(_role: 'parent' | 'driver'): Promise<void> {
+    // No-op
   }
 
-  /**
-   * Trackea login exitoso.
-   */
-  async trackLogin(role: 'parent' | 'driver'): Promise<void> {
-    await this.logEventSafe('login', {
-      role,
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async trackLogin(_role: 'parent' | 'driver'): Promise<void> {
+    // No-op
   }
 }
 
