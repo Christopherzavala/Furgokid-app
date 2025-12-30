@@ -28,6 +28,7 @@
     "eas:migrate:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/migrate-to-eas.ps1 -DryRun",
     "validate:config": "npx expo config --type public",
     "doctor": "npx expo-doctor",
+    "analyze:bundle": "node scripts/analyze-bundle.js",
     "prepare": "node -e \"try { require('husky').install() } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e }\""
   },
   "dependencies": {

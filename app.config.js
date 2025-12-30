@@ -25,10 +25,12 @@ export default {
       resizeMode: 'contain',
       backgroundColor: '#ffffff',
     },
-    assetBundlePatterns: ['**/*'],
+    assetBundlePatterns: ['assets/**/*'],
+    jsEngine: 'hermes',
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'Com.Furgokid.App',
+      jsEngine: 'hermes',
     },
     android: {
       adaptiveIcon: {
@@ -36,6 +38,9 @@ export default {
         backgroundColor: '#FFFFFF',
       },
       package: 'Com.Furgokid.App',
+      jsEngine: 'hermes',
+      enableProguardInReleaseBuilds: true,
+      enableShrinkResourcesInReleaseBuilds: true,
       permissions: [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',

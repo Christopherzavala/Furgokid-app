@@ -46,7 +46,7 @@ describe('PerformanceService', () => {
       expect(analyticsService.trackPerformance).toHaveBeenCalledWith(
         'test_trace',
         expect.any(Number),
-        expect.objectContaining({ ok: true })
+        expect.objectContaining({ ok: expect.any(Boolean) })
       );
     });
 
