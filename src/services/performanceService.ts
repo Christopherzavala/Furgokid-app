@@ -7,9 +7,19 @@
  * - Uso de memoria
  * - FPS y jank
  * - Cold start / warm start
+ *
+ * Integra con Firebase Performance Monitoring cuando está disponible
  */
 
 import analyticsService from './analyticsService';
+
+// Optional Firebase Performance integration
+let firebasePerf: any = null;
+try {
+  firebasePerf = require('@react-native-firebase/perf').default;
+} catch (error) {
+  console.log('[Performance] Firebase Perf not available, using fallback');
+}
 
 interface PerformanceTrace {
   name: string;
@@ -26,12 +36,31 @@ interface PerformanceMetric {
 
 class PerformanceService {
   private traces: Map<string, PerformanceTrace> = new Map();
+  private firebaseTraces: Map<string, any> = new Map(); // Firebase trace objects
   private metrics: PerformanceMetric[] = [];
   private appStartTime: number;
   private screenLoadTimes: Map<string, number[]> = new Map();
+  private firebasePerfEnabled: boolean = false;
 
   constructor() {
     this.appStartTime = Date.now();
+    this.initFirebasePerf();
+  }
+
+  /**
+   * Initialize Firebase Performance Monitoring
+   */
+  private async initFirebasePerf(): Promise<void> {
+    if (!firebasePerf) return;
+
+    try {
+      this.firebasePerfEnabled = await firebasePerf().isPerformanceCollectionEnabled();
+      if (__DEV__) {
+        console.log(`[Performance] Firebase Perf enabled: ${this.firebasePerfEnabled}`);
+      }
+    } catch (error) {
+      console.error('[Performance] Firebase init error:', error);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -39,11 +68,28 @@ class PerformanceService {
   // ═══════════════════════════════════════════════════════════════
 
   startTrace(name: string, attributes: Record<string, string | number | boolean> = {}): void {
+    // Local trace
     this.traces.set(name, {
       name,
       startTime: Date.now(),
       attributes,
     });
+
+    // Firebase trace
+    if (firebasePerf && this.firebasePerfEnabled) {
+      firebasePerf()
+        .startTrace(name)
+        .then((trace: any) => {
+          // Add attributes
+          Object.entries(attributes).forEach(([key, value]) => {
+            trace.putAttribute(key, String(value));
+          });
+          this.firebaseTraces.set(name, trace);
+        })
+        .catch((error: any) => {
+          console.warn(`[Performance] Firebase startTrace error (${name}):`, error);
+        });
+    }
 
     if (__DEV__) {
       console.log(`[Perf] Trace started: ${name}`);
@@ -67,6 +113,23 @@ class PerformanceService {
 
     // Record metric
     this.recordMetric(name, duration, 'ms');
+
+    // Stop Firebase trace
+    if (firebasePerf && this.firebasePerfEnabled) {
+      const firebaseTrace = this.firebaseTraces.get(name);
+      if (firebaseTrace) {
+        // Add additional attributes and metrics
+        Object.entries(additionalAttributes).forEach(([key, value]) => {
+          firebaseTrace.putAttribute(key, String(value));
+        });
+        firebaseTrace.putMetric('duration', duration);
+
+        firebaseTrace.stop().catch((error: any) => {
+          console.warn(`[Performance] Firebase stopTrace error (${name}):`, error);
+        });
+        this.firebaseTraces.delete(name);
+      }
+    }
 
     // Send to analytics
     analyticsService.trackPerformance(name, duration, {

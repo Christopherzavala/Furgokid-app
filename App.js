@@ -1,6 +1,6 @@
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -16,6 +16,10 @@ import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import analyticsService from './src/services/analyticsService';
+import performanceService from './src/services/performanceService';
+
+// Track app startup
+performanceService.startTrace('app_startup');
 
 // Initialize error tracking
 initSentry();
@@ -25,6 +29,17 @@ const navigationRef = createNavigationContainerRef();
 
 function Navigation() {
   const { user, loading, userProfile } = useAuth();
+
+  useEffect(() => {
+    if (!loading && user) {
+      // App is ready - stop startup trace
+      performanceService.stopTrace('app_startup', {
+        role: userProfile?.role || 'unknown',
+        authenticated: true,
+      });
+    }
+  }, [loading, user, userProfile]);
+
   if (loading) return <LoadingView />;
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

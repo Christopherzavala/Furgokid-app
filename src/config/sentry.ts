@@ -3,7 +3,14 @@
  * Error tracking and performance monitoring
  */
 
-import * as Sentry from '@sentry/react-native';
+let Sentry: any = null;
+
+try {
+  Sentry = require('@sentry/react-native');
+} catch (error) {
+  console.warn('[Sentry] Package not installed: @sentry/react-native');
+}
+
 import Constants from 'expo-constants';
 
 interface SentryConfig {
@@ -36,6 +43,11 @@ function getSentryConfig(): SentryConfig {
  * Initialize Sentry with configuration
  */
 export function initSentry(): void {
+  if (!Sentry) {
+    console.log('[Sentry] Package not available, skipping initialization');
+    return;
+  }
+
   const config = getSentryConfig();
 
   if (!config.enabled) {
@@ -62,7 +74,7 @@ export function initSentry(): void {
       tracesSampleRate: config.tracesSampleRate,
 
       // PII scrubbing
-      beforeSend(event) {
+      beforeSend(event: any) {
         // Remove sensitive data
         if (event.user) {
           delete event.user.email;
@@ -79,7 +91,7 @@ export function initSentry(): void {
       },
 
       // Breadcrumbs
-      beforeBreadcrumb(breadcrumb) {
+      beforeBreadcrumb(breadcrumb: { category: string; level: string }) {
         // Limit console logs
         if (breadcrumb.category === 'console' && breadcrumb.level === 'log') {
           return null;
@@ -104,12 +116,17 @@ export function initSentry(): void {
  * Capture an exception manually
  */
 export function captureException(error: Error, context?: Record<string, any>): void {
-  if (getSentryConfig().enabled) {
+  if (!Sentry || !getSentryConfig().enabled) {
+    console.error('[Sentry] Exception (not sent):', error, context);
+    return;
+  }
+
+  try {
     Sentry.captureException(error, {
       extra: context,
     });
-  } else {
-    console.error('[Sentry] Exception (not sent):', error, context);
+  } catch (e) {
+    console.error('[Sentry] Error capturing exception:', e);
   }
 }
 
@@ -117,10 +134,15 @@ export function captureException(error: Error, context?: Record<string, any>): v
  * Capture a message manually
  */
 export function captureMessage(message: string, level: SentrySeverityLevel = 'info'): void {
-  if (getSentryConfig().enabled) {
-    Sentry.captureMessage(message, level);
-  } else {
+  if (!Sentry || !getSentryConfig().enabled) {
     console.log(`[Sentry] Message (not sent) [${level}]:`, message);
+    return;
+  }
+
+  try {
+    Sentry.captureMessage(message, level);
+  } catch (e) {
+    console.error('[Sentry] Error capturing message:', e);
   }
 }
 
@@ -128,8 +150,14 @@ export function captureMessage(message: string, level: SentrySeverityLevel = 'in
  * Set user context
  */
 export function setUser(user: { id: string; role?: string } | null): void {
-  if (getSentryConfig().enabled) {
+  if (!Sentry || !getSentryConfig().enabled) {
+    return;
+  }
+
+  try {
     Sentry.setUser(user ? { id: user.id, role: user.role } : null);
+  } catch (e) {
+    console.error('[Sentry] Error setting user:', e);
   }
 }
 
@@ -137,13 +165,19 @@ export function setUser(user: { id: string; role?: string } | null): void {
  * Add breadcrumb
  */
 export function addBreadcrumb(message: string, category: string, data?: Record<string, any>): void {
-  if (getSentryConfig().enabled) {
+  if (!Sentry || !getSentryConfig().enabled) {
+    return;
+  }
+
+  try {
     Sentry.addBreadcrumb({
       message,
       category,
       data,
       level: 'info',
     });
+  } catch (e) {
+    console.error('[Sentry] Error adding breadcrumb:', e);
   }
 }
 
