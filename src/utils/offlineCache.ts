@@ -4,6 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import logger from './logger';
 
 interface CacheItem<T> {
   data: T;
@@ -63,7 +64,7 @@ export class OfflineCache {
     try {
       await AsyncStorage.removeItem(`${CACHE_PREFIX}${key}`);
     } catch (error) {
-      console.error(`[OfflineCache] Error removing ${key}:`, error);
+      logger.error('Failed to remove from offline cache', { key }, error as Error);
     }
   }
 

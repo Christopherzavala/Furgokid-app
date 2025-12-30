@@ -38,7 +38,7 @@ export async function registerForPushNotificationsAsync() {
   let token;
 
   if (!Device.isDevice) {
-    console.warn('⚠️  Las notificaciones push solo funcionan en dispositivos físicos');
+    logger.warn('Push notifications only work on physical devices');
     return null;
   }
 
@@ -59,7 +59,7 @@ export async function registerForPushNotificationsAsync() {
     }
 
     if (finalStatus !== 'granted') {
-      console.warn('⚠️  No se obtuvieron permisos para notificaciones');
+      logger.warn('Notification permissions not granted', { status });
       return null;
     }
 
@@ -94,10 +94,13 @@ export async function scheduleLocalNotification(title, body, data = {}, seconds 
       },
     });
 
-    console.log('✅ Notificación local programada:', id);
+    logger.info('Local notification scheduled', {
+      id,
+      trigger: trigger?.type || 'immediate',
+    });
     return id;
   } catch (error) {
-    console.error('❌ Error al programar notificación local:', error);
+    logger.error('Failed to schedule local notification', {}, error);
     return null;
   }
 }
@@ -115,9 +118,9 @@ export async function showNotification(title, body, data = {}) {
 export async function cancelAllNotifications() {
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
-    console.log('✅ Todas las notificaciones canceladas');
+    logger.info('All notifications cancelled');
   } catch (error) {
-    console.error('❌ Error al cancelar notificaciones:', error);
+    logger.error('Failed to cancel notifications', {}, error);
   }
 }
 
@@ -128,7 +131,7 @@ export async function getScheduledNotifications() {
   try {
     return await Notifications.getAllScheduledNotificationsAsync();
   } catch (error) {
-    console.error('❌ Error al obtener notificaciones programadas:', error);
+    logger.error('Failed to get scheduled notifications', {}, error);
     return [];
   }
 }

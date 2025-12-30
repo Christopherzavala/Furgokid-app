@@ -17,6 +17,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import secureStorage from '../utils/secureStorage';
 
 const ANALYTICS_QUEUE_KEY = '@furgokid_analytics_queue';
 const ANALYTICS_USER_KEY = '@furgokid_analytics_user';
@@ -63,7 +64,7 @@ class AnalyticsService {
 
     try {
       // Load user properties
-      const userJson = await AsyncStorage.getItem(ANALYTICS_USER_KEY);
+      const userJson = await secureStorage.getItem(ANALYTICS_USER_KEY);
       if (userJson) {
         this.userProperties = JSON.parse(userJson);
       }
@@ -79,7 +80,7 @@ class AnalyticsService {
       await this.saveUserProperties();
 
       // Load pending events
-      const queueJson = await AsyncStorage.getItem(ANALYTICS_QUEUE_KEY);
+      const queueJson = await secureStorage.getItem(ANALYTICS_QUEUE_KEY);
       if (queueJson) {
         this.eventQueue = JSON.parse(queueJson);
       }
@@ -99,7 +100,7 @@ class AnalyticsService {
 
   private async saveUserProperties(): Promise<void> {
     try {
-      await AsyncStorage.setItem(ANALYTICS_USER_KEY, JSON.stringify(this.userProperties));
+      await secureStorage.setObject(ANALYTICS_USER_KEY, this.userProperties);
     } catch {
       // Silently fail
     }
@@ -111,7 +112,7 @@ class AnalyticsService {
       if (this.eventQueue.length > MAX_QUEUE_SIZE) {
         this.eventQueue = this.eventQueue.slice(-MAX_QUEUE_SIZE);
       }
-      await AsyncStorage.setItem(ANALYTICS_QUEUE_KEY, JSON.stringify(this.eventQueue));
+      await secureStorage.setObject(ANALYTICS_QUEUE_KEY, this.eventQueue);
     } catch {
       // Silently fail
     }

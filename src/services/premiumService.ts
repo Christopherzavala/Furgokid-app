@@ -14,6 +14,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import secureStorage from '../utils/secureStorage';
 import analyticsService from './analyticsService';
 
 const PREMIUM_STATUS_KEY = '@furgokid_premium_status';
@@ -172,7 +173,7 @@ class PremiumService {
   async startTrial(): Promise<{ success: boolean; error?: string }> {
     try {
       // Check if already used trial
-      const trialUsed = await AsyncStorage.getItem(PREMIUM_TRIAL_KEY);
+      const trialUsed = await secureStorage.getItem(PREMIUM_TRIAL_KEY);
       if (trialUsed) {
         return { success: false, error: 'Ya utilizaste tu prueba gratuita' };
       }

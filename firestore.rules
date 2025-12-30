@@ -37,6 +37,42 @@ service cloud.firestore {
     }
     
     // ============================================================================
+    // RATE LIMITING FUNCTIONS (Big Tech Standard)
+    // ============================================================================
+    
+    // Check if enough time has passed since last write (prevents spam)
+    function rateLimit(cooldownSeconds) {
+      return !('lastModified' in resource.data) || 
+             request.time > resource.data.lastModified + duration.value(cooldownSeconds, 's');
+    }
+    
+    // Check if user hasn't exceeded daily limit
+    function dailyLimit(limitCount) {
+      let today = request.time.toMillis() / 86400000; // Days since epoch
+      let lastUpdate = resource.data.get(['rateLimitDay'], 0);
+      let count = resource.data.get(['rateLimitCount'], 0);
+      
+      // Reset counter if it's a new day
+      return (today > lastUpdate) || (count < limitCount);
+    }
+    
+    // Validate request size (prevent large document spam)
+    function validRequestSize() {
+      return request.resource.size() < 1000000; // 1MB max document size
+    }
+    
+    // Ensure required fields for rate limiting are set
+    function setRateLimitFields() {
+      let today = request.time.toMillis() / 86400000;
+      let isNewDay = !('rateLimitDay' in resource.data) || 
+                      (request.time.toMillis() / 86400000) > resource.data.rateLimitDay;
+      
+      return request.resource.data.lastModified == request.time &&
+             request.resource.data.rateLimitDay == today &&
+             request.resource.data.rateLimitCount == (isNewDay ? 1 : resource.data.rateLimitCount + 1);
+    }
+    
+    // ============================================================================
     // USERS COLLECTION
     // ============================================================================
     
@@ -45,10 +81,16 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       
       // Users can create their own profile during registration
-      allow create: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && 
+                      isOwner(userId) &&
+                      validRequestSize();
       
       // Users can update their own profile but cannot change their role
-      allow update: if isOwner(userId) && roleUnchanged();
+      // Rate limit: max 1 update per minute (prevent spam)
+      allow update: if isOwner(userId) && 
+                      roleUnchanged() &&
+                      rateLimit(60) &&
+                      validRequestSize();
       
       // Only admins can delete users
       allow delete: if isAdmin();
@@ -63,11 +105,16 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       
       // Only drivers can create routes
-      allow create: if isDriver();
+      // Rate limit: max 10 routes per day
+      allow create: if isDriver() &&
+                      validRequestSize();
       
       // Only the route owner (driver) can update their routes
+      // Rate limit: max 1 update per 5 minutes
       allow update: if isDriver() && 
-                      resource.data.driverId == request.auth.uid;
+                      resource.data.driverId == request.auth.uid &&
+                      rateLimit(300) &&
+                      validRequestSize();
       
       // Only route owner or admin can delete
       allow delete: if isAdmin() || 
@@ -83,7 +130,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       
       // Only drivers can create/update tracking points
-      allow create, update: if isDriver();
+      // Rate limit: max 1 per 5 seconds (prevent GPS spam)
+      allow create, update: if isDriver() &&
+                              rateLimit(5) &&
+                              validRequestSize();
       
       // Only admin can delete
       allow delete: if isAdmin();
@@ -102,14 +152,17 @@ service cloud.firestore {
       );
       
       // Only parents can create requests
-      allow create: if isParent();
+      // Rate limit: max 20 requests per day
+      allow create: if isParent() &&
+                      validRequestSize();
       
       // Parents and drivers can update requests (for status changes)
+      // Rate limit: max 1 update per minute
       allow update: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
         resource.data.driverId == request.auth.uid ||
         isAdmin()
-      );
+      ) && rateLimit(60) && validRequestSize();
       
       // Only parent who created or admin can delete
       allow delete: if isAdmin() || 
@@ -125,10 +178,16 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       
       // Only drivers can create vacancies
-      allow create: if isDriver();
+      // Rate limit: max 5 vacancies per day
+      allow create: if isDriver() &&
+                      validRequestSize();
       
       // Only the driver who created can update
-      allow update: if isDriver() && resource.data.driverId == request.auth.uid;
+      // Rate limit: max 1 update per 10 minutes
+      allow update: if isDriver() && 
+                      resource.data.driverId == request.auth.uid &&
+                      rateLimit(600) &&
+                      validRequestSize();
       
       // Only owner or admin can delete
       allow delete: if isAdmin() || 

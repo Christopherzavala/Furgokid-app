@@ -5,6 +5,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import logger from '../utils/logger';
+import secureStorage from '../utils/secureStorage';
 
 interface FeatureFlags {
   // Analytics
@@ -95,10 +97,12 @@ class RemoteConfigService {
    */
   private async loadCachedFlags(): Promise<Partial<FeatureFlags>> {
     try {
-      const cached = await AsyncStorage.getItem(this.STORAGE_KEY);
+      const cached = await secureStorage.getItem(this.STORAGE_KEY);
       return cached ? JSON.parse(cached) : {};
     } catch (error) {
-      console.warn('[RemoteConfig] Cache load error:', error);
+      logger.warn('Remote config cache load error', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       return {};
     }
   }
@@ -201,8 +205,8 @@ class RemoteConfigService {
    */
   async setFlag<K extends keyof FeatureFlags>(key: K, value: FeatureFlags[K]): Promise<void> {
     this.flags[key] = value;
-    await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.flags));
-    console.log(`[RemoteConfig] Flag updated: ${key} = ${value}`);
+    await secureStorage.setObject(this.STORAGE_KEY, this.flags);
+    logger.debug('Remote config flag updated', { key, value });
   }
 
   /**

@@ -194,11 +194,7 @@ class Logger {
     if (!this.config.enableSentry) return;
 
     // Add breadcrumb for all levels
-    addBreadcrumb({
-      message: entry.message,
-      level: entry.level === LogLevel.FATAL ? 'fatal' : entry.level,
-      data: entry.context,
-    });
+    addBreadcrumb(entry.message, 'log', entry.context);
 
     // Capture exception for errors and fatal
     if ((entry.level === LogLevel.ERROR || entry.level === LogLevel.FATAL) && entry.error) {
