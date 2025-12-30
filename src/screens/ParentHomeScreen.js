@@ -55,10 +55,21 @@ const ParentHomeScreen = ({ navigation }) => {
             <Text style={styles.userName}>{user?.email?.split('@')[0] || 'Padre'}</Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.profileButton}>
+            <TouchableOpacity
+              style={styles.profileButton}
+              accessible={true}
+              accessibilityLabel="Ver perfil"
+              accessibilityRole="button"
+            >
               <Ionicons name="person-circle" size={40} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+              accessible={true}
+              accessibilityLabel="Cerrar sesión"
+              accessibilityRole="button"
+            >
               <Ionicons name="log-out" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -87,6 +98,10 @@ const ParentHomeScreen = ({ navigation }) => {
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('ParentRequest')}
+            accessible={true}
+            accessibilityLabel="Publicar necesidad de transporte"
+            accessibilityRole="button"
+            accessibilityHint="Abrir pantalla para crear nueva solicitud de transporte"
           >
             <View style={[styles.iconContainer, { backgroundColor: '#E3F2FD' }]}>
               <Ionicons name="add" size={24} color="#2196F3" />
@@ -97,6 +112,10 @@ const ParentHomeScreen = ({ navigation }) => {
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('Search')}
+            accessible={true}
+            accessibilityLabel="Buscar conductores disponibles"
+            accessibilityRole="button"
+            accessibilityHint="Abrir pantalla de búsqueda de conductores"
           >
             <View style={[styles.iconContainer, { backgroundColor: '#E8F5E9' }]}>
               <Ionicons name="search" size={24} color="#4CAF50" />

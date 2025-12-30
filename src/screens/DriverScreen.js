@@ -81,10 +81,19 @@ const DriverScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.profileButton}
               onPress={() => navigation.navigate('DriverProfile')}
+              accessible={true}
+              accessibilityLabel="Ver perfil de conductor"
+              accessibilityRole="button"
             >
               <Ionicons name="document-text" size={24} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+              accessible={true}
+              accessibilityLabel="Cerrar sesión"
+              accessibilityRole="button"
+            >
               <Ionicons name="log-out" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -96,6 +105,15 @@ const DriverScreen = ({ navigation }) => {
         <TouchableOpacity
           style={[styles.bigButton, isRouteActive ? styles.stopButton : styles.startButton]}
           onPress={toggleRoute}
+          accessible={true}
+          accessibilityLabel={isRouteActive ? 'Detener ruta activa' : 'Iniciar ruta'}
+          accessibilityRole="button"
+          accessibilityHint={
+            isRouteActive
+              ? 'Terminar el recorrido y dejar de compartir ubicación'
+              : 'Comenzar el recorrido y compartir ubicación en tiempo real'
+          }
+          accessibilityState={{ selected: isRouteActive }}
         >
           <Ionicons
             name={isRouteActive ? 'stop-circle-outline' : 'play-circle-outline'}

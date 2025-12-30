@@ -82,6 +82,9 @@ export default function RegisterScreen({ navigation }) {
         value={name}
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de nombre completo"
+        accessibilityHint="Ingresa tu nombre completo"
       />
       <TextInput
         placeholder="Email"
@@ -92,6 +95,9 @@ export default function RegisterScreen({ navigation }) {
         autoCapitalize="none"
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de correo electrónico"
+        accessibilityHint="Ingresa tu email"
       />
       <TextInput
         placeholder="WhatsApp (+569...)"
@@ -101,6 +107,9 @@ export default function RegisterScreen({ navigation }) {
         keyboardType="phone-pad"
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de número WhatsApp"
+        accessibilityHint="Ingresa tu número de WhatsApp"
       />
       <TextInput
         placeholder="Contraseña"
@@ -110,6 +119,9 @@ export default function RegisterScreen({ navigation }) {
         secureTextEntry
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de contraseña"
+        accessibilityHint="Crea una contraseña de al menos 6 caracteres"
       />
 
       <Text style={styles.label}>Soy un:</Text>
@@ -118,6 +130,10 @@ export default function RegisterScreen({ navigation }) {
           style={[styles.roleButton, role === 'parent' && styles.activeRole]}
           onPress={() => !isLoading && setRole('parent')}
           disabled={isLoading}
+          accessible={true}
+          accessibilityLabel="Seleccionar rol padre"
+          accessibilityRole="radio"
+          accessibilityState={{ checked: role === 'parent', disabled: isLoading }}
         >
           <Text>Padre</Text>
         </TouchableOpacity>
@@ -125,6 +141,10 @@ export default function RegisterScreen({ navigation }) {
           style={[styles.roleButton, role === 'driver' && styles.activeRole]}
           onPress={() => !isLoading && setRole('driver')}
           disabled={isLoading}
+          accessible={true}
+          accessibilityLabel="Seleccionar rol conductor"
+          accessibilityRole="radio"
+          accessibilityState={{ checked: role === 'driver', disabled: isLoading }}
         >
           <Text>Conductor</Text>
         </TouchableOpacity>

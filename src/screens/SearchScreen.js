@@ -401,7 +401,14 @@ export default function SearchScreen({ navigation }) {
         )}
 
         {/* Button */}
-        <TouchableOpacity style={styles.contactButton} onPress={() => handleContact(targetUser)}>
+        <TouchableOpacity
+          style={styles.contactButton}
+          onPress={() => handleContact(targetUser)}
+          accessible={true}
+          accessibilityLabel="Contactar por WhatsApp"
+          accessibilityRole="button"
+          accessibilityHint="Abre WhatsApp para contactar a este usuario"
+        >
           <Ionicons name="logo-whatsapp" size={20} color="#fff" />
           <Text style={styles.contactButtonText}>Contactar por WhatsApp</Text>
         </TouchableOpacity>
@@ -428,6 +435,10 @@ export default function SearchScreen({ navigation }) {
                 key={z}
                 style={[styles.filterButton, filterZone === z && styles.filterButtonActive]}
                 onPress={() => setFilterZone(z)}
+                accessible={true}
+                accessibilityLabel={`Filtrar por ${z}`}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: filterZone === z }}
               >
                 <Text
                   style={[
@@ -450,6 +461,10 @@ export default function SearchScreen({ navigation }) {
                 key={s}
                 style={[styles.filterButton, filterSchedule === s && styles.filterButtonActive]}
                 onPress={() => setFilterSchedule(s)}
+                accessible={true}
+                accessibilityLabel={`Filtrar por horario ${s}`}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: filterSchedule === s }}
               >
                 <Text
                   style={[
