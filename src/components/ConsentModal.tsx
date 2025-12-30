@@ -192,15 +192,33 @@ const ConsentModal: React.FC<ConsentModalProps> = ({ visible, onComplete }) => {
           </ScrollView>
 
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.buttonPrimary} onPress={handleAcceptAll}>
+            <TouchableOpacity
+              style={styles.buttonPrimary}
+              onPress={handleAcceptAll}
+              accessible={true}
+              accessibilityLabel="Aceptar todas las cookies"
+              accessibilityRole="button"
+            >
               <Text style={styles.buttonPrimaryText}>Aceptar Todo</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.buttonSecondary} onPress={handleAcceptRequired}>
+            <TouchableOpacity
+              style={styles.buttonSecondary}
+              onPress={handleAcceptRequired}
+              accessible={true}
+              accessibilityLabel="Aceptar solo cookies necesarias"
+              accessibilityRole="button"
+            >
               <Text style={styles.buttonSecondaryText}>Solo Necesario</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.buttonText} onPress={() => setShowCustomize(true)}>
+            <TouchableOpacity
+              style={styles.buttonText}
+              onPress={() => setShowCustomize(true)}
+              accessible={true}
+              accessibilityLabel="Personalizar opciones de cookies"
+              accessibilityRole="button"
+            >
               <Text style={styles.buttonTextLabel}>Personalizar Opciones</Text>
             </TouchableOpacity>
           </View>

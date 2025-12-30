@@ -57,6 +57,9 @@ export default function LoginScreen({ navigation }) {
         keyboardType="email-address"
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de email"
+        accessibilityHint="Ingresa tu dirección de correo electrónico"
       />
       <TextInput
         placeholder="Contraseña"
@@ -66,6 +69,9 @@ export default function LoginScreen({ navigation }) {
         secureTextEntry
         editable={!isLoading}
         placeholderTextColor="#999"
+        accessible={true}
+        accessibilityLabel="Campo de contraseña"
+        accessibilityHint="Ingresa tu contraseña"
       />
       {isLoading ? (
         <ActivityIndicator size="large" color="#2c3e50" style={{ marginVertical: 20 }} />

@@ -5,6 +5,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import LoadingView from './src/components/LoadingView';
+import { initSentry } from './src/config/sentry';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import DriverProfileScreen from './src/screens/DriverProfileScreen';
 import DriverScreen from './src/screens/DriverScreen';
@@ -15,6 +16,9 @@ import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import analyticsService from './src/services/analyticsService';
+
+// Initialize error tracking
+initSentry();
 
 const Stack = createStackNavigator();
 const navigationRef = createNavigationContainerRef();

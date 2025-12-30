@@ -1,5 +1,16 @@
 import 'dotenv/config';
 
+/**
+ * IMPORTANTE - SEGURIDAD:
+ *
+ * FIREBASE API KEY RESTRICTIONS (Configurar en Firebase Console):
+ * - Android: Restringir a package name 'Com.Furgokid.App'
+ * - iOS: Restringir a bundle ID 'Com.Furgokid.App'
+ * - Web: Restringir a dominios autorizados
+ *
+ * Ir a: Firebase Console → Project Settings → General → Web API Key → Application restrictions
+ */
+
 export default {
   expo: {
     name: 'FurgoKid',
@@ -49,8 +60,8 @@ export default {
       [
         'react-native-google-mobile-ads',
         {
-          androidAppId: process.env.ADMOB_ANDROID_APP_ID,
-          iosAppId: process.env.ADMOB_IOS_APP_ID,
+          androidAppId: 'ca-app-pub-6159996738450051~7339939476',
+          iosAppId: 'ca-app-pub-6159996738450051~7339939476',
         },
       ],
     ],
@@ -61,11 +72,15 @@ export default {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      admobAndroidAppId: process.env.ADMOB_ANDROID_APP_ID,
-      admobIosAppId: process.env.ADMOB_IOS_APP_ID,
+      admobAndroidAppId: 'ca-app-pub-6159996738450051~7339939476',
+      admobIosAppId: 'ca-app-pub-6159996738450051~7339939476',
       adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
       adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+      privacyPolicyUrl: 'https://christopherzavala.github.io/Furgokid-app/docs/PRIVACY_POLICY',
+      SENTRY_DSN: process.env.SENTRY_DSN,
+      SENTRY_ENABLED: process.env.SENTRY_ENABLED,
+      APP_VARIANT: process.env.APP_VARIANT || 'development',
       eas: {
         projectId: 'a73187e9-3163-4996-bc85-9ad0e038d81e',
       },

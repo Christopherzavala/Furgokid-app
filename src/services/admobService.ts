@@ -13,10 +13,11 @@ const TEST_IDS = {
   REWARDED: 'ca-app-pub-3940256099942544/5224354917',
 };
 
+// Production IDs - usar variables de entorno configuradas en EAS Secrets
 const PRODUCTION_IDS = {
-  BANNER: process.env.BANNER_AD_UNIT_ID || TEST_IDS.BANNER,
-  INTERSTITIAL: process.env.INTERSTITIAL_AD_UNIT_ID || TEST_IDS.INTERSTITIAL,
-  REWARDED: process.env.REWARDED_AD_UNIT_ID || TEST_IDS.REWARDED,
+  BANNER: 'ca-app-pub-6159996738450051/5061917035',
+  INTERSTITIAL: 'ca-app-pub-6159996738450051/9969972240',
+  REWARDED: 'ca-app-pub-6159996738450051/5608055408',
 };
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;

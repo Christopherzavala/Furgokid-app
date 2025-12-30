@@ -17,9 +17,16 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
       },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
       "env": {
-        "NODE_ENV": "production"
-      }
+        "NODE_ENV": "production",
+        "APP_VARIANT": "preview",
+        "SENTRY_ENABLED": "false",
+        "FIREBASE_ANALYTICS_ENABLED": "false"
+      },
+      "channel": "preview"
     },
     "production": {
       "android": {
@@ -27,7 +34,15 @@
       },
       "ios": {
         "distribution": "store"
-      }
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "APP_VARIANT": "production",
+        "SENTRY_ENABLED": "true",
+        "SENTRY_DSN": "https://c87e2f9ecae7cda95071794487ae92d9@o4510621040574464.ingest.us.sentry.io/4510621106176000",
+        "FIREBASE_ANALYTICS_ENABLED": "false"
+      },
+      "autoIncrement": true
     }
   },
   "submit": {

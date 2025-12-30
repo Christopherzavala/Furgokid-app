@@ -56,14 +56,16 @@ furgokid/
 
 ## 🛠️ Scripts NPM Disponibles
 
-| Script                    | Descripción            | Cuándo usarlo                            |
-| ------------------------- | ---------------------- | ---------------------------------------- |
-| `npm start`               | Inicia servidor Expo   | Desarrollo local                         |
-| `npm run android`         | Build Android nativo   | Testing en emulador/device               |
-| `npm run security:audit`  | Auditoría de seguridad | **Antes de cada commit importante**      |
-| `npm run validate:config` | Valida `app.config.js` | Después de editar configuración          |
-| `npm run eas:migrate`     | Migra secrets a EAS    | **Antes del primer deploy a producción** |
-| `npm run eas:migrate:dry` | Preview de migración   | Testing sin cambios reales               |
+| Script                     | Descripción            | Cuándo usarlo                            |
+| -------------------------- | ---------------------- | ---------------------------------------- |
+| `npm start`                | Inicia servidor Expo   | Desarrollo local                         |
+| `npm run android`          | Build Android nativo   | Testing en emulador/device               |
+| `npm run test:coverage`    | Tests con cobertura    | Antes de commits importantes             |
+| `npm run smoke:test`       | Smoke tests post-build | **Después de cada build**                |
+| `npm run security:audit`   | Auditoría de seguridad | **Antes de cada commit importante**      |
+| `npm run validate:config`  | Valida `app.config.js` | Después de editar configuración          |
+| `npm run eas:migrate`      | Migra secrets a EAS    | **Antes del primer deploy a producción** |
+| `npm run build:production` | Build producción (EAS) | Para submit a stores                     |
 
 ---
 
@@ -153,10 +155,16 @@ El proyecto tiene Git hooks configurados que validan:
 - ✅ Notificaciones push (expo-notifications)
 - ✅ Background location tracking (expo-task-manager)
 - ✅ AdMob integration (banners, interstitials)
+- ✅ Error tracking con Sentry (production-ready)
+- ✅ Remote config para feature flags
+- ✅ Smoke tests automatizados
+- ✅ Perfiles EAS production/preview
 
 ---
 
 ## 📊 Roadmap de Desarrollo
+
+> Criterios detallados: [docs/roadmap-criteria.md](docs/roadmap-criteria.md)
 
 ### ✅ Fase 1: MVP y Estabilización (Completado)
 
@@ -188,7 +196,8 @@ El proyecto tiene Git hooks configurados que validan:
 - [ ] Build de producción con EAS
 - [ ] Submit a Google Play Store
 - [ ] Submit a Apple App Store
-- [ ] Configuración de analytics y crash reporting
+- [ ] Configuración de Firebase Analytics (cuando Expo SDK 55 sea estable)
+- [ ] Integración de Sentry para crash/error reporting
 
 ### 📈 Fase 6: Optimización y Escalabilidad
 
@@ -196,6 +205,13 @@ El proyecto tiene Git hooks configurados que validan:
 - [ ] Implementación de mediation (AppLovin, Meta)
 - [ ] Optimización de performance (reduce bundle size)
 - [ ] Implementación de features premium (rewarded ads)
+
+### 🧭 Fase 7: Integraciones y QA End-to-End
+
+- [ ] Integración backend (API segura para datos de usuario y rutas)
+- [ ] Monetización premium con Stripe/IAP
+- [ ] E2E automatizado con Detox
+- [ ] Activar Firebase Analytics en cuanto sea compatible
 
 ---
 
@@ -225,11 +241,13 @@ eas build --profile development --platform ios --local
 
 ## 📚 Documentación Adicional
 
-| Archivo                                                   | Descripción                                      |
-| --------------------------------------------------------- | ------------------------------------------------ |
-| [ADMOB_SETUP_GUIDE.md](docs/ADMOB_SETUP_GUIDE.md)         | Guía completa de monetización con benchmarks     |
-| [EAS_SECRETS_MIGRATION.md](docs/EAS_SECRETS_MIGRATION.md) | Migración de secrets con security best practices |
-| [DESARROLLO_LOCAL.md](DESARROLLO_LOCAL.md)                | Setup inicial y troubleshooting                  |
+| Archivo                                                             | Descripción                                      |
+| ------------------------------------------------------------------- | ------------------------------------------------ |
+| [ADMOB_SETUP_GUIDE.md](docs/ADMOB_SETUP_GUIDE.md)                   | Guía completa de monetización con benchmarks     |
+| [SENTRY_SETUP.md](docs/SENTRY_SETUP.md)                             | Error tracking y performance monitoring          |
+| [STORE_SUBMISSION_CHECKLIST.md](docs/STORE_SUBMISSION_CHECKLIST.md) | Checklist para Google Play y App Store           |
+| [roadmap-criteria.md](docs/roadmap-criteria.md)                     | Criterios de aceptación y KPIs por fase          |
+| [EAS_SECRETS_MIGRATION.md](docs/EAS_SECRETS_MIGRATION.md)           | Migración de secrets con security best practices |
 
 ---
 
