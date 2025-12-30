@@ -1,10 +1,15 @@
-name: CI/CD FurGoKid Senior
+name: CI/CD Pipeline - Production Ready
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'fix/**', 'feature/**']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
+
+# Cancel in-progress runs when new commit pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -37,6 +42,15 @@ jobs:
       - name: Run Tests
         run: npm run test:coverage
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        continue-on-error: true
+
       - name: Analyze Bundle Size
         run: |
           npm run analyze:bundle
@@ -51,6 +65,90 @@ jobs:
         run: npm audit --audit-level=high
         continue-on-error: true
 
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+        continue-on-error: true
+
+  # E2E Tests with Detox (Android)
+  e2e-android:
+    needs: test
+    runs-on: macos-latest # Required for Android emulator hardware acceleration
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-29
+
+      - name: Create AVD
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_3a
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: echo "AVD created"
+
+      - name: Build Android app for Detox
+        run: npm run e2e:build:android
+
+      - name: Run Detox E2E tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_3a
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: npm run e2e:test:android
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-android
+          path: e2e/artifacts/
+
       - name: Build Android (Preview)
         if: github.event_name == 'pull_request'
         run: |
@@ -61,7 +159,6 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    environment: production
 
     steps:
       - uses: actions/checkout@v3

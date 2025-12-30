@@ -11,6 +11,28 @@
         "APP_VARIANT": "development"
       }
     },
+    "staging": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "enableProguardInReleaseBuilds": true,
+        "enableShrinkResourcesInReleaseBuilds": true
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "NODE_ENV": "staging",
+        "APP_VARIANT": "staging",
+        "SENTRY_ENABLED": "true",
+        "SENTRY_ENVIRONMENT": "staging",
+        "FIREBASE_ANALYTICS_ENABLED": "true",
+        "ENABLE_DEBUG_MENU": "true",
+        "ENABLE_DEBUG_LOGS": "true"
+      },
+      "channel": "staging"
+    },
     "preview": {
       "distribution": "internal",
       "android": {

@@ -66,6 +66,16 @@ export const AuthProvider = ({ children }) => {
       await analyticsService.trackUserRole(role);
       const isPremium = Boolean(data?.isPremium || data?.subscriptionActive || data?.noAds);
       await analyticsService.trackUserSegment(isPremium);
+
+      // Crashlytics user binding - CRITICAL FOR MONETIZATION
+      // Track which user type crashes more (parents = higher AdMob value)
+      await crashlyticsService.setUserId(uid);
+      await crashlyticsService.setUserType(role);
+      await crashlyticsService.setRevenueAttributes({
+        subscriptionStatus: isPremium ? 'premium' : 'free',
+        lifetimeValue: data?.lifetimeValue || 0,
+        sessionCount: data?.sessionCount || 0,
+      });
     } catch {
       // no-op
     }

@@ -68,9 +68,74 @@ Usted tiene derecho a:
 - Retirar su consentimiento para el uso de ubicación
 - Optar por no recibir anuncios personalizados
 
-## 8. Menores de Edad
+## 8. Protección de la Privacidad de Menores (COPPA/GDPR)
 
-FurgoKid está diseñado para ser usado por adultos (padres y conductores). No recopilamos intencionalmente información de menores de 13 años.
+### 8.1 Cumplimiento con COPPA (Estados Unidos)
+
+FurgoKid cumple con la Ley de Protección de la Privacidad en Línea de los Niños (COPPA) de Estados Unidos. Si un niño/a menor de 13 años necesita usar nuestros servicios:
+
+- **Consentimiento Parental Obligatorio:** Requerimos el consentimiento verificable de un padre o tutor legal antes de recopilar información personal del niño/a.
+- **Información Limitada:** Solo recopilamos información necesaria para proveer el servicio de transporte escolar.
+- **Derechos Parentales:** Los padres pueden revisar, modificar o eliminar la información de su hijo/a en cualquier momento.
+
+### 8.2 Cumplimiento con GDPR (Unión Europea)
+
+Para usuarios en la Unión Europea, cumplimos con el Reglamento General de Protección de Datos (GDPR):
+
+- **Edad de Consentimiento:** Para menores de 16 años (o la edad establecida por cada país de la UE), requerimos consentimiento parental.
+- **Base Legal:** Procesamos datos de menores únicamente con consentimiento parental explícito.
+- **Protección Especial:** Los datos de menores reciben protección adicional y no se usan para perfilado o marketing.
+
+### 8.3 Información que Recopilamos de Menores
+
+Con consentimiento parental, podemos recopilar:
+
+- **Información Básica:** Nombre del niño/a, edad, escuela
+- **Ubicación de Recogida/Entrega:** Direcciones necesarias para el servicio de transporte
+- **Ubicación en Tiempo Real:** Solo durante el transporte activo, para que los padres puedan rastrear a sus hijos
+- **Información del Padre/Tutor:** Nombre, email, teléfono (para comunicación)
+
+### 8.4 Qué NO Hacemos con la Información de Menores
+
+- ❌ **No vendemos** información de menores a terceros
+- ❌ **No usamos** datos de menores para publicidad dirigida
+- ❌ **No compartimos** información con terceros sin consentimiento parental (excepto lo necesario para el servicio)
+- ❌ **No creamos perfiles** de comportamiento de menores
+- ❌ **No recopilamos** más información de la necesaria para el servicio
+
+### 8.5 Derechos de los Padres/Tutores
+
+Los padres tienen derecho a:
+
+1. **Revisar** la información personal recopilada de su hijo/a
+2. **Solicitar eliminación** de la información del niño/a
+3. **Revocar consentimiento** en cualquier momento
+4. **Exportar** todos los datos de su hijo/a
+5. **Limitar** el uso de ubicación en tiempo real
+
+Para ejercer estos derechos, contacte: **privacy@furgokid.com**
+
+### 8.6 Verificación de Consentimiento Parental
+
+Verificamos el consentimiento parental mediante:
+
+- Formulario de consentimiento en la aplicación con firma electrónica
+- Verificación de email del padre/tutor
+- Fecha de nacimiento del niño/a para determinar si requiere consentimiento
+
+### 8.7 Retención de Datos de Menores
+
+- Conservamos datos de menores solo mientras el servicio esté activo
+- Eliminamos automáticamente datos de cuentas inactivas después de 12 meses
+- Los padres pueden solicitar eliminación inmediata en cualquier momento
+
+### 8.8 Contacto para Privacidad de Menores
+
+Para preguntas específicas sobre la privacidad de menores:
+
+- **Email:** privacy@furgokid.com
+- **Asunto:** "Privacidad de Menores - COPPA/GDPR"
+- **Respuesta:** Dentro de 48 horas laborables
 
 ## 9. Publicidad
 

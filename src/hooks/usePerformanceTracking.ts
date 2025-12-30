@@ -28,10 +28,11 @@ export function usePerformanceTracking(screenName: string, attributes?: Record<s
       ...attributes,
     });
 
+    const startTime = startTimeRef.current;
     return () => {
       // Stop trace on unmount
       if (!trackedRef.current) {
-        const loadTime = Date.now() - startTimeRef.current;
+        const loadTime = Date.now() - startTime;
         performanceService.stopTrace(traceName, {
           load_time: loadTime,
           ...attributes,
@@ -39,6 +40,7 @@ export function usePerformanceTracking(screenName: string, attributes?: Record<s
         trackedRef.current = true;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenName]);
 }
 

@@ -43,7 +43,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
     );
     shimmerAnimation.start();
     return () => shimmerAnimation.stop();
-  }, []);
+  }, [shimmerValue]);
 
   const opacity = shimmerValue.interpolate({
     inputRange: [0, 1],
