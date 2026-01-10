@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "furgokid-app"
+    "default": "furgokid",
+    "production": "furgokid",
+    "staging": "furgokid-staging"
   }
 }
