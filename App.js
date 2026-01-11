@@ -10,16 +10,19 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import DriverProfileScreen from './src/screens/DriverProfileScreen';
 import DriverScreen from './src/screens/DriverScreen';
 import DriverVacancyScreen from './src/screens/DriverVacancyScreen';
+import EmailVerificationScreen from './src/screens/EmailVerificationScreen';
 import GDPRSettingsScreen from './src/screens/GDPRSettingsScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import ParentalConsentScreen from './src/screens/ParentalConsentScreen';
 import ParentHomeScreen from './src/screens/ParentHomeScreen';
+import ParentProfileScreen from './src/screens/ParentProfileScreen';
 import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import analyticsService from './src/services/analyticsService';
-import crashlyticsService from './src/services/crashlyticsService';
-import firebasePerformanceService from './src/services/firebasePerformanceService';
+// import crashlyticsService from './src/services/crashlyticsService';
+// import firebasePerformanceService from './src/services/firebasePerformanceService';
 import performanceService from './src/services/performanceService';
 
 // Track app startup
@@ -27,14 +30,33 @@ performanceService.startTrace('app_startup');
 
 // Initialize error tracking & crash reporting
 initSentry();
-crashlyticsService.initialize();
-firebasePerformanceService.initialize();
+// crashlyticsService.initialize(); // Requires native modules - disabled for Expo
+// firebasePerformanceService.initialize(); // Requires native modules - disabled for Expo
 
 const Stack = createStackNavigator();
 const navigationRef = createNavigationContainerRef();
 
 function Navigation() {
-  const { user, loading, userProfile } = useAuth();
+  const { user, loading, userProfile, isEmailVerified } = useAuth();
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(null);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+
+  useEffect(() => {
+    // Check if user has seen onboarding
+    const checkOnboarding = async () => {
+      try {
+        const value = await AsyncStorage.getItem('hasSeenOnboarding');
+        setHasSeenOnboarding(value === 'true');
+      } catch (error) {
+        console.error('Error checking onboarding:', error);
+        setHasSeenOnboarding(true); // Skip onboarding on error
+      } finally {
+        setCheckingOnboarding(false);
+      }
+    };
+
+    checkOnboarding();
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -42,11 +64,24 @@ function Navigation() {
       performanceService.stopTrace('app_startup', {
         role: userProfile?.role || 'unknown',
         authenticated: true,
+        emailVerified: isEmailVerified,
       });
     }
-  }, [loading, user, userProfile]);
+  }, [loading, user, userProfile, isEmailVerified]);
 
-  if (loading) return <LoadingView />;
+  if (loading || checkingOnboarding) return <LoadingView />;
+
+  // Show onboarding for first-time users (not logged in)
+  if (!user && !hasSeenOnboarding) {
+    return (
+      <OnboardingScreen
+        onComplete={() => {
+          setHasSeenOnboarding(true);
+        }}
+      />
+    );
+  }
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
@@ -55,6 +90,9 @@ function Navigation() {
           <Stack.Screen name="Register" component={RegisterScreen} />
           <Stack.Screen name="ParentalConsent" component={ParentalConsentScreen} />
         </>
+      ) : !isEmailVerified ? (
+        // User logged in but email not verified - block access
+        <Stack.Screen name="EmailVerification" component={EmailVerificationScreen} />
       ) : userProfile?.role === 'driver' ? (
         <>
           <Stack.Screen name="DriverHome" component={DriverScreen} />
@@ -66,6 +104,7 @@ function Navigation() {
       ) : (
         <>
           <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
+          <Stack.Screen name="ParentProfile" component={ParentProfileScreen} />
           <Stack.Screen name="ParentRequest" component={ParentRequestScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />

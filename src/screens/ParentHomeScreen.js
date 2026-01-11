@@ -57,6 +57,7 @@ const ParentHomeScreen = ({ navigation }) => {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.profileButton}
+              onPress={() => navigation.navigate('ParentProfile')}
               accessible={true}
               accessibilityLabel="Ver perfil"
               accessibilityRole="button"

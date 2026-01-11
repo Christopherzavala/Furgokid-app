@@ -54,8 +54,19 @@ export default function RegisterScreen({ navigation }) {
     setLocalLoading(true);
     const result = await signUp(email.trim(), password, name, role);
     if (result.success) {
-      Alert.alert('¡Éxito!', 'Cuenta creada correctamente. Inicia sesión ahora.');
-      navigation.navigate('Login');
+      Alert.alert(
+        '✅ ¡Cuenta creada!',
+        'Enviamos un email de verificación a tu correo. Por favor verifica tu email antes de continuar.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // User will be automatically redirected to EmailVerificationScreen
+              // No need to navigate manually
+            },
+          },
+        ]
+      );
     } else {
       let message = result.error || 'Error de registro.';
       if (result.error?.includes('email-already-in-use')) {

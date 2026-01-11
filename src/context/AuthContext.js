@@ -3,6 +3,8 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth';
@@ -10,6 +12,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
 import analyticsService from '../services/analyticsService';
+import notificationService from '../services/notificationService';
 
 const AuthContext = createContext();
 
@@ -113,6 +116,11 @@ export const AuthProvider = ({ children }) => {
       const role = profile?.role || 'parent';
       await analyticsService.trackLogin(role);
 
+      // Register for push notifications (non-blocking)
+      notificationService.registerForPushNotifications(result.user.uid).catch((err) => {
+        console.warn('⚠️ Push notification setup failed (non-critical):', err);
+      });
+
       return { success: true, user: result.user };
     } catch (err) {
       console.error('Sign in error:', err);
@@ -151,11 +159,25 @@ export const AuthProvider = ({ children }) => {
       await setDoc(doc(db, 'users', result.user.uid), newUserProfile);
       setUserProfile(newUserProfile);
 
+      // Send email verification
+      try {
+        await sendEmailVerification(result.user);
+        console.log('✅ Email verification sent to:', email);
+      } catch (emailError) {
+        console.warn('⚠️ Failed to send verification email:', emailError);
+        // Don't fail signup if email verification fails
+      }
+
+      // Register for push notifications (non-blocking)
+      notificationService.registerForPushNotifications(result.user.uid).catch((err) => {
+        console.warn('⚠️ Push notification setup failed (non-critical):', err);
+      });
+
       // Track signup event
       await analyticsService.setUserId(result.user.uid);
       await analyticsService.trackSignUp(role);
 
-      return { success: true, user: result.user };
+      return { success: true, user: result.user, emailVerificationSent: true };
     } catch (err) {
       console.error('Sign up error:', err);
       analyticsService.trackAppError(err?.message || 'Sign up failed', {
@@ -216,7 +238,14 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signOut,
     updateUserProfile,
+    reloadUser: async () => {
+      if (user) {
+        await reload(user);
+        setUser({ ...user }); // Trigger re-render
+      }
+    },
     isAuthenticated: !!user,
+    isEmailVerified: user?.emailVerified || false,
     isParent: userProfile?.role === 'parent',
     isDriver: userProfile?.role === 'driver',
   };

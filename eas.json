@@ -15,9 +15,7 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease",
-        "enableProguardInReleaseBuilds": true,
-        "enableShrinkResourcesInReleaseBuilds": true
+        "gradleCommand": ":app:assembleRelease"
       },
       "ios": {
         "buildConfiguration": "Release"
@@ -25,6 +23,7 @@
       "env": {
         "NODE_ENV": "staging",
         "APP_VARIANT": "staging",
+        "FIREBASE_PROJECT_ID": "furgokid-staging",
         "SENTRY_ENABLED": "true",
         "SENTRY_ENVIRONMENT": "staging",
         "FIREBASE_ANALYTICS_ENABLED": "true",
@@ -37,9 +36,7 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease",
-        "enableProguardInReleaseBuilds": true,
-        "enableShrinkResourcesInReleaseBuilds": true
+        "gradleCommand": ":app:assembleRelease"
       },
       "ios": {
         "buildConfiguration": "Release"
@@ -55,9 +52,7 @@
     "production": {
       "android": {
         "buildType": "app-bundle",
-        "gradleCommand": ":app:bundleRelease",
-        "enableProguardInReleaseBuilds": true,
-        "enableShrinkResourcesInReleaseBuilds": true
+        "gradleCommand": ":app:bundleRelease"
       },
       "ios": {
         "distribution": "store"
