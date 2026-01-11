@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="FurgoKid - Transporte escolar seguro con rastreo GPS en tiempo real"
+    />
+    <title>FurgoKid - Documentación</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+          sans-serif;
+        background: linear-gradient(135deg, #4a90e2 0%, #2e7bc4 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 600px;
+        width: 100%;
+        padding: 60px 40px;
+        text-align: center;
+      }
+
+      .logo {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 30px;
+        background: linear-gradient(135deg, #4a90e2 0%, #2e7bc4 100%);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+      }
+
+      h1 {
+        color: #2e7bc4;
+        font-size: 2.5rem;
+        margin-bottom: 16px;
+        font-weight: 700;
+      }
+
+      .subtitle {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 40px;
+        line-height: 1.6;
+      }
+
+      .links {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 40px;
+      }
+
+      .link-button {
+        display: inline-block;
+        padding: 16px 32px;
+        background: #4a90e2;
+        color: white;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        font-size: 1rem;
+      }
+
+      .link-button:hover {
+        background: #2e7bc4;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(74, 144, 226, 0.4);
+      }
+
+      .link-button.secondary {
+        background: white;
+        color: #4a90e2;
+        border: 2px solid #4a90e2;
+      }
+
+      .link-button.secondary:hover {
+        background: #f8f9fa;
+      }
+
+      .footer {
+        margin-top: 60px;
+        color: #999;
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 640px) {
+        .container {
+          padding: 40px 24px;
+        }
+
+        h1 {
+          font-size: 2rem;
+        }
+
+        .subtitle {
+          font-size: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🚌</div>
+      <h1>FurgoKid</h1>
+      <p class="subtitle">Transporte escolar seguro con rastreo GPS en tiempo real</p>
+
+      <div class="links">
+        <a href="privacy-policy.html" class="link-button"> 📄 Política de Privacidad </a>
+        <a
+          href="https://github.com/Christopherzavala/Furgokid-app"
+          class="link-button secondary"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          💻 Ver en GitHub
+        </a>
+      </div>
+
+      <div class="footer">
+        <p>&copy; 2026 FurgoKid. Todos los derechos reservados.</p>
+      </div>
+    </div>
+  </body>
+</html>
