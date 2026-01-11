@@ -61,9 +61,19 @@ export function initSentry(): void {
   }
 
   try {
+    const appVersion = Constants.expoConfig?.version || '1.0.0';
+    const buildNumber =
+      Constants.expoConfig?.ios?.buildNumber ||
+      Constants.expoConfig?.android?.versionCode?.toString() ||
+      '1';
+
     Sentry.init({
       dsn: config.dsn,
       environment: config.environment,
+
+      // Release tracking - linkear errores a versiones específicas
+      release: `furgokid@${appVersion}`,
+      dist: buildNumber,
 
       // Performance monitoring
       enableAutoSessionTracking: true,
@@ -72,6 +82,16 @@ export function initSentry(): void {
       // Sample rates
       sampleRate: config.sampleRate,
       tracesSampleRate: config.tracesSampleRate,
+
+      // Tags iniciales de negocio
+      initialScope: {
+        tags: {
+          appVersion,
+          buildNumber,
+          environment: config.environment,
+          platform: Constants.platform?.ios ? 'ios' : 'android',
+        },
+      },
 
       // PII scrubbing
       beforeSend(event: any) {
@@ -87,6 +107,9 @@ export function initSentry(): void {
           delete event.request.headers['Cookie'];
         }
 
+        // Enrich with current context (if available)
+        event.tags = event.tags || {};
+
         return event;
       },
 
@@ -98,12 +121,6 @@ export function initSentry(): void {
         }
         return breadcrumb;
       },
-
-      // Release tracking
-      release: Constants.expoConfig?.version,
-      dist:
-        Constants.expoConfig?.ios?.buildNumber ||
-        Constants.expoConfig?.android?.versionCode?.toString(),
     });
 
     console.log(`[Sentry] Initialized (${config.environment}, sample rate: ${config.sampleRate})`);
@@ -147,17 +164,71 @@ export function captureMessage(message: string, level: SentrySeverityLevel = 'in
 }
 
 /**
- * Set user context
+ * Set user context with role (driver, parent, admin)
+ * Call this after login to track which user had the error
  */
-export function setUser(user: { id: string; role?: string } | null): void {
+export function setUserContext(
+  user: {
+    id: string;
+    role: 'driver' | 'parent' | 'admin';
+    schoolId?: string;
+  } | null
+): void {
   if (!Sentry || !getSentryConfig().enabled) {
     return;
   }
 
   try {
-    Sentry.setUser(user ? { id: user.id, role: user.role } : null);
+    if (user) {
+      Sentry.setUser({ id: user.id });
+      Sentry.setTag('userRole', user.role);
+      if (user.schoolId) {
+        Sentry.setTag('schoolId', user.schoolId);
+      }
+    } else {
+      Sentry.setUser(null);
+    }
   } catch (e) {
     console.error('[Sentry] Error setting user:', e);
+  }
+}
+
+/**
+ * Legacy alias - kept for backward compatibility
+ */
+export function setUser(user: { id: string; role?: string } | null): void {
+  setUserContext(user as any);
+}
+
+/**
+ * Set current screen name
+ * Call this in navigation listener to track where errors occur
+ */
+export function setScreen(screenName: string): void {
+  if (!Sentry || !getSentryConfig().enabled) {
+    return;
+  }
+
+  try {
+    Sentry.setTag('screen', screenName);
+    addBreadcrumb(`Navigated to ${screenName}`, 'navigation');
+  } catch (e) {
+    console.error('[Sentry] Error setting screen:', e);
+  }
+}
+
+/**
+ * Set custom tag for business logic tracking
+ */
+export function setTag(key: string, value: string): void {
+  if (!Sentry || !getSentryConfig().enabled) {
+    return;
+  }
+
+  try {
+    Sentry.setTag(key, value);
+  } catch (e) {
+    console.error('[Sentry] Error setting tag:', e);
   }
 }
 
@@ -185,6 +256,9 @@ export default {
   initSentry,
   captureException,
   captureMessage,
-  setUser,
+  setUser, // Legacy
+  setUserContext,
+  setScreen,
+  setTag,
   addBreadcrumb,
 };

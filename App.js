@@ -23,6 +23,7 @@ import SearchScreen from './src/screens/SearchScreen';
 import analyticsService from './src/services/analyticsService';
 // import crashlyticsService from './src/services/crashlyticsService';
 // import firebasePerformanceService from './src/services/firebasePerformanceService';
+import { setScreen } from './src/config/sentry';
 import performanceService from './src/services/performanceService';
 
 // Track app startup
@@ -127,13 +128,17 @@ export default function App() {
               const routeName = navigationRef.getCurrentRoute()?.name;
               routeNameRef.current = routeName;
               analyticsService.trackSessionStart();
-              if (routeName) analyticsService.trackScreenView(routeName);
+              if (routeName) {
+                analyticsService.trackScreenView(routeName);
+                setScreen(routeName); // Sentry screen tracking
+              }
             }}
             onStateChange={() => {
               const previousRouteName = routeNameRef.current;
               const currentRouteName = navigationRef.getCurrentRoute()?.name;
               if (currentRouteName && previousRouteName !== currentRouteName) {
                 analyticsService.trackScreenView(currentRouteName);
+                setScreen(currentRouteName); // Sentry screen tracking
               }
               routeNameRef.current = currentRouteName;
             }}

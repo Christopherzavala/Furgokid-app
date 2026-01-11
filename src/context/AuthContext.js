@@ -11,6 +11,7 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
+import { setUserContext } from '../config/sentry';
 import analyticsService from '../services/analyticsService';
 import notificationService from '../services/notificationService';
 
@@ -70,14 +71,12 @@ export const AuthProvider = ({ children }) => {
       const isPremium = Boolean(data?.isPremium || data?.subscriptionActive || data?.noAds);
       await analyticsService.trackUserSegment(isPremium);
 
-      // Crashlytics user binding - CRITICAL FOR MONETIZATION
-      // Track which user type crashes more (parents = higher AdMob value)
-      await crashlyticsService.setUserId(uid);
-      await crashlyticsService.setUserType(role);
-      await crashlyticsService.setRevenueAttributes({
-        subscriptionStatus: isPremium ? 'premium' : 'free',
-        lifetimeValue: data?.lifetimeValue || 0,
-        sessionCount: data?.sessionCount || 0,
+      // Sentry user context - CRITICAL FOR ERROR TRACKING
+      // Track which user (driver/parent/admin) + school had the error
+      setUserContext({
+        id: uid,
+        role: role,
+        schoolId: data?.schoolId || data?.school || undefined,
       });
     } catch {
       // no-op
