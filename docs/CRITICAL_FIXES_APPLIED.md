@@ -17,33 +17,41 @@ Resolver los **3 blockers críticos** identificados en la auditoría de Marcus B
 #### 1. [app.config.js](../app.config.js)
 
 ```diff
-- androidAppId: process.env.ADMOB_ANDROID_APP_ID,
-- iosAppId: process.env.ADMOB_IOS_APP_ID,
-+ androidAppId: 'ca-app-pub-6159996738450051~7339939476',
-+ iosAppId: 'ca-app-pub-6159996738450051~7339939476',
++ // ✅ NO hardcodear IDs en el repo.
++ // Los App IDs se leen desde variables de entorno y el plugin solo se habilita si existen.
++ androidAppId: process.env.ADMOB_ANDROID_APP_ID,
++ iosAppId: process.env.ADMOB_IOS_APP_ID,
 ```
 
 #### 2. [src/services/admobService.ts](../src/services/admobService.ts)
 
 ```diff
 const PRODUCTION_IDS = {
--  BANNER: process.env.BANNER_AD_UNIT_ID || TEST_IDS.BANNER,
--  INTERSTITIAL: process.env.INTERSTITIAL_AD_UNIT_ID || TEST_IDS.INTERSTITIAL,
--  REWARDED: process.env.REWARDED_AD_UNIT_ID || TEST_IDS.REWARDED,
-+  BANNER: 'ca-app-pub-6159996738450051/5061917035',
-+  INTERSTITIAL: 'ca-app-pub-6159996738450051/9969972240',
-+  REWARDED: 'ca-app-pub-6159996738450051/5608055408',
+   BANNER: process.env.BANNER_AD_UNIT_ID || TEST_IDS.BANNER,
+   INTERSTITIAL: process.env.INTERSTITIAL_AD_UNIT_ID || TEST_IDS.INTERSTITIAL,
+   REWARDED: process.env.REWARDED_AD_UNIT_ID || TEST_IDS.REWARDED,
 };
 ```
 
-### IDs de Producción Configurados:
+### IDs de Producción (NO commitear)
 
-- **App ID:** `ca-app-pub-6159996738450051~7339939476`
-- **Banner Ads:** `ca-app-pub-6159996738450051/5061917035`
-- **Interstitial Ads:** `ca-app-pub-6159996738450051/9969972240`
-- **Rewarded Ads:** `ca-app-pub-6159996738450051/5608055408`
+- Configura los IDs reales en **EAS Secrets** y/o **GitHub Secrets**.
+- En el repo, usa variables de entorno:
+  - `ADMOB_ANDROID_APP_ID`
+  - `ADMOB_IOS_APP_ID`
+  - `BANNER_AD_UNIT_ID`
+  - `INTERSTITIAL_AD_UNIT_ID`
+  - `REWARDED_AD_UNIT_ID`
 
-**Nota:** AdMobConfig.js ya tenía los IDs correctos configurados.
+Ejemplos (placeholders):
+
+- App ID: `ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY`
+- Banner: `ca-app-pub-XXXXXXXXXXXXXXXX/NNNNNNNNNN`
+
+Motivo:
+
+- Evita exposición accidental en historial git y reduce falsos positivos del secret scanning.
+- Permite separar staging/production por ambiente sin tocar código.
 
 ---
 

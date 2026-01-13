@@ -39,6 +39,9 @@ jobs:
             npm install --legacy-peer-deps
           fi
 
+      - name: Validate App Identifiers
+        run: npm run validate:ids
+
       - name: Validate Environment Config
         run: npm run validate:env
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

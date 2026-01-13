@@ -13,7 +13,7 @@
 - [x] TypeScript: 0 errors
 - [x] ESLint: 0 warnings
 - [x] Tests: 87/87 passing
-- [x] Test Coverage: >80%
+- [x] Test Coverage: report generado (no bloqueante)
 - [x] Security Audit: PASSED
 
 ### Infrastructure (97/100)
@@ -55,6 +55,9 @@ npm run security:audit
 
 # Check environment variables
 npm run validate:env
+
+# Check identifier consistency (Expo IDs ↔ Firebase)
+npm run validate:ids
 ```
 
 **Expected Output:**

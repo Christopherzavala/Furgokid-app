@@ -127,6 +127,11 @@ Local:
 - `npm run type-check`
 - `npm run lint`
 - `npm run test:coverage`
+- `npm run validate:ids`
+
+Opcional (pre-build completo):
+
+- `npm run pre-build`
 
 App (mínimo manual):
 

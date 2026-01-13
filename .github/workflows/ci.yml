@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Validate App Identifiers
+        run: npm run validate:ids
+
       - name: TypeScript check
         run: npm run type-check
 
