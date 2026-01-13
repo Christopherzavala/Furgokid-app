@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Button, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -16,11 +17,11 @@ export default function LoginScreen({ navigation }) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Campos incompletos', 'Ingresa email y contraseña.');
+      toastService.info('Campos incompletos', 'Ingresa email y contraseña.');
       return;
     }
     if (!validateEmail(email)) {
-      Alert.alert('Email inválido', 'Por favor ingresa un email válido.');
+      toastService.error('Email inválido', 'Por favor ingresa un email válido.');
       return;
     }
     setLocalLoading(true);
@@ -38,7 +39,7 @@ export default function LoginScreen({ navigation }) {
       } else if (result.error?.includes('network')) {
         message = 'Problema de red. Intenta nuevamente.';
       }
-      Alert.alert('Error de inicio de sesión', message);
+      toastService.error('Error de inicio de sesión', message);
     }
     setLocalLoading(false);
   };

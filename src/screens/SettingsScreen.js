@@ -1,35 +1,59 @@
 // SettingsScreen.js - Pantalla de Configuración
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { auth } from '../config/firebase';
-import { signOut } from 'firebase/auth';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 const SettingsScreen = ({ navigation }) => {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(true);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const { userProfile, signOut } = useAuth();
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
+    Alert.alert('Cerrar sesión', '¿Seguro que deseas cerrar sesión?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar sesión',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const result = await signOut();
+            if (!result?.success) {
+              throw new Error(result?.error || 'unknown');
+            }
+            toastService.success('Sesión cerrada', 'Has cerrado sesión correctamente.');
+          } catch {
+            toastService.error('Error', 'No se pudo cerrar la sesión.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const urls = {
+    privacyPolicy:
+      Constants.expoConfig?.extra?.privacyPolicyUrl ||
+      'https://christopherzavala.github.io/Furgokid-app/docs/privacy-policy.html',
+    termsOfService:
+      Constants.expoConfig?.extra?.termsOfServiceUrl ||
+      'https://christopherzavala.github.io/Furgokid-app/docs/terms-of-service.html',
+  };
+
+  const openUrl = async (url) => {
     try {
-      await signOut(auth);
-      Alert.alert('Sesión cerrada', 'Has cerrado sesión correctamente.');
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo cerrar la sesión.');
+      const can = await Linking.canOpenURL(url);
+      if (!can) {
+        toastService.error('No se pudo abrir', 'Verifica tu conexión e intenta nuevamente.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      toastService.error('No se pudo abrir', 'Intenta nuevamente en unos segundos.');
     }
   };
 
-  const renderSettingItem = (
-    icon,
-    title,
-    subtitle,
-    onPress,
-    showSwitch = false,
-    switchValue = false,
-    onSwitchChange = null
-  ) => (
-    <TouchableOpacity style={styles.settingItem} onPress={onPress} disabled={showSwitch}>
+  const renderSettingItem = (icon, title, subtitle, onPress) => (
+    <TouchableOpacity style={styles.settingItem} onPress={onPress}>
       <View style={styles.settingIcon}>
         <Ionicons name={icon} size={24} color="#2196F3" />
       </View>
@@ -37,24 +61,28 @@ const SettingsScreen = ({ navigation }) => {
         <Text style={styles.settingTitle}>{title}</Text>
         {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
       </View>
-      {showSwitch ? (
-        <Switch
-          value={switchValue}
-          onValueChange={onSwitchChange}
-          trackColor={{ false: '#ddd', true: '#90CAF9' }}
-          thumbColor={switchValue ? '#2196F3' : '#f4f3f4'}
-        />
-      ) : (
-        <Ionicons name="chevron-forward" size={20} color="#ccc" />
-      )}
+      <Ionicons name="chevron-forward" size={20} color="#ccc" />
     </TouchableOpacity>
   );
 
   return (
     <ScrollView style={styles.container}>
       <LinearGradient colors={['#2196F3', '#1976D2']} style={styles.header}>
-        <Text style={styles.headerTitle}>Configuración</Text>
-        <Text style={styles.headerSubtitle}>Personaliza tu experiencia FurgoKid</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.headerIconButton}
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Volver"
+            accessibilityRole="button"
+          >
+            <Ionicons name="chevron-back" size={26} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerTextBlock}>
+            <Text style={styles.headerTitle}>Configuración</Text>
+            <Text style={styles.headerSubtitle}>Privacidad, cuenta y soporte</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
       </LinearGradient>
 
       <View style={styles.content}>
@@ -64,44 +92,38 @@ const SettingsScreen = ({ navigation }) => {
             'person-circle',
             'Perfil de Usuario',
             'Editar información personal',
-            () => Alert.alert('Función', 'Configuración de perfil próximamente')
+            () =>
+              navigation.navigate(
+                userProfile?.role === 'driver' ? 'DriverProfile' : 'ParentProfile'
+              )
           )}
           {renderSettingItem(
-            'shield-checkmark',
-            'Seguridad',
-            'Gestionar seguridad de la cuenta',
-            () => Alert.alert('Función', 'Configuración de seguridad próximamente')
+            'settings-outline',
+            'Preferencias de Consentimiento',
+            'Gestiona analítica y anuncios',
+            () => navigation.navigate('ConsentPreferences')
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notificaciones</Text>
+          <Text style={styles.sectionTitle}>Privacidad y Datos</Text>
           {renderSettingItem(
-            'notifications',
-            'Activar Notificaciones',
-            'Recibir alertas en tiempo real',
-            null,
-            true,
-            notificationsEnabled,
-            setNotificationsEnabled
+            'shield-checkmark',
+            'Centro de Privacidad (GDPR)',
+            'Exportar datos o eliminar cuenta',
+            () => navigation.navigate('GDPRSettings')
           )}
           {renderSettingItem(
-            'location',
-            'Seguimiento GPS',
-            'Permitir acceso a ubicación',
-            null,
-            true,
-            locationTrackingEnabled,
-            setLocationTrackingEnabled
+            'document-text',
+            'Política de Privacidad',
+            'Leer la política vigente',
+            () => openUrl(urls.privacyPolicy)
           )}
           {renderSettingItem(
-            'refresh',
-            'Actualización Automática',
-            'Actualizar datos automáticamente',
-            null,
-            true,
-            autoRefreshEnabled,
-            setAutoRefreshEnabled
+            'reader',
+            'Términos de Servicio',
+            'Condiciones de uso de FurgoKid',
+            () => openUrl(urls.termsOfService)
           )}
         </View>
 
@@ -111,19 +133,21 @@ const SettingsScreen = ({ navigation }) => {
             'help-circle',
             'Ayuda y Soporte',
             'Preguntas frecuentes y contacto',
-            () => Alert.alert('Función', 'Centro de ayuda próximamente')
+            async () => {
+              const url = 'mailto:privacy@furgokid.com';
+              const can = await Linking.canOpenURL(url);
+              if (!can) {
+                toastService.info('Contacto', 'Escríbenos a privacy@furgokid.com');
+                return;
+              }
+              await Linking.openURL(url);
+            }
           )}
           {renderSettingItem(
             'information-circle',
             'Acerca de FurgoKid',
             'Versión y términos de uso',
-            () => Alert.alert('FurgoKid v1.0', 'Sistema de Rastreo Escolar')
-          )}
-          {renderSettingItem(
-            'document-text',
-            'Términos y Privacidad',
-            'Leer políticas de uso',
-            () => Alert.alert('Función', 'Términos de uso próximamente')
+            () => toastService.info('FurgoKid v1.0.0', 'Transporte escolar seguro.')
           )}
         </View>
 
@@ -150,6 +174,23 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 30,
     paddingHorizontal: 20,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  headerTextBlock: {
+    flex: 1,
+    paddingHorizontal: 12,
   },
   headerTitle: {
     fontSize: 28,
@@ -230,7 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F44336',
   },
   actionButtonText: {
-    color: '#F44336',
+    color: '#fff',
     fontWeight: 'bold',
     marginLeft: 8,
   },

@@ -8,7 +8,10 @@ let Sentry: any = null;
 try {
   Sentry = require('@sentry/react-native');
 } catch (error) {
-  console.warn('[Sentry] Package not installed: @sentry/react-native');
+  const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.JEST_WORKER_ID);
+  if (!isTestEnv) {
+    console.warn('[Sentry] Package not installed: @sentry/react-native');
+  }
 }
 
 import Constants from 'expo-constants';

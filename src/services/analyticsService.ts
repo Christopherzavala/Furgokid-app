@@ -42,6 +42,7 @@ interface UserProperties {
 }
 
 class AnalyticsService {
+  private enabled = false;
   private sessionId: string;
   private sessionStartTime: number;
   private userProperties: UserProperties = {};
@@ -118,7 +119,13 @@ class AnalyticsService {
     }
   }
 
+  setEnabled(enabled: boolean): void {
+    this.enabled = Boolean(enabled);
+  }
+
   private async logEvent(name: string, params: Record<string, unknown> = {}): Promise<void> {
+    if (!this.enabled) return;
+
     const event: AnalyticsEvent = {
       name,
       params: {

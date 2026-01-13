@@ -1,19 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AdBannerComponent from '../components/AdBannerComponent';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 const ParentHomeScreen = ({ navigation }) => {
   const { user, userProfile, signOut } = useAuth();
@@ -32,9 +25,9 @@ const ParentHomeScreen = ({ navigation }) => {
         onPress: async () => {
           const result = await signOut();
           if (result.success) {
-            Alert.alert('Sesión cerrada', 'Has cerrado sesión correctamente.');
+            toastService.success('Sesión cerrada', 'Has cerrado sesión correctamente.');
           } else {
-            Alert.alert('Error', 'No se pudo cerrar sesión: ' + result.error);
+            toastService.error('Error', 'No se pudo cerrar sesión: ' + result.error);
           }
         },
       },
@@ -55,6 +48,15 @@ const ParentHomeScreen = ({ navigation }) => {
             <Text style={styles.userName}>{user?.email?.split('@')[0] || 'Padre'}</Text>
           </View>
           <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('Settings')}
+              accessible={true}
+              accessibilityLabel="Abrir configuración"
+              accessibilityRole="button"
+            >
+              <Ionicons name="settings-outline" size={22} color="#fff" />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.profileButton}
               onPress={() => navigation.navigate('ParentProfile')}
@@ -88,10 +90,14 @@ const ParentHomeScreen = ({ navigation }) => {
             message="Agrega a tus hijos para comenzar a realizar el seguimiento de su transporte escolar."
           />
         ) : (
-          <ScrollView contentContainerStyle={styles.listContainer}>
-            {/* List implementation pending */}
-            <Text>Lista de hijos...</Text>
-          </ScrollView>
+          <FlatList
+            data={children}
+            keyExtractor={(item, index) => String(item?.id ?? index)}
+            style={styles.list}
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item }) => <Text>{item?.name ?? 'Hijo/a'}</Text>}
+            showsVerticalScrollIndicator={false}
+          />
         )}
 
         {/* QUICK ACTIONS */}
@@ -160,6 +166,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  iconButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+  },
   welcomeText: {
     color: '#E3F2FD',
     fontSize: 14,
@@ -189,6 +200,9 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingBottom: 20,
+  },
+  list: {
+    flex: 1,
   },
   actionsContainer: {
     flexDirection: 'row',

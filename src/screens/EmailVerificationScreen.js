@@ -1,13 +1,27 @@
 import { reload, sendEmailVerification } from 'firebase/auth';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import analyticsService from '../services/analyticsService';
+import toastService from '../services/toastService';
 
 const EmailVerificationScreen = () => {
   const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+
+  const checkVerificationStatus = useCallback(async () => {
+    try {
+      setCheckingVerification(true);
+      await reload(user);
+      // Navigation will automatically update when emailVerified becomes true
+    } catch (error) {
+      console.log('Error checking verification:', error);
+    } finally {
+      setCheckingVerification(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     // Auto-check verification status every 5 seconds
@@ -18,7 +32,7 @@ const EmailVerificationScreen = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [user, checkingVerification]);
+  }, [user, checkingVerification, checkVerificationStatus]);
 
   useEffect(() => {
     // Cooldown timer for resend button
@@ -28,24 +42,9 @@ const EmailVerificationScreen = () => {
     }
   }, [cooldown]);
 
-  const checkVerificationStatus = async () => {
-    try {
-      setCheckingVerification(true);
-      await reload(user);
-      // Navigation will automatically update when emailVerified becomes true
-    } catch (error) {
-      console.log('Error checking verification:', error);
-    } finally {
-      setCheckingVerification(false);
-    }
-  };
-
   const handleResendEmail = async () => {
     if (cooldown > 0) {
-      Alert.alert(
-        'Espera un momento',
-        `Por favor espera ${cooldown} segundos antes de reenviar el email.`
-      );
+      toastService.info('Espera un momento', `Reintenta en ${cooldown}s.`);
       return;
     }
 
@@ -53,10 +52,9 @@ const EmailVerificationScreen = () => {
       setLoading(true);
       await sendEmailVerification(user);
       setCooldown(60); // 60 seconds cooldown
-      Alert.alert(
-        '✅ Email enviado',
-        'Revisa tu bandeja de entrada y spam. El link es válido por 1 hora.',
-        [{ text: 'OK' }]
+      toastService.success(
+        'Email enviado',
+        'Revisa bandeja de entrada y spam. El link vale 1 hora.'
       );
     } catch (error) {
       console.error('Error resending verification email:', error);
@@ -69,7 +67,7 @@ const EmailVerificationScreen = () => {
         errorMessage = 'Sin conexión a internet. Verifica tu red.';
       }
 
-      Alert.alert('Error', errorMessage);
+      toastService.error('No se pudo enviar', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -80,13 +78,16 @@ const EmailVerificationScreen = () => {
     await checkVerificationStatus();
 
     if (user.emailVerified) {
-      Alert.alert('🎉 ¡Email verificado!', 'Tu cuenta está activa. Redirigiendo...', [
-        { text: 'OK' },
-      ]);
+      try {
+        await analyticsService.trackCustomEvent('email_verified', {
+          provider: user?.providerData?.[0]?.providerId,
+        });
+      } catch {
+        // no-op
+      }
+      toastService.success('¡Email verificado!', 'Tu cuenta está activa.');
     } else {
-      Alert.alert('Aún no verificado', 'Por favor haz clic en el link del email primero.', [
-        { text: 'OK' },
-      ]);
+      toastService.info('Aún no verificado', 'Abre el link del email y vuelve a intentar.');
     }
     setCheckingVerification(false);
   };

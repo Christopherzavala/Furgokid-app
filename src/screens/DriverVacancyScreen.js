@@ -19,6 +19,7 @@ import AdInterstitialManager from '../components/AdInterstitialManager';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import analyticsService from '../services/analyticsService';
+import toastService from '../services/toastService';
 
 const ZONES = ['Zona Norte', 'Zona Sur', 'Zona Oriente', 'Zona Centro', 'Zona Poniente'];
 const POPULAR_SCHOOLS = [
@@ -43,15 +44,15 @@ export default function DriverVacancyScreen({ navigation }) {
 
   const validateForm = () => {
     if (!zone) {
-      Alert.alert('Error', 'Por favor selecciona una zona');
+      toastService.info('Falta información', 'Por favor selecciona una zona');
       return false;
     }
     if (!totalSeats || parseInt(totalSeats, 10) < 1) {
-      Alert.alert('Error', 'Por favor ingresa un número válido de asientos');
+      toastService.error('Dato inválido', 'Por favor ingresa un número válido de asientos');
       return false;
     }
     if (schools.length === 0) {
-      Alert.alert('Error', 'Por favor selecciona al menos un colegio');
+      toastService.info('Falta información', 'Por favor selecciona al menos un colegio');
       return false;
     }
     return true;
@@ -105,7 +106,7 @@ export default function DriverVacancyScreen({ navigation }) {
       // Track evento
       await analyticsService.trackDriverVacancy(zone, schools.join(', '), parseInt(totalSeats, 10));
 
-      Alert.alert('¡Éxito!', 'Tu cupo ha sido publicado. Los padres en tu zona lo verán.');
+      toastService.success('¡Éxito!', 'Tu cupo ha sido publicado. Los padres en tu zona lo verán.');
 
       // 💰 MONETIZACIÓN: Mostrar interstitial después de publicar
       try {
@@ -132,7 +133,7 @@ export default function DriverVacancyScreen({ navigation }) {
       navigation.goBack();
     } catch (error) {
       console.error('[DriverVacancy] Error:', error);
-      Alert.alert('Error', 'No se pudo publicar el cupo: ' + error.message);
+      toastService.error('Error', 'No se pudo publicar el cupo: ' + error.message);
     } finally {
       setLoading(false);
     }

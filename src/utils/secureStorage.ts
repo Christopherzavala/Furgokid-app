@@ -70,6 +70,33 @@ class SecureStorage {
     return ASYNC_STORAGE_WHITELIST.some((whitelistedKey) => key.includes(whitelistedKey));
   }
 
+  private hashKey(key: string): string {
+    // Simple deterministic hash (djb2) to avoid empty/invalid keys
+    let hash = 5381;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash * 33) ^ key.charCodeAt(i);
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  private normalizeStorageKey(key: string): string {
+    const raw = String(key ?? '').trim();
+    const withoutAtPrefix = raw.replace(/^@+/, '');
+    const normalized = withoutAtPrefix.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!normalized) return `key_${this.hashKey(raw)}`;
+    return normalized;
+  }
+
+  private getKeyPair(key: string): { primary: string; legacy?: string } {
+    const primary = this.normalizeStorageKey(key);
+    if (primary === key) return { primary };
+    return { primary, legacy: key };
+  }
+
+  private isValidSecureStoreKey(key: string): boolean {
+    return /^[a-zA-Z0-9._-]+$/.test(key);
+  }
+
   /**
    * Set item in secure storage
    *
@@ -79,10 +106,15 @@ class SecureStorage {
    */
   async setItem(key: string, value: string, options?: SecureStorageOptions): Promise<void> {
     try {
+      const { primary, legacy } = this.getKeyPair(key);
+
       // Non-sensitive data goes to AsyncStorage
       if (this.shouldUseAsyncStorage(key)) {
-        await AsyncStorage.setItem(key, value);
-        logger.debug('Stored in AsyncStorage (non-sensitive)', { key });
+        await AsyncStorage.setItem(primary, value);
+        if (legacy) {
+          await AsyncStorage.removeItem(legacy).catch(() => undefined);
+        }
+        logger.debug('Stored in AsyncStorage (non-sensitive)', { key, storageKey: primary });
         return;
       }
 
@@ -90,13 +122,20 @@ class SecureStorage {
       const isAvailable = await this.isSecureStoreAvailable();
 
       if (isAvailable) {
-        await SecureStore.setItemAsync(key, value, options);
-        logger.debug('Stored in SecureStore (encrypted)', { key });
+        await SecureStore.setItemAsync(primary, value, options);
+        if (legacy && this.isValidSecureStoreKey(legacy)) {
+          await SecureStore.deleteItemAsync(legacy).catch(() => undefined);
+        }
+        logger.debug('Stored in SecureStore (encrypted)', { key, storageKey: primary });
       } else {
         // Fallback to AsyncStorage with warning
-        await AsyncStorage.setItem(key, value);
+        await AsyncStorage.setItem(primary, value);
+        if (legacy) {
+          await AsyncStorage.removeItem(legacy).catch(() => undefined);
+        }
         logger.warn('SecureStore unavailable, using AsyncStorage for sensitive data', {
           key,
+          storageKey: primary,
           security_risk: 'high',
         });
       }
@@ -114,27 +153,112 @@ class SecureStorage {
    */
   async getItem(key: string): Promise<string | null> {
     try {
+      const { primary, legacy } = this.getKeyPair(key);
+
       // Non-sensitive data from AsyncStorage
       if (this.shouldUseAsyncStorage(key)) {
-        const value = await AsyncStorage.getItem(key);
-        logger.debug('Retrieved from AsyncStorage', { key, found: !!value });
-        return value;
+        const value = await AsyncStorage.getItem(primary);
+        if (value != null) {
+          logger.debug('Retrieved from AsyncStorage', { key, storageKey: primary, found: true });
+          return value;
+        }
+
+        if (legacy) {
+          const legacyValue = await AsyncStorage.getItem(legacy);
+          if (legacyValue != null) {
+            await AsyncStorage.setItem(primary, legacyValue);
+            await AsyncStorage.removeItem(legacy).catch(() => undefined);
+            logger.debug('Retrieved from AsyncStorage (legacy key migrated)', {
+              key,
+              storageKey: primary,
+              legacyKey: legacy,
+            });
+            return legacyValue;
+          }
+        }
+
+        logger.debug('Retrieved from AsyncStorage', { key, storageKey: primary, found: false });
+        return null;
       }
 
       // Sensitive data from SecureStore
       const isAvailable = await this.isSecureStoreAvailable();
 
       if (isAvailable) {
-        const value = await SecureStore.getItemAsync(key);
-        logger.debug('Retrieved from SecureStore', { key, found: !!value });
-        return value;
+        const value = await SecureStore.getItemAsync(primary);
+        if (value != null) {
+          logger.debug('Retrieved from SecureStore', { key, storageKey: primary, found: true });
+          return value;
+        }
+
+        // Backward-compatible fallback: older versions may have stored in AsyncStorage
+        const asyncValue = await AsyncStorage.getItem(primary);
+        if (asyncValue != null) {
+          await SecureStore.setItemAsync(primary, asyncValue).catch(() => undefined);
+          await AsyncStorage.removeItem(primary).catch(() => undefined);
+          logger.warn('Migrated sensitive data from AsyncStorage to SecureStore', {
+            key,
+            storageKey: primary,
+          });
+          return asyncValue;
+        }
+
+        if (legacy) {
+          const legacyAsyncValue = await AsyncStorage.getItem(legacy);
+          if (legacyAsyncValue != null) {
+            await SecureStore.setItemAsync(primary, legacyAsyncValue).catch(() => undefined);
+            await AsyncStorage.removeItem(legacy).catch(() => undefined);
+            logger.warn('Migrated sensitive data from legacy AsyncStorage key to SecureStore', {
+              key,
+              storageKey: primary,
+              legacyKey: legacy,
+            });
+            return legacyAsyncValue;
+          }
+
+          // Only attempt legacy SecureStore key if it is valid (avoids expo-secure-store key errors)
+          if (this.isValidSecureStoreKey(legacy)) {
+            const legacySecureValue = await SecureStore.getItemAsync(legacy);
+            if (legacySecureValue != null) {
+              await SecureStore.setItemAsync(primary, legacySecureValue).catch(() => undefined);
+              await SecureStore.deleteItemAsync(legacy).catch(() => undefined);
+              logger.warn('Migrated sensitive data from legacy SecureStore key', {
+                key,
+                storageKey: primary,
+                legacyKey: legacy,
+              });
+              return legacySecureValue;
+            }
+          }
+        }
+
+        logger.debug('Retrieved from SecureStore', { key, storageKey: primary, found: false });
+        return null;
       } else {
         // Fallback to AsyncStorage
-        const value = await AsyncStorage.getItem(key);
+        const value = await AsyncStorage.getItem(primary);
         if (value) {
-          logger.warn('Retrieved sensitive data from AsyncStorage (security risk)', { key });
+          logger.warn('Retrieved sensitive data from AsyncStorage (security risk)', {
+            key,
+            storageKey: primary,
+          });
         }
-        return value;
+        if (value != null) return value;
+
+        if (legacy) {
+          const legacyValue = await AsyncStorage.getItem(legacy);
+          if (legacyValue != null) {
+            await AsyncStorage.setItem(primary, legacyValue);
+            await AsyncStorage.removeItem(legacy).catch(() => undefined);
+            logger.warn('Retrieved sensitive data from legacy AsyncStorage key (security risk)', {
+              key,
+              storageKey: primary,
+              legacyKey: legacy,
+            });
+            return legacyValue;
+          }
+        }
+        return null;
       }
     } catch (error) {
       logger.error('Failed to retrieve item from secure storage', { key }, error as Error);
@@ -149,10 +273,15 @@ class SecureStorage {
    */
   async removeItem(key: string): Promise<void> {
     try {
+      const { primary, legacy } = this.getKeyPair(key);
+
       // Non-sensitive data from AsyncStorage
       if (this.shouldUseAsyncStorage(key)) {
-        await AsyncStorage.removeItem(key);
-        logger.debug('Removed from AsyncStorage', { key });
+        await AsyncStorage.removeItem(primary);
+        if (legacy) {
+          await AsyncStorage.removeItem(legacy).catch(() => undefined);
+        }
+        logger.debug('Removed from AsyncStorage', { key, storageKey: primary });
         return;
       }
 
@@ -160,12 +289,22 @@ class SecureStorage {
       const isAvailable = await this.isSecureStoreAvailable();
 
       if (isAvailable) {
-        await SecureStore.deleteItemAsync(key);
-        logger.debug('Removed from SecureStore', { key });
+        await SecureStore.deleteItemAsync(primary);
+        if (legacy && this.isValidSecureStoreKey(legacy)) {
+          await SecureStore.deleteItemAsync(legacy).catch(() => undefined);
+        }
+        await AsyncStorage.removeItem(primary).catch(() => undefined);
+        if (legacy) {
+          await AsyncStorage.removeItem(legacy).catch(() => undefined);
+        }
+        logger.debug('Removed from SecureStore', { key, storageKey: primary });
       } else {
         // Fallback to AsyncStorage
-        await AsyncStorage.removeItem(key);
-        logger.warn('Removed from AsyncStorage (fallback)', { key });
+        await AsyncStorage.removeItem(primary);
+        if (legacy) {
+          await AsyncStorage.removeItem(legacy).catch(() => undefined);
+        }
+        logger.warn('Removed from AsyncStorage (fallback)', { key, storageKey: primary });
       }
     } catch (error) {
       logger.error('Failed to remove item from secure storage', { key }, error as Error);

@@ -1,6 +1,6 @@
 # 📋 Manual Actions Required - Deployment Checklist
 
-**Última actualización:** 29 Diciembre 2025  
+**Última actualización:** 13 Enero 2026  
 **Tiempo estimado total:** ~1 hora 10 minutos
 
 ---
@@ -14,6 +14,8 @@
 **Riesgo si no se hace:** Account hijacking, quota exhaustion
 
 #### Pasos:
+
+Guía rápida y actualizada: ver [docs/SECURITY_ACTIONS_REQUIRED.md](SECURITY_ACTIONS_REQUIRED.md)
 
 1. **Ir a Firebase Console:**
 
@@ -61,43 +63,22 @@
 
 ### 2. ⏰ Privacy Policy Deployment (10 minutos)
 
-**Estado:** ⚠️ PENDIENTE  
+**Estado:** ⚠️ PENDIENTE (solo si GitHub Pages no está habilitado)  
 **Prioridad:** CRITICAL (Store rejection sin esto)  
-**URL configurada:** `https://furgokid.app/privacy-policy`
+**URL configurada (app.config.js):** `https://christopherzavala.github.io/Furgokid-app/docs/privacy-policy.html`
 
-#### Opción A: GitHub Pages (GRATIS - Recomendado)
+#### GitHub Pages (recomendado)
 
-1. **Crear repositorio público:**
-
-   ```bash
-   # En GitHub
-   - Nombre: furgokid-privacy-policy
-   - Público
-   - Initialize with README
-   ```
-
-2. **Crear archivo HTML:**
-
-   ```bash
-   # En el repo
-   - Crear index.html
-   - Copiar contenido de docs/PRIVACY_POLICY.md
-   - Convertir Markdown a HTML (usar https://markdowntohtml.com)
-   ```
-
-3. **Habilitar GitHub Pages:**
-
+1. Asegurar que el repo tenga GitHub Pages activo:
    - Settings → Pages
-   - Source: main branch
-   - Save
-   - URL será: `https://christopherzavala.github.io/furgokid-privacy-policy`
+   - Source: `main` / `/docs`
+2. Validar que estas URLs cargan sin 404:
+   - `.../docs/privacy-policy.html`
+   - `.../docs/terms-of-service.html`
 
-4. **Actualizar app.config.js:**
-   ```javascript
-   privacyPolicyUrl: 'https://christopherzavala.github.io/furgokid-privacy-policy';
-   ```
+Nota: los HTML ya existen en el repo (`docs/privacy-policy.html` y `docs/terms-of-service.html`).
 
-#### Opción B: Firebase Hosting (GRATIS)
+#### Alternativa: Firebase Hosting
 
 ```bash
 # Instalar Firebase CLI
@@ -109,12 +90,30 @@ firebase login
 # Inicializar hosting
 firebase init hosting
 
-# Crear public/privacy-policy.html con el contenido
+# Crear public/privacy-policy.html (o copiar desde docs/privacy-policy.html)
 
 # Deploy
 firebase deploy --only hosting
 
-# URL: https://furgokid-app.web.app/privacy-policy
+# URL ejemplo: https://<tu-proyecto>.web.app/privacy-policy.html
+
+---
+
+### 3. 🚨 Sentry Alerts (P0) (10 minutos)
+
+**Estado:** ⚠️ PENDIENTE
+**Prioridad:** CRITICAL (detección rápida de incidentes)
+
+Guía: ver [docs/SRE_ALERTS_SETUP.md](SRE_ALERTS_SETUP.md)
+
+---
+
+### 4. 💸 Firebase Budget Alerts (P0/P1) (10 minutos)
+
+**Estado:** ⚠️ PENDIENTE
+**Prioridad:** ALTA (evitar sorpresas de costo)
+
+Guía: ver [docs/FIREBASE_BUDGET_ALERTS.md](FIREBASE_BUDGET_ALERTS.md)
 ```
 
 #### Opción C: Comprar dominio furgokid.app

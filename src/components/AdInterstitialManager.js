@@ -13,6 +13,7 @@ import {
 } from '../config/AdMobConfig';
 import admobService from '../services/admobService';
 import analyticsService from '../services/analyticsService';
+import consentService from '../services/consentService';
 
 class AdInterstitialManager {
   constructor() {
@@ -71,6 +72,9 @@ class AdInterstitialManager {
   async canShow(placementId, userRole = 'parent', adsDisabled = false) {
     if (adsDisabled) return false;
 
+    await consentService.initialize();
+    if (consentService.needsConsentPrompt()) return false;
+
     const sessionOk = Date.now() - this.sessionStartTime >= AD_CONFIG.MINIMUM_SESSION_TIME;
     if (!sessionOk) return false;
 
@@ -101,6 +105,10 @@ class AdInterstitialManager {
       return false;
     }
 
+    const requestOptions = {
+      requestNonPersonalizedAdsOnly: consentService.getAdMobConsentStatus() !== 'PERSONALIZED',
+    };
+
     const adUnitId = getAdUnitId(placementId, userRole);
     this.lastPlacementId = placementId;
 
@@ -109,7 +117,7 @@ class AdInterstitialManager {
       await admobService.initialize();
 
       analyticsService.trackAdLoadAttempt('interstitial', placementId);
-      const ok = await admobService.loadInterstitialAd(adUnitId);
+      const ok = await admobService.loadInterstitialAd(adUnitId, requestOptions);
       this.hasLoaded = Boolean(ok);
 
       if (ok) {

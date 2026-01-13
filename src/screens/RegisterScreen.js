@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Button,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -35,37 +35,28 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     if (!email || !password || !name || !whatsapp) {
-      Alert.alert('Error', 'Por favor completa todos los campos');
+      toastService.info('Campos incompletos', 'Por favor completa todos los campos.');
       return;
     }
     if (!validateEmail(email)) {
-      Alert.alert('Error', 'Por favor ingresa un email válido');
+      toastService.error('Email inválido', 'Por favor ingresa un email válido.');
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
+      toastService.error('Contraseña débil', 'Debe tener al menos 6 caracteres.');
       return;
     }
     if (!validateWhatsApp(whatsapp)) {
-      Alert.alert('Error', 'Por favor ingresa un WhatsApp válido (7-15 dígitos)');
+      toastService.error('WhatsApp inválido', 'Ingresa un número válido (7-15 dígitos).');
       return;
     }
 
     setLocalLoading(true);
     const result = await signUp(email.trim(), password, name, role);
     if (result.success) {
-      Alert.alert(
-        '✅ ¡Cuenta creada!',
-        'Enviamos un email de verificación a tu correo. Por favor verifica tu email antes de continuar.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // User will be automatically redirected to EmailVerificationScreen
-              // No need to navigate manually
-            },
-          },
-        ]
+      toastService.success(
+        '¡Cuenta creada!',
+        'Enviamos un email de verificación. Verifica tu correo para continuar.'
       );
     } else {
       let message = result.error || 'Error de registro.';
@@ -76,7 +67,7 @@ export default function RegisterScreen({ navigation }) {
       } else if (result.error?.includes('weak-password')) {
         message = 'La contraseña es demasiado débil.';
       }
-      Alert.alert('Error de registro', message);
+      toastService.error('Error de registro', message);
     }
     setLocalLoading(false);
   };

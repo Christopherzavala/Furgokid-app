@@ -3,7 +3,6 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Button,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 export default function DriverProfileScreen({ navigation }) {
   const { user, updateUserProfile } = useAuth();
@@ -49,7 +49,7 @@ export default function DriverProfileScreen({ navigation }) {
       }
     } catch (error) {
       console.error('[DriverProfile] Error loading data:', error);
-      Alert.alert('Error', 'No se pudo cargar los datos del perfil');
+      toastService.error('Error', 'No se pudo cargar los datos del perfil');
     } finally {
       setLoading(false);
     }
@@ -57,23 +57,23 @@ export default function DriverProfileScreen({ navigation }) {
 
   const validateForm = () => {
     if (!vehicleModel.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el modelo del vehículo');
+      toastService.info('Falta información', 'Por favor ingresa el modelo del vehículo');
       return false;
     }
     if (!vehicleYear.trim() || vehicleYear.length !== 4) {
-      Alert.alert('Error', 'Por favor ingresa un año válido (4 dígitos)');
+      toastService.error('Dato inválido', 'Por favor ingresa un año válido (4 dígitos)');
       return false;
     }
     if (!licensePlate.trim()) {
-      Alert.alert('Error', 'Por favor ingresa la placa del vehículo');
+      toastService.info('Falta información', 'Por favor ingresa la placa del vehículo');
       return false;
     }
     if (!seats.trim() || isNaN(seats) || parseInt(seats, 10) < 1) {
-      Alert.alert('Error', 'Por favor ingresa un número válido de asientos');
+      toastService.error('Dato inválido', 'Por favor ingresa un número válido de asientos');
       return false;
     }
     if (!zone.trim()) {
-      Alert.alert('Error', 'Por favor ingresa la zona de cobertura');
+      toastService.info('Falta información', 'Por favor ingresa la zona de cobertura');
       return false;
     }
     return true;
@@ -94,13 +94,13 @@ export default function DriverProfileScreen({ navigation }) {
       });
 
       if (result.success) {
-        Alert.alert('¡Éxito!', 'Perfil actualizado correctamente');
+        toastService.success('¡Éxito!', 'Perfil actualizado correctamente');
         navigation.goBack();
       } else {
-        Alert.alert('Error', 'No se pudo actualizar el perfil: ' + result.error);
+        toastService.error('Error', 'No se pudo actualizar el perfil: ' + result.error);
       }
     } catch (error) {
-      Alert.alert('Error', 'Error al guardar: ' + error.message);
+      toastService.error('Error', 'Error al guardar: ' + error.message);
     } finally {
       setSaving(false);
     }

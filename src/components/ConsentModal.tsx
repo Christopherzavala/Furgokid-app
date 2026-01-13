@@ -3,7 +3,8 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import Constants from 'expo-constants';
+import React, { useEffect, useState } from 'react';
 import {
   Linking,
   Modal,
@@ -30,6 +31,28 @@ const ConsentModal: React.FC<ConsentModalProps> = ({ visible, onComplete }) => {
     notifications: true,
   });
 
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+
+    const hydrate = async () => {
+      await consentService.initialize();
+      if (cancelled) return;
+      const current = consentService.getPreferences();
+      setPreferences({
+        analytics: Boolean(current.analyticsEnabled),
+        personalizedAds: Boolean(current.personalizedAdsEnabled),
+        location: Boolean(current.locationTrackingEnabled),
+        notifications: Boolean(current.pushNotificationsEnabled),
+      });
+    };
+
+    hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
   const handleAcceptAll = async () => {
     await consentService.acceptAll();
     onComplete(consentService.getPreferences());
@@ -53,12 +76,21 @@ const ConsentModal: React.FC<ConsentModalProps> = ({ visible, onComplete }) => {
     onComplete(consentService.getPreferences());
   };
 
+  const urls = {
+    privacyPolicy:
+      (Constants.expoConfig as any)?.extra?.privacyPolicyUrl ||
+      'https://christopherzavala.github.io/Furgokid-app/docs/privacy-policy.html',
+    termsOfService:
+      (Constants.expoConfig as any)?.extra?.termsOfServiceUrl ||
+      'https://christopherzavala.github.io/Furgokid-app/docs/terms-of-service.html',
+  };
+
   const openPrivacyPolicy = () => {
-    Linking.openURL('https://furgokid.com/privacy');
+    Linking.openURL(urls.privacyPolicy);
   };
 
   const openTerms = () => {
-    Linking.openURL('https://furgokid.com/terms');
+    Linking.openURL(urls.termsOfService);
   };
 
   if (showCustomize) {

@@ -96,11 +96,13 @@ class ConsentService {
       }
 
       this.initialized = true;
+      analyticsService.setEnabled?.(this.canTrackAnalytics());
       console.log('[Consent] Initialized');
       return this.preferences;
     } catch (error) {
       console.warn('[Consent] Init error:', error);
       this.initialized = true;
+      analyticsService.setEnabled?.(this.canTrackAnalytics());
       return this.preferences;
     }
   }
@@ -190,6 +192,7 @@ class ConsentService {
     await this.savePreferences();
     await this.addHistoryEntry('accept', changes);
 
+    analyticsService.setEnabled?.(true);
     analyticsService.trackCustomEvent('consent_accepted', { type: 'all' });
     console.log('[Consent] All accepted');
   }
@@ -213,6 +216,7 @@ class ConsentService {
     await this.savePreferences();
     await this.addHistoryEntry('accept', changes);
 
+    analyticsService.setEnabled?.(false);
     analyticsService.trackCustomEvent('consent_accepted', { type: 'required_only' });
     console.log('[Consent] Required only accepted');
   }
@@ -225,6 +229,10 @@ class ConsentService {
     this.preferences = { ...this.preferences, ...changes };
     await this.savePreferences();
     await this.addHistoryEntry('update', changes);
+
+    if (key === 'analyticsEnabled') {
+      analyticsService.setEnabled?.(Boolean(value));
+    }
 
     console.log(`[Consent] ${key} = ${value}`);
   }
@@ -240,6 +248,7 @@ class ConsentService {
     await this.savePreferences();
     await this.addHistoryEntry('withdraw', oldPrefs);
 
+    analyticsService.setEnabled?.(false);
     analyticsService.trackCustomEvent('consent_withdrawn', {});
     console.log('[Consent] All consent withdrawn');
   }

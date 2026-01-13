@@ -82,7 +82,10 @@ export default {
       adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
       adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
-      privacyPolicyUrl: 'https://christopherzavala.github.io/Furgokid-app/docs/PRIVACY_POLICY',
+      // Public web pages (GitHub Pages)
+      privacyPolicyUrl: 'https://christopherzavala.github.io/Furgokid-app/docs/privacy-policy.html',
+      termsOfServiceUrl:
+        'https://christopherzavala.github.io/Furgokid-app/docs/terms-of-service.html',
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_ENABLED: process.env.SENTRY_ENABLED,
       APP_VARIANT: process.env.APP_VARIANT || 'development',

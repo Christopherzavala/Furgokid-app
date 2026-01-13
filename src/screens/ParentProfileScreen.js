@@ -3,7 +3,6 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Button,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import toastService from '../services/toastService';
 
 export default function ParentProfileScreen({ navigation }) {
   const { user, updateUserProfile } = useAuth();
@@ -52,7 +52,7 @@ export default function ParentProfileScreen({ navigation }) {
       }
     } catch (error) {
       console.error('[ParentProfile] Error loading data:', error);
-      Alert.alert('Error', 'No se pudo cargar los datos del perfil');
+      toastService.error('Error', 'No se pudo cargar los datos del perfil');
     } finally {
       setLoading(false);
     }
@@ -60,27 +60,27 @@ export default function ParentProfileScreen({ navigation }) {
 
   const validateForm = () => {
     if (!childrenCount.trim() || isNaN(childrenCount) || parseInt(childrenCount, 10) < 1) {
-      Alert.alert('Error', 'Por favor ingresa un número válido de hijos');
+      toastService.error('Dato inválido', 'Por favor ingresa un número válido de hijos');
       return false;
     }
     if (!childrenNames.trim()) {
-      Alert.alert('Error', 'Por favor ingresa los nombres de tus hijos');
+      toastService.info('Falta información', 'Por favor ingresa los nombres de tus hijos');
       return false;
     }
     if (!childrenAges.trim()) {
-      Alert.alert('Error', 'Por favor ingresa las edades de tus hijos');
+      toastService.info('Falta información', 'Por favor ingresa las edades de tus hijos');
       return false;
     }
     if (!school.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el nombre del colegio');
+      toastService.info('Falta información', 'Por favor ingresa el nombre del colegio');
       return false;
     }
     if (!zone.trim()) {
-      Alert.alert('Error', 'Por favor ingresa tu zona');
+      toastService.info('Falta información', 'Por favor ingresa tu zona');
       return false;
     }
     if (!address.trim()) {
-      Alert.alert('Error', 'Por favor ingresa tu dirección');
+      toastService.info('Falta información', 'Por favor ingresa tu dirección');
       return false;
     }
     return true;
@@ -103,14 +103,14 @@ export default function ParentProfileScreen({ navigation }) {
       });
 
       if (result.success) {
-        Alert.alert('¡Éxito!', 'Perfil actualizado correctamente');
+        toastService.success('¡Éxito!', 'Perfil actualizado correctamente');
         navigation.goBack();
       } else {
-        Alert.alert('Error', 'No se pudo actualizar el perfil: ' + result.error);
+        toastService.error('Error', 'No se pudo actualizar el perfil: ' + result.error);
       }
     } catch (error) {
       console.error('[ParentProfile] Error saving:', error);
-      Alert.alert('Error', 'Ocurrió un error al guardar');
+      toastService.error('Error', 'Ocurrió un error al guardar');
     } finally {
       setSaving(false);
     }

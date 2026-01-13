@@ -16,6 +16,7 @@ import AdInterstitialManager from '../components/AdInterstitialManager';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import analyticsService from '../services/analyticsService';
+import toastService from '../services/toastService';
 
 export default function SearchScreen({ navigation }) {
   const { userProfile } = useAuth();
@@ -251,7 +252,7 @@ export default function SearchScreen({ navigation }) {
         } catch {
           // no-op
         }
-        Alert.alert('Error', 'No se pudo buscar coincidencias: ' + error.message);
+        toastService.error('Error', 'No se pudo buscar coincidencias: ' + error.message);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -276,7 +277,7 @@ export default function SearchScreen({ navigation }) {
       // Abrir WhatsApp
       const whatsappNumber = targetUser.whatsapp?.replace(/\D/g, ''); // Remover caracteres no numéricos
       if (!whatsappNumber) {
-        Alert.alert('Error', 'Este usuario no tiene número de WhatsApp disponible.');
+        toastService.error('Sin WhatsApp', 'Este usuario no tiene número de WhatsApp disponible.');
         return;
       }
 
@@ -309,7 +310,7 @@ export default function SearchScreen({ navigation }) {
       }
     } catch (error) {
       console.error('[Contact] Error:', error);
-      Alert.alert('Error', 'No se pudo abrir WhatsApp: ' + error.message);
+      toastService.error('Error', 'No se pudo abrir WhatsApp: ' + error.message);
     }
   };
 

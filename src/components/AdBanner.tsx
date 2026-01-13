@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import useConsent from '../hooks/useConsent';
 import admobService from '../services/admobService';
 import analyticsService from '../services/analyticsService';
 
@@ -17,13 +18,14 @@ const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreCl
 export const AdBanner: React.FC<AdBannerProps> = ({ unitId, screenName, style }) => {
   const adRef = useRef(null);
   const impressionTracked = useRef(false);
+  const { loading: consentLoading, hasAcceptedRequired, canShowPersonalizedAds } = useConsent();
 
   useEffect(() => {
-    if (!isExpoGo) {
+    if (!isExpoGo && !consentLoading && hasAcceptedRequired) {
       admobService.initialize();
       analyticsService.trackAdLoadAttempt('banner', screenName);
     }
-  }, [screenName]);
+  }, [screenName, consentLoading, hasAcceptedRequired]);
 
   if (isExpoGo) {
     return (
@@ -33,6 +35,10 @@ export const AdBanner: React.FC<AdBannerProps> = ({ unitId, screenName, style })
     );
   }
 
+  if (consentLoading || !hasAcceptedRequired) {
+    return null;
+  }
+
   return (
     <View style={[styles.container, style]}>
       <BannerAd
@@ -40,7 +46,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ unitId, screenName, style })
         unitId={unitId}
         size={BannerAdSize.FULL_BANNER}
         requestOptions={{
-          requestNonPersonalizedAdsOnly: false,
+          requestNonPersonalizedAdsOnly: !canShowPersonalizedAds,
           keywords: ['parenting', 'children', 'education', 'tracking'],
         }}
         onAdLoaded={() => {

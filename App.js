@@ -1,12 +1,16 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Toast from 'react-native-toast-message';
+import ConsentModal from './src/components/ConsentModal';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import LoadingView from './src/components/LoadingView';
 import { initSentry } from './src/config/sentry';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import ConsentPreferencesScreen from './src/screens/ConsentPreferencesScreen';
 import DriverProfileScreen from './src/screens/DriverProfileScreen';
 import DriverScreen from './src/screens/DriverScreen';
 import DriverVacancyScreen from './src/screens/DriverVacancyScreen';
@@ -20,7 +24,9 @@ import ParentProfileScreen from './src/screens/ParentProfileScreen';
 import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import analyticsService from './src/services/analyticsService';
+import consentService from './src/services/consentService';
 // import crashlyticsService from './src/services/crashlyticsService';
 // import firebasePerformanceService from './src/services/firebasePerformanceService';
 import { setScreen } from './src/config/sentry';
@@ -101,6 +107,8 @@ function Navigation() {
           <Stack.Screen name="DriverVacancy" component={DriverVacancyScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
+          <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
         </>
       ) : (
         <>
@@ -109,6 +117,8 @@ function Navigation() {
           <Stack.Screen name="ParentRequest" component={ParentRequestScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
+          <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
         </>
       )}
     </Stack.Navigator>
@@ -117,19 +127,50 @@ function Navigation() {
 
 export default function App() {
   const routeNameRef = useRef(null);
+  const [consentRefreshToken, setConsentRefreshToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const initConsent = async () => {
+      await consentService.initialize();
+      if (cancelled) return;
+      analyticsService.setEnabled(consentService.canTrackAnalytics());
+      setConsentRefreshToken((v) => v + 1);
+    };
+    initConsent();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const consentVisible = useMemo(() => {
+    return consentService.needsConsentPrompt();
+  }, [consentRefreshToken]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ErrorBoundary>
         <AuthProvider>
+          <ConsentModal
+            visible={consentVisible}
+            onComplete={() => {
+              // Force a rerender so consent-dependent gates update immediately
+              setConsentRefreshToken((v) => v + 1);
+            }}
+          />
           <NavigationContainer
             ref={navigationRef}
             onReady={() => {
               const routeName = navigationRef.getCurrentRoute()?.name;
               routeNameRef.current = routeName;
-              analyticsService.trackSessionStart();
+
+              if (consentService.canTrackAnalytics()) {
+                analyticsService.trackSessionStart();
+                if (routeName) {
+                  analyticsService.trackScreenView(routeName);
+                }
+              }
               if (routeName) {
-                analyticsService.trackScreenView(routeName);
                 setScreen(routeName); // Sentry screen tracking
               }
             }}
@@ -137,7 +178,9 @@ export default function App() {
               const previousRouteName = routeNameRef.current;
               const currentRouteName = navigationRef.getCurrentRoute()?.name;
               if (currentRouteName && previousRouteName !== currentRouteName) {
-                analyticsService.trackScreenView(currentRouteName);
+                if (consentService.canTrackAnalytics()) {
+                  analyticsService.trackScreenView(currentRouteName);
+                }
                 setScreen(currentRouteName); // Sentry screen tracking
               }
               routeNameRef.current = currentRouteName;
@@ -145,6 +188,7 @@ export default function App() {
           >
             <Navigation />
           </NavigationContainer>
+          <Toast />
         </AuthProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>

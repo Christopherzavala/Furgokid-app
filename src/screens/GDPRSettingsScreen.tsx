@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { deleteUserAccount, exportUserData, getUserDataSummary } from '../services/gdprService';
+import toastService from '../services/toastService';
 import logger from '../utils/logger';
 
 /**
@@ -45,7 +46,7 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       const summary = await getUserDataSummary(user.uid);
       setDataSummary(summary);
     } catch (error) {
-      Alert.alert('Error', 'No se pudo cargar el resumen de datos');
+      toastService.error('Error', 'No se pudo cargar el resumen de datos');
       logger.error('Failed to load data summary', { error });
     } finally {
       setSummaryLoading(false);
@@ -89,11 +90,14 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                 });
               }
 
-              Alert.alert('Datos Exportados', 'Tus datos han sido exportados exitosamente.');
+              toastService.success(
+                'Datos exportados',
+                'Tus datos han sido exportados exitosamente.'
+              );
 
               logger.info('User data exported', { userId: user.uid });
             } catch (error) {
-              Alert.alert('Error', 'No se pudo exportar los datos');
+              toastService.error('Error', 'No se pudo exportar los datos');
               logger.error('Failed to export user data', { error });
             } finally {
               setLoading(false);

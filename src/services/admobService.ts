@@ -53,12 +53,12 @@ class AdMobService {
     return TEST_IDS[adType.toUpperCase() as keyof typeof TEST_IDS];
   }
 
-  async loadInterstitialAd(adUnitIdOverride?: string): Promise<boolean> {
+  async loadInterstitialAd(adUnitIdOverride?: string, requestOptions?: any): Promise<boolean> {
     if (isExpoGo) return false;
 
     try {
       const adUnitId = adUnitIdOverride || this.getAdUnitId('interstitial');
-      const interstitialAd = InterstitialAd.createForAdRequest(adUnitId);
+      const interstitialAd = InterstitialAd.createForAdRequest(adUnitId, requestOptions);
       this.lastInterstitialAdUnitId = adUnitId;
 
       await new Promise<void>((resolve, reject) => {
@@ -169,12 +169,12 @@ class AdMobService {
     }
   }
 
-  async loadRewardedAd(adUnitIdOverride?: string): Promise<boolean> {
+  async loadRewardedAd(adUnitIdOverride?: string, requestOptions?: any): Promise<boolean> {
     if (isExpoGo) return false;
 
     try {
       const adUnitId = adUnitIdOverride || this.getAdUnitId('rewarded');
-      const rewardedAd = RewardedAd.createForAdRequest(adUnitId);
+      const rewardedAd = RewardedAd.createForAdRequest(adUnitId, requestOptions);
       this.lastRewardedAdUnitId = adUnitId;
 
       await new Promise<void>((resolve, reject) => {

@@ -4,7 +4,6 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Button,
   Platform,
   ScrollView,
@@ -19,6 +18,7 @@ import AdInterstitialManager from '../components/AdInterstitialManager';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import analyticsService from '../services/analyticsService';
+import toastService from '../services/toastService';
 
 // Constantes de datos
 const ZONES = ['Zona Norte', 'Zona Sur', 'Zona Oriente', 'Zona Centro', 'Zona Poniente'];
@@ -38,15 +38,15 @@ export default function ParentRequestScreen({ navigation }) {
 
   const validateForm = () => {
     if (!school.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el colegio');
+      toastService.info('Falta información', 'Por favor ingresa el colegio.');
       return false;
     }
     if (!zone) {
-      Alert.alert('Error', 'Por favor selecciona una zona');
+      toastService.info('Falta información', 'Por favor selecciona una zona.');
       return false;
     }
     if (!childrenCount || parseInt(childrenCount, 10) < 1) {
-      Alert.alert('Error', 'Por favor ingresa un número válido de hijos');
+      toastService.error('Dato inválido', 'Ingresa un número válido de hijos.');
       return false;
     }
     return true;
@@ -55,11 +55,22 @@ export default function ParentRequestScreen({ navigation }) {
   const handlePublish = async () => {
     if (!validateForm()) return;
 
+    // Funnel event: user starts creating a request (after basic validation)
+    try {
+      await analyticsService.trackCustomEvent('create_request_start', {
+        role: 'parent',
+        zone,
+        schedule,
+      });
+    } catch {
+      // no-op
+    }
+
     setLoading(true);
     try {
       // Agregar solicitud a Firestore
       const requestRef = collection(db, 'requests');
-      await addDoc(requestRef, {
+      const created = await addDoc(requestRef, {
         parentId: user.uid,
         parentName: userProfile?.displayName || user.email.split('@')[0],
         parentPhone: userProfile?.whatsapp || '',
@@ -76,10 +87,20 @@ export default function ParentRequestScreen({ navigation }) {
       // Track evento de negocio
       await analyticsService.trackParentRequest(school, zone, schedule);
 
-      Alert.alert(
-        '¡Éxito!',
-        'Tu solicitud ha sido publicada. Los conductores en tu zona la verán.'
-      );
+      // Funnel event: request creation completed
+      try {
+        await analyticsService.trackCustomEvent('create_request_complete', {
+          role: 'parent',
+          requestId: created?.id,
+          zone,
+          schedule,
+          childrenCount: parseInt(childrenCount, 10),
+        });
+      } catch {
+        // no-op
+      }
+
+      toastService.success('¡Publicado!', 'Los conductores en tu zona la verán.');
 
       // 💰 MONETIZACIÓN: Mostrar interstitial después de publicar
       try {
@@ -108,7 +129,7 @@ export default function ParentRequestScreen({ navigation }) {
       navigation.goBack();
     } catch (error) {
       console.error('[ParentRequest] Error:', error);
-      Alert.alert('Error', 'No se pudo publicar la solicitud: ' + error.message);
+      toastService.error('Error', `No se pudo publicar la solicitud: ${error.message}`);
     } finally {
       setLoading(false);
     }

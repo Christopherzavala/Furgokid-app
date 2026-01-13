@@ -1,12 +1,12 @@
 # 🚀 PRE-LAUNCH CHECKLIST - FurGoKid
 
 **Fecha Límite:** Enero 1, 2026  
-**Status:** Ready for Production  
-**Score:** 97/100 ⭐
+**Status:** Pre-launch hardening (P0/P1 en progreso)  
+**Score:** 97/100 ⭐ _(revisar P0 de auditoría)_
 
 ---
 
-## ✅ **CÓDIGO - 100% COMPLETO**
+## ✅ **CÓDIGO - BASE LISTA + HARDENING**
 
 - [x] TypeScript: 0 errors
 - [x] ESLint: 0 warnings
@@ -15,8 +15,16 @@
 - [x] Crashlytics: Configured
 - [x] Firebase Performance: Configured
 - [x] GitHub Actions: E2E + CodeQL
-- [x] GDPR/COPPA: Compliant
+- [x] GDPR/COPPA: Consent modal + gating base (App)
 - [x] AdMob: Test IDs configured
+
+### P0 desde Auditoría Big Tech (ver docs)
+
+- [ ] Sentry alerts (manual): [SRE_ALERTS_SETUP.md](./SRE_ALERTS_SETUP.md)
+- [ ] API key restrictions (manual): [SECURITY_ACTIONS_REQUIRED.md](./SECURITY_ACTIONS_REQUIRED.md)
+- [ ] Budget alerts (manual): [FIREBASE_BUDGET_ALERTS.md](./FIREBASE_BUDGET_ALERTS.md)
+- [ ] SLO/Runbook: [SLO.md](./SLO.md) y [INCIDENT_RUNBOOK.md](./INCIDENT_RUNBOOK.md)
+- [ ] Funnels: [ANALYTICS_FUNNELS.md](./ANALYTICS_FUNNELS.md)
 
 **Acción requerida:** ✅ NINGUNA - Todo listo
 

@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import toastService from '../services/toastService';
 import logger from '../utils/logger';
 import secureStorage from '../utils/secureStorage';
 
@@ -130,41 +131,38 @@ const ParentalConsentScreen: React.FC<ParentalConsentScreenProps> = ({ navigatio
   const handleSubmitConsent = async () => {
     // Validation
     if (!parentName.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el nombre del padre/tutor');
+      toastService.info('Falta información', 'Por favor ingresa el nombre del padre/tutor');
       return;
     }
 
     if (!parentEmail.trim() || !isValidEmail(parentEmail)) {
-      Alert.alert('Error', 'Por favor ingresa un email válido del padre/tutor');
+      toastService.error('Email inválido', 'Por favor ingresa un email válido del padre/tutor');
       return;
     }
 
     if (!childName.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el nombre del niño/a');
+      toastService.info('Falta información', 'Por favor ingresa el nombre del niño/a');
       return;
     }
 
     if (!childDateOfBirth.trim() || !isValidDate(childDateOfBirth)) {
-      Alert.alert(
-        'Error',
-        'Por favor ingresa la fecha de nacimiento del niño/a (formato: AAAA-MM-DD)'
-      );
+      toastService.error('Fecha inválida', 'Ingresa la fecha de nacimiento (formato: AAAA-MM-DD)');
       return;
     }
 
     const age = calculateAge(childDateOfBirth);
     if (age < 0 || age > 18) {
-      Alert.alert('Error', 'La edad del niño/a debe estar entre 0 y 18 años');
+      toastService.error('Edad inválida', 'La edad del niño/a debe estar entre 0 y 18 años');
       return;
     }
 
     if (!agreedToTerms) {
-      Alert.alert('Error', 'Debes aceptar los Términos de Servicio');
+      toastService.info('Requerido', 'Debes aceptar los Términos de Servicio');
       return;
     }
 
     if (!agreedToPrivacy) {
-      Alert.alert('Error', 'Debes aceptar la Política de Privacidad');
+      toastService.info('Requerido', 'Debes aceptar la Política de Privacidad');
       return;
     }
 
@@ -190,7 +188,10 @@ const ParentalConsentScreen: React.FC<ParentalConsentScreenProps> = ({ navigatio
         ]
       );
     } catch (error) {
-      Alert.alert('Error', 'No pudimos guardar el consentimiento. Por favor intenta nuevamente.');
+      toastService.error(
+        'Error',
+        'No pudimos guardar el consentimiento. Por favor intenta nuevamente.'
+      );
     } finally {
       setLoading(false);
     }

@@ -1,19 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import {
-  Alert,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AdBannerComponent from '../components/AdBannerComponent';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import { startBackgroundLocation, stopBackgroundLocation } from '../services/backgroundLocation';
+import toastService from '../services/toastService';
 
 const DriverScreen = ({ navigation }) => {
   const { user, userProfile, signOut } = useAuth();
@@ -37,14 +30,11 @@ const DriverScreen = ({ navigation }) => {
       } else {
         await startBackgroundLocation();
         setIsRouteActive(true);
-        Alert.alert(
-          'Ruta Iniciada',
-          'Tu ubicación ahora es visible para los padres en tiempo real.'
-        );
+        toastService.success('Ruta iniciada', 'Tu ubicación ahora es visible para los padres.');
       }
     } catch (error) {
       console.error('Error toggling route:', error);
-      Alert.alert('Error', 'No se pudo iniciar el GPS: ' + error.message);
+      toastService.error('Error GPS', 'No se pudo iniciar el GPS: ' + error.message);
     }
   };
 
@@ -57,9 +47,9 @@ const DriverScreen = ({ navigation }) => {
         onPress: async () => {
           const result = await signOut();
           if (result.success) {
-            Alert.alert('Sesión cerrada', 'Has cerrado sesión correctamente.');
+            toastService.success('Sesión cerrada', 'Has cerrado sesión correctamente.');
           } else {
-            Alert.alert('Error', 'No se pudo cerrar sesión: ' + result.error);
+            toastService.error('Error', 'No se pudo cerrar sesión: ' + result.error);
           }
         },
       },
@@ -78,6 +68,15 @@ const DriverScreen = ({ navigation }) => {
             <Text style={styles.headerSubtitle}>{user?.email?.split('@')[0] || 'Conductor'}</Text>
           </View>
           <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate('Settings')}
+              accessible={true}
+              accessibilityLabel="Abrir configuración"
+              accessibilityRole="button"
+            >
+              <Ionicons name="settings-outline" size={24} color="#fff" />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.profileButton}
               onPress={() => navigation.navigate('DriverProfile')}
@@ -159,10 +158,14 @@ const DriverScreen = ({ navigation }) => {
             message="No hay estudiantes en tu lista por el momento."
           />
         ) : (
-          <ScrollView>
-            {/* Student list will go here */}
-            <Text>Lista de estudiantes...</Text>
-          </ScrollView>
+          <FlatList
+            data={students}
+            keyExtractor={(item, index) => String(item?.id ?? index)}
+            style={styles.list}
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item }) => <Text>{item?.name ?? 'Estudiante'}</Text>}
+            showsVerticalScrollIndicator={false}
+          />
         )}
 
         {/* BANNER AD - MONETIZACIÓN */}
@@ -209,6 +212,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
+  settingsButton: {
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+  },
   profileButton: {
     padding: 10,
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -222,6 +230,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  list: {
+    flex: 1,
+  },
+  listContainer: {
+    paddingBottom: 20,
   },
   bigButton: {
     flexDirection: 'row',
