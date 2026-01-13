@@ -15,9 +15,16 @@
  * - Crash-free sessions = 20-30% more AdMob revenue
  */
 
-import perf from '@react-native-firebase/perf';
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
+
+let perfModule: any = null;
+try {
+  // Optional dependency: only available in bare RN / dev-client with native module installed
+  perfModule = require('@react-native-firebase/perf').default;
+} catch {
+  perfModule = null;
+}
 
 interface CustomMetrics {
   [key: string]: number;
@@ -37,8 +44,14 @@ class FirebasePerformanceService {
    */
   async initialize(): Promise<void> {
     try {
+      if (!perfModule) {
+        logger.info('Firebase Performance not available (native module missing)');
+        this.isEnabled = false;
+        return;
+      }
+
       // Enable performance collection
-      await perf().setPerformanceCollectionEnabled(true);
+      await perfModule().setPerformanceCollectionEnabled(true);
 
       this.isEnabled = true;
 
@@ -65,7 +78,8 @@ class FirebasePerformanceService {
     if (!this.isEnabled) return;
 
     try {
-      const trace = await perf().startTrace(traceName);
+      if (!perfModule) return;
+      const trace = await perfModule().startTrace(traceName);
 
       // Add custom attributes
       if (attributes) {
@@ -362,7 +376,8 @@ class FirebasePerformanceService {
     if (!this.isEnabled) return null;
 
     try {
-      const metric = await perf().newHttpMetric(url, httpMethod);
+      if (!perfModule) return null;
+      const metric = await perfModule().newHttpMetric(url, httpMethod);
       return metric;
     } catch (error) {
       logger.error('Failed to create HTTP metric', { error });

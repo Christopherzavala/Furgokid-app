@@ -71,7 +71,7 @@ jobs:
     name: Build Preview (Android)
     runs-on: ubuntu-latest
     needs: [validate]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && secrets.EAS_TOKEN != ''
 
     steps:
       - name: Checkout repository

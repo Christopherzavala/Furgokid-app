@@ -9,9 +9,16 @@
  * FREE tier: Unlimited crash reports
  */
 
-import crashlytics from '@react-native-firebase/crashlytics';
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
+
+let crashlyticsModule: any = null;
+try {
+  // Optional dependency: only available in bare RN / dev-client with native module installed
+  crashlyticsModule = require('@react-native-firebase/crashlytics').default;
+} catch {
+  crashlyticsModule = null;
+}
 
 interface CrashlyticsMetrics {
   crashFreeUsers: number;
@@ -29,8 +36,14 @@ class CrashlyticsService {
    */
   async initialize(): Promise<void> {
     try {
+      if (!crashlyticsModule) {
+        logger.info('Crashlytics not available (native module missing)');
+        this.isEnabled = false;
+        return;
+      }
+
       // Enable Crashlytics collection
-      await crashlytics().setCrashlyticsCollectionEnabled(true);
+      await crashlyticsModule().setCrashlyticsCollectionEnabled(true);
 
       this.isEnabled = true;
 
@@ -52,9 +65,11 @@ class CrashlyticsService {
    */
   private async setDefaultAttributes(): Promise<void> {
     try {
-      await crashlytics().setAttribute('platform', Platform.OS);
-      await crashlytics().setAttribute('platform_version', String(Platform.Version));
-      await crashlytics().setAttribute('app_version', '1.0.0'); // Update from package.json
+      if (!crashlyticsModule) return;
+
+      await crashlyticsModule().setAttribute('platform', Platform.OS);
+      await crashlyticsModule().setAttribute('platform_version', String(Platform.Version));
+      await crashlyticsModule().setAttribute('app_version', '1.0.0'); // Update from package.json
     } catch (error) {
       logger.error('Failed to set Crashlytics attributes', { error });
     }
@@ -68,7 +83,8 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
-      await crashlytics().setUserId(userId);
+      if (!crashlyticsModule) return;
+      await crashlyticsModule().setUserId(userId);
       logger.debug('Crashlytics user ID set', { userId });
     } catch (error) {
       logger.error('Failed to set Crashlytics user ID', { error });
@@ -83,7 +99,8 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
-      await crashlytics().setAttribute('user_type', userType);
+      if (!crashlyticsModule) return;
+      await crashlyticsModule().setAttribute('user_type', userType);
 
       // Revenue-critical: Track which user type crashes more
       // Parents = higher AdMob value (more engaged)
@@ -103,15 +120,17 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
+      if (!crashlyticsModule) return;
+
       // Add context attributes
       if (context) {
         for (const [key, value] of Object.entries(context)) {
-          await crashlytics().setAttribute(key, String(value));
+          await crashlyticsModule().setAttribute(key, String(value));
         }
       }
 
       // Record non-fatal error
-      await crashlytics().recordError(error);
+      await crashlyticsModule().recordError(error);
 
       logger.warn('Non-fatal error logged to Crashlytics', {
         error: error.message,
@@ -130,8 +149,9 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
+      if (!crashlyticsModule) return;
       // Set event as breadcrumb for crash context
-      await crashlytics().log(`Event: ${eventName} ${JSON.stringify(params || {})}`);
+      await crashlyticsModule().log(`Event: ${eventName} ${JSON.stringify(params || {})}`);
 
       logger.debug('Event logged to Crashlytics', { eventName, params });
     } catch (error) {
@@ -157,10 +177,11 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
+      if (!crashlyticsModule) return;
       const entries = Object.entries(attributes);
       for (const [key, value] of entries) {
         if (value !== undefined) {
-          await crashlytics().setAttribute(key, String(value));
+          await crashlyticsModule().setAttribute(key, String(value));
         }
       }
 
@@ -176,7 +197,8 @@ class CrashlyticsService {
    */
   async testCrash(): Promise<void> {
     if (__DEV__) {
-      crashlytics().crash();
+      if (!crashlyticsModule) return;
+      crashlyticsModule().crash();
     } else {
       logger.warn('testCrash() called in production - ignoring');
     }
@@ -201,13 +223,14 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
-      await crashlytics().setAttribute('ad_error_type', errorType);
-      await crashlytics().setAttribute('ad_unit_id', adUnitId);
+      if (!crashlyticsModule) return;
+      await crashlyticsModule().setAttribute('ad_error_type', errorType);
+      await crashlyticsModule().setAttribute('ad_unit_id', adUnitId);
 
       if (error) {
-        await crashlytics().recordError(error);
+        await crashlyticsModule().recordError(error);
       } else {
-        await crashlytics().log(`AdMob Error: ${errorType} for ${adUnitId}`);
+        await crashlyticsModule().log(`AdMob Error: ${errorType} for ${adUnitId}`);
       }
 
       logger.error('AdMob error logged', { errorType, adUnitId, error });
@@ -224,8 +247,9 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
-      await crashlytics().setAttribute('route_id', routeId);
-      await crashlytics().log(`Route Error: ${errorMessage}`);
+      if (!crashlyticsModule) return;
+      await crashlyticsModule().setAttribute('route_id', routeId);
+      await crashlyticsModule().log(`Route Error: ${errorMessage}`);
 
       logger.error('Route error logged', { routeId, errorMessage });
     } catch (error) {
@@ -241,9 +265,10 @@ class CrashlyticsService {
     if (!this.isEnabled) return;
 
     try {
-      await crashlytics().setAttribute('payment_amount', String(amount));
-      await crashlytics().setAttribute('payment_currency', currency);
-      await crashlytics().log(`Payment Error: ${errorMessage}`);
+      if (!crashlyticsModule) return;
+      await crashlyticsModule().setAttribute('payment_amount', String(amount));
+      await crashlyticsModule().setAttribute('payment_currency', currency);
+      await crashlyticsModule().log(`Payment Error: ${errorMessage}`);
 
       logger.error('Payment error logged', { amount, currency, errorMessage });
     } catch (error) {
