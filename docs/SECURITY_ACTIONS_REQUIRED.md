@@ -7,7 +7,7 @@ Estas acciones se realizan en consola (no por código).
 1. Ir a Google Cloud Console → APIs & Services → Credentials.
 2. Ubicar la key usada por Firebase (Web API Key).
 3. **Application restrictions**:
-   - Android apps: agregar `Com.Furgokid.App` + SHA-1 del keystore.
+   - Android apps: agregar `com.furgokid.app` + SHA-1 del keystore.
    - iOS apps (si aplica): bundle id.
 4. **API restrictions**:
    - Restringir a APIs necesarias (Firebase Auth/Firestore/etc.).

@@ -37,7 +37,7 @@ Guía rápida y actualizada: ver [docs/SECURITY_ACTIONS_REQUIRED.md](SECURITY_AC
 
    - Type: **Android apps**
    - Click "Add an Android app"
-   - Package name: `Com.Furgokid.App`
+   - Package name: `com.furgokid.app`
    - SHA-1 certificate fingerprint:
      - Para debug: Obtener con `keytool -list -v -keystore ~/.android/debug.keystore`
      - Para production: Lo genera Google Play (Play Console → Setup → App integrity)
@@ -47,7 +47,7 @@ Guía rápida y actualizada: ver [docs/SECURITY_ACTIONS_REQUIRED.md](SECURITY_AC
 
    - Type: **iOS apps**
    - Click "Add an iOS app"
-   - Bundle ID: `Com.Furgokid.App`
+   - Bundle ID: `com.furgokid.app`
    - App Store ID: (dejar vacío por ahora, agregar después del submit)
    - Team ID: (encontrar en Apple Developer Portal)
    - Click "Save"

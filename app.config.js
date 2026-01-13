@@ -4,12 +4,16 @@ import 'dotenv/config';
  * IMPORTANTE - SEGURIDAD:
  *
  * FIREBASE API KEY RESTRICTIONS (Configurar en Firebase Console):
- * - Android: Restringir a package name 'Com.Furgokid.App'
- * - iOS: Restringir a bundle ID 'Com.Furgokid.App'
+ * - Android: Restringir a package name 'com.furgokid.app'
+ * - iOS: Restringir a bundle ID 'com.furgokid.app'
  * - Web: Restringir a dominios autorizados
  *
  * Ir a: Firebase Console → Project Settings → General → Web API Key → Application restrictions
  */
+
+const admobAndroidAppId = process.env.ADMOB_ANDROID_APP_ID;
+const admobIosAppId = process.env.ADMOB_IOS_APP_ID;
+const enableAdmobPlugin = Boolean(admobAndroidAppId && admobIosAppId);
 
 export default {
   expo: {
@@ -29,7 +33,7 @@ export default {
     jsEngine: 'hermes',
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'Com.Furgokid.App',
+      bundleIdentifier: 'com.furgokid.app',
       jsEngine: 'hermes',
     },
     android: {
@@ -37,7 +41,7 @@ export default {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#FFFFFF',
       },
-      package: 'Com.Furgokid.App',
+      package: 'com.furgokid.app',
       jsEngine: 'hermes',
       enableProguardInReleaseBuilds: true,
       enableShrinkResourcesInReleaseBuilds: true,
@@ -62,13 +66,17 @@ export default {
         },
       ],
       'expo-font',
-      [
-        'react-native-google-mobile-ads',
-        {
-          androidAppId: 'ca-app-pub-6159996738450051~7339939476',
-          iosAppId: 'ca-app-pub-6159996738450051~7339939476',
-        },
-      ],
+      ...(enableAdmobPlugin
+        ? [
+            [
+              'react-native-google-mobile-ads',
+              {
+                androidAppId: admobAndroidAppId,
+                iosAppId: admobIosAppId,
+              },
+            ],
+          ]
+        : []),
     ],
     extra: {
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -77,8 +85,8 @@ export default {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      admobAndroidAppId: 'ca-app-pub-6159996738450051~7339939476',
-      admobIosAppId: 'ca-app-pub-6159996738450051~7339939476',
+      admobAndroidAppId: admobAndroidAppId || '',
+      admobIosAppId: admobIosAppId || '',
       adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
       adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,

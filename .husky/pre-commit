@@ -33,14 +33,21 @@ if git diff --cached --name-only | grep -q "^\.env$"; then
 fi
 
 # Verificar que no haya API keys hardcodeadas
-if git diff --cached -U0 | grep -E "(AIza[0-9A-Za-z_-]{35}|AAAA[0-9A-Za-z_:-]{100,}|ca-app-pub-[0-9]{16})"; then
-  echo "⚠️  WARNING: Se detectaron posibles API keys en el código"
-  echo "Verifica que no estés hardcodeando secrets"
-  read -p "¿Continuar de todos modos? (y/N): " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+if [ "$ALLOW_POSSIBLE_KEYS" != "1" ]; then
+  # Excluir archivos que normalmente contienen API keys públicas o textos (evita falsos positivos)
+  # - google-services.json / GoogleService-Info.plist: contienen config pública de Firebase
+  # - docs/**: documentación puede incluir ejemplos/formatos
+  if git diff --cached -U0 -- . ':(exclude)google-services.json' ':(exclude)**/GoogleService-Info.plist' ':(exclude)docs/**' \
+    | grep -E '^\+' \
+    | grep -v -E '^\+\+\+' \
+    | grep -E "(AIza[0-9A-Za-z_-]{35}|AAAA[0-9A-Za-z_:-]{100,}|ca-app-pub-[0-9]{16})"; then
+    echo "❌ ERROR: Se detectaron posibles API keys hardcodeadas en cambios staged"
+    echo "Revisa y elimina keys del código (usa .env / EAS Secrets / GitHub Secrets)."
+    echo "Si es intencional (no recomendado), reintenta con: ALLOW_POSSIBLE_KEYS=1 git commit ..."
     exit 1
   fi
+else
+  echo "⚠️  WARNING: ALLOW_POSSIBLE_KEYS=1 habilitado; se omitió bloqueo por posibles keys"
 fi
 
 echo "✅ Validación de seguridad completada"

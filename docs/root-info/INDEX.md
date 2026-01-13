@@ -46,6 +46,7 @@ Esta carpeta contiene copias “centralizadas” de los archivos informativos qu
 
 - [INSTRUCCIONES_PRODUCTION_BUILD.md](INSTRUCCIONES_PRODUCTION_BUILD.md)
 - [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+- [POST_MERGE_CHECKLIST.md](../POST_MERGE_CHECKLIST.md)
 
 ## Reparaciones
 

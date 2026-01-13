@@ -62,8 +62,8 @@ const PRODUCTION_IDS = {
  * IMPORTANTE - SEGURIDAD:
  *
  * FIREBASE API KEY RESTRICTIONS (Configurar en Firebase Console):
- * - Android: Restringir a package name 'Com.Furgokid.App'
- * - iOS: Restringir a bundle ID 'Com.Furgokid.App'
+ * - Android: Restringir a package name 'com.furgokid.app'
+ * - iOS: Restringir a bundle ID 'com.furgokid.app'
  * - Web: Restringir a dominios autorizados
  *
  * Ir a: Firebase Console → Project Settings → General → Web API Key → Application restrictions
@@ -87,13 +87,13 @@ const PRODUCTION_IDS = {
    **Para Android:**
 
    - Tipo: Android apps
-   - Package name: `Com.Furgokid.App`
+   - Package name: `com.furgokid.app`
    - SHA-1: (obtener del keystore de Google Play)
 
    **Para iOS:**
 
    - Tipo: iOS apps
-   - Bundle ID: `Com.Furgokid.App`
+   - Bundle ID: `com.furgokid.app`
 
    **Para Web (si aplica):**
 

@@ -18,11 +18,11 @@
 
 ### Infrastructure (97/100)
 
-- [x] Crashlytics configured
-- [x] Firebase Performance configured
+- [x] Sentry configured (error tracking)
+- [x] Performance monitoring (fallback service; Firebase Perf optional)
 - [x] GitHub Actions CI/CD
 - [x] CodeQL security scanning
-- [x] E2E tests ready (automated on GitHub Actions)
+- [x] E2E tests ready (manual via workflow_dispatch)
 
 ### Compliance (95/100)
 
@@ -486,9 +486,9 @@ npm run build:production
 
 ### Development
 
-- **GitHub Actions:** https://github.com/YOUR_USERNAME/furgokid/actions
-- **CodeQL:** https://github.com/YOUR_USERNAME/furgokid/security/code-scanning
-- **Codecov:** https://codecov.io/gh/YOUR_USERNAME/furgokid
+- **GitHub Actions:** https://github.com/Christopherzavala/Furgokid-app/actions
+- **CodeQL:** https://github.com/Christopherzavala/Furgokid-app/security/code-scanning
+- **Codecov:** https://app.codecov.io/gh/Christopherzavala/Furgokid-app
 
 ---
 
@@ -522,8 +522,8 @@ npm run build:production
 ✅ Security: Audit passed  
 ✅ Monetization: AdMob configured  
 ✅ Compliance: GDPR/COPPA complete  
-✅ Infrastructure: Crashlytics + Firebase Perf  
-✅ CI/CD: GitHub Actions + E2E tests  
+✅ Infrastructure: Sentry + performance monitoring  
+✅ CI/CD: GitHub Actions (E2E manual)  
 ✅ Score: **97/100** 🏆
 
 **Next Steps:**
