@@ -141,12 +141,14 @@ Resultado esperado: **PEGI 3 / Everyone**
 ### IDs de AdMob (ya configurados)
 
 ```
-Publisher ID: pub-6159996738450051
-App ID: ca-app-pub-6159996738450051~7339939476
-Banner: ca-app-pub-6159996738450051/5061917035
-Interstitial: ca-app-pub-6159996738450051/9969972240
-Rewarded: ca-app-pub-6159996738450051/5608055408
+Publisher ID: pub-XXXXXXXXXXXXXXXX
+App ID: ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy
+Banner: ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+Interstitial: ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+Rewarded: ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
 ```
+
+Nota: los IDs reales deben ir en variables de entorno/EAS Secrets (no en el repo).
 
 ---
 

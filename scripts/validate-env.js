@@ -4,6 +4,38 @@
  */
 
 const chalk = require('chalk');
+require('dotenv').config({ override: false });
+
+function parseArgs(argv) {
+  const options = {
+    mode: null,
+    requireProdAds: false,
+    generateExample: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--generate-example') {
+      options.generateExample = true;
+      continue;
+    }
+    if (arg === '--mode') {
+      options.mode = String(argv[i + 1] || '').toLowerCase();
+      i++;
+      continue;
+    }
+    if (arg === '--production') {
+      options.mode = 'production';
+      continue;
+    }
+    if (arg === '--require-prod-ads') {
+      options.requireProdAds = true;
+      continue;
+    }
+  }
+
+  return options;
+}
 
 // Required environment variables
 const REQUIRED_VARS = {
@@ -53,6 +85,44 @@ const REQUIRED_VARS = {
     warning: 'Using TEST ID - change before production!',
   },
 
+  // Ad unit IDs (recommended in dev, required for production ads mode)
+  BANNER_AD_UNIT_ID: {
+    description: 'AdMob Android Banner Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: true,
+  },
+  INTERSTITIAL_AD_UNIT_ID: {
+    description: 'AdMob Android Interstitial Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: true,
+  },
+  REWARDED_AD_UNIT_ID: {
+    description: 'AdMob Android Rewarded Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: true,
+  },
+  BANNER_AD_UNIT_IOS: {
+    description: 'AdMob iOS Banner Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: false,
+  },
+  INTERSTITIAL_AD_UNIT_IOS: {
+    description: 'AdMob iOS Interstitial Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: false,
+  },
+  REWARDED_AD_UNIT_IOS: {
+    description: 'AdMob iOS Rewarded Ad Unit ID',
+    example: 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX',
+    critical: false,
+    requiresProdAds: false,
+  },
+
   // Google Maps
   GOOGLE_MAPS_API_KEY: {
     description: 'Google Maps API Key',
@@ -65,6 +135,7 @@ const REQUIRED_VARS = {
     description: 'Sentry DSN for error tracking',
     example: 'https://[key]@[org].ingest.sentry.io/[project]',
     critical: false,
+    requiresSentry: true,
   },
   SENTRY_ENABLED: {
     description: 'Enable Sentry error tracking',
@@ -79,23 +150,53 @@ const REQUIRED_VARS = {
 };
 
 class EnvValidator {
-  constructor() {
+  constructor(options = {}) {
     this.errors = [];
     this.warnings = [];
     this.missing = [];
+    this.options = options;
   }
 
   /**
    * Validate all environment variables
    */
   validate() {
+    const mode = String(this.options.mode || '').toLowerCase();
+    const isProductionValidation = mode === 'prod' || mode === 'production';
+
     console.log(chalk.blue('\n🔍 Validating Environment Variables...\n'));
+    if (isProductionValidation) {
+      console.log(chalk.gray('Mode: production (stricter checks enabled)\n'));
+    }
+
+    const adsModeRaw = String(process.env.EXPO_PUBLIC_ADS_MODE || '').toLowerCase();
+    const adsForceTestRaw = String(process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '').toLowerCase();
+    const adsMode = adsModeRaw || 'test';
+    const adsForceTest =
+      adsForceTestRaw === '1' || adsForceTestRaw === 'true' || adsForceTestRaw === 'yes';
+    const requireProdAds =
+      (this.options.requireProdAds ||
+        isProductionValidation ||
+        adsMode === 'prod' ||
+        adsMode === 'production') &&
+      !adsForceTest;
+
+    const sentryEnabledRaw = String(process.env.SENTRY_ENABLED || '').toLowerCase();
+    const sentryEnabled =
+      sentryEnabledRaw === '1' || sentryEnabledRaw === 'true' || sentryEnabledRaw === 'yes';
+    const requireSentryDsn = isProductionValidation && sentryEnabled;
 
     Object.entries(REQUIRED_VARS).forEach(([key, config]) => {
       const value = process.env[key];
 
+      const isCriticalNow = Boolean(
+        config.critical ||
+          (config.requiresProdAds && requireProdAds) ||
+          (config.requiresSentry && requireSentryDsn)
+      );
+
       if (!value) {
-        if (config.critical) {
+        if (isCriticalNow) {
           this.errors.push({
             key,
             message: `Missing critical variable: ${config.description}`,
@@ -220,14 +321,12 @@ class EnvValidator {
 
 // Run if called directly
 if (require.main === module) {
-  const validator = new EnvValidator();
-
   const args = process.argv.slice(2);
-  if (args.includes('--generate-example')) {
-    validator.generateExample();
-  } else {
-    validator.validate();
-  }
+  const options = parseArgs(args);
+  const validator = new EnvValidator(options);
+
+  if (options.generateExample) validator.generateExample();
+  else validator.validate();
 }
 
 module.exports = EnvValidator;

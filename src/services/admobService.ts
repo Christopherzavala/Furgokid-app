@@ -1,4 +1,5 @@
 ﻿import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { Platform } from 'react-native';
 import MobileAds, {
   AdEventType,
   InterstitialAd,
@@ -13,11 +14,50 @@ const TEST_IDS = {
   REWARDED: 'ca-app-pub-3940256099942544/5224354917',
 };
 
-// Production IDs - usar variables de entorno configuradas en EAS Secrets
-const PRODUCTION_IDS = {
-  BANNER: 'ca-app-pub-6159996738450051/5061917035',
-  INTERSTITIAL: 'ca-app-pub-6159996738450051/9969972240',
-  REWARDED: 'ca-app-pub-6159996738450051/5608055408',
+type AdType = 'banner' | 'interstitial' | 'rewarded';
+
+const getExtra = () =>
+  Constants?.expoConfig?.extra ||
+  (Constants as any)?.manifest?.extra ||
+  (Constants as any)?.manifest2?.extra ||
+  {};
+
+const getAdsRuntimeConfig = () => {
+  const extra = getExtra();
+  const adsModeRaw = String(extra.adsMode || '').toLowerCase();
+  const forceTestRaw = String(extra.adsForceTest || '').toLowerCase();
+
+  const forceTest = forceTestRaw === '1' || forceTestRaw === 'true' || forceTestRaw === 'yes';
+  const adsMode = adsModeRaw || 'test';
+
+  return {
+    forceTest,
+    isProdMode: adsMode === 'prod' || adsMode === 'production',
+    extra,
+  };
+};
+
+const getProductionAdUnitId = (adType: AdType): string | null => {
+  const { extra } = getAdsRuntimeConfig();
+  const isIos = Platform.OS === 'ios';
+
+  if (adType === 'banner') {
+    return (
+      String((isIos ? extra.admobBannerAdUnitIdIos : extra.admobBannerAdUnitIdAndroid) || '') ||
+      null
+    );
+  }
+  if (adType === 'interstitial') {
+    return (
+      String(
+        (isIos ? extra.admobInterstitialAdUnitIdIos : extra.admobInterstitialAdUnitIdAndroid) || ''
+      ) || null
+    );
+  }
+  return (
+    String((isIos ? extra.admobRewardedAdUnitIdIos : extra.admobRewardedAdUnitIdAndroid) || '') ||
+    null
+  );
 };
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
@@ -26,7 +66,6 @@ class AdMobService {
   private initialized = false;
   private interstitialAd: InterstitialAd | null = null;
   private rewardedAd: RewardedAd | null = null;
-  private isProduction = process.env.NODE_ENV === 'production';
   private lastInterstitialAdUnitId: string | null = null;
   private lastRewardedAdUnitId: string | null = null;
 
@@ -46,11 +85,14 @@ class AdMobService {
     }
   }
 
-  private getAdUnitId(adType: 'banner' | 'interstitial' | 'rewarded'): string {
-    if (this.isProduction) {
-      return PRODUCTION_IDS[adType.toUpperCase() as keyof typeof PRODUCTION_IDS];
+  private getAdUnitId(adType: AdType): string | null {
+    const { forceTest, isProdMode } = getAdsRuntimeConfig();
+    const useTest = forceTest || !isProdMode;
+    if (useTest) {
+      return TEST_IDS[adType.toUpperCase() as keyof typeof TEST_IDS];
     }
-    return TEST_IDS[adType.toUpperCase() as keyof typeof TEST_IDS];
+
+    return getProductionAdUnitId(adType);
   }
 
   async loadInterstitialAd(adUnitIdOverride?: string, requestOptions?: any): Promise<boolean> {
@@ -58,6 +100,10 @@ class AdMobService {
 
     try {
       const adUnitId = adUnitIdOverride || this.getAdUnitId('interstitial');
+      if (!adUnitId) {
+        console.warn('[AdMob] Interstitial adUnitId missing (prod ads mode). Skipping load.');
+        return false;
+      }
       const interstitialAd = InterstitialAd.createForAdRequest(adUnitId, requestOptions);
       this.lastInterstitialAdUnitId = adUnitId;
 
@@ -174,6 +220,10 @@ class AdMobService {
 
     try {
       const adUnitId = adUnitIdOverride || this.getAdUnitId('rewarded');
+      if (!adUnitId) {
+        console.warn('[AdMob] Rewarded adUnitId missing (prod ads mode). Skipping load.');
+        return false;
+      }
       const rewardedAd = RewardedAd.createForAdRequest(adUnitId, requestOptions);
       this.lastRewardedAdUnitId = adUnitId;
 
@@ -267,7 +317,8 @@ class AdMobService {
   }
 
   isProductionAds(): boolean {
-    return this.isProduction;
+    const { forceTest, isProdMode } = getAdsRuntimeConfig();
+    return isProdMode && !forceTest;
   }
 
   reset(): void {

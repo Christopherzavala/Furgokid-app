@@ -57,9 +57,24 @@ EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
-EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_maps_api_key
-EXPO_PUBLIC_ADMOB_BANNER_ID=your_banner_id
-EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID=your_interstitial_id
+GOOGLE_MAPS_API_KEY=your_maps_api_key
+
+ADMOB_ANDROID_APP_ID=ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy
+ADMOB_IOS_APP_ID=ca-app-pub-xxxxxxxxxxxxxxxx~zzzzzzzzzz
+
+# Ad unit IDs (Android)
+BANNER_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+INTERSTITIAL_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+REWARDED_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+
+# Optional iOS ad units (if different)
+BANNER_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+INTERSTITIAL_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+REWARDED_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+
+# Ads runtime flags
+EXPO_PUBLIC_ADS_MODE=test
+EXPO_PUBLIC_ADS_FORCE_TEST=1
 ```
 
 ## 🛠️ Debugging

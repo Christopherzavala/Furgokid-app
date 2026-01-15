@@ -182,7 +182,7 @@ const client = new AdMobApiClient({
 credentials: require('../admob-service-account.json')
 });
 
-const publisherId = 'pub-6159996738450051';
+const publisherId = 'pub-XXXXXXXXXXXXXXXX';
 const today = new Date().toISOString().split('T')[0];
 
 const report = await client.generateNetworkReport({
@@ -251,6 +251,7 @@ from: 'alerts@furgokid.app',
 to: 'admin@furgokid.app',
 subject: \`⚠️ Cost Alert: \${service}\`,
 html: \`
+
 <h2>Cost Alert</h2>
 <p><strong>Service:</strong> \${service}</p>
 <p><strong>Current Cost:</strong> $\${amount}</p>

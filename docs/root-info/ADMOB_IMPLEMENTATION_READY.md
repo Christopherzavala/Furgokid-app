@@ -271,29 +271,28 @@ RPM (Revenue Per Mille = $/1000 impresiones)
 
 ## ⚙️ CONFIGURACIÓN EN PRODUCCIÓN
 
-### PASO 1: Cambiar IDs Reales (Una vez en Play Store)
+### PASO 1: Configurar IDs en variables de entorno (EAS Secrets)
 
-En `src/config/AdMobConfig.js`:
+Los IDs reales **NO** deben ir en el repo. Configúralos como env vars (EAS Secrets) y quedan expuestos al runtime vía `app.config.js` → `expo.extra`.
 
 ```javascript
-const AD_UNITS = {
-  // Test IDs (ACTUAL - Expo Go)
-  BANNER_HOME: 'ca-app-pub-6159996738450051/5061917035', ✅ Reales
-
-  // Para cambiar a tus propios IDs:
-  // 1. Ve a AdMob Console
-  // 2. Create App + Ad Units
-  // 3. Copy IDs
-  // 4. Paste aquí
-  // 5. Re-build AAB con EAS
-};
+// Ejemplo (NO real):
+// ADMOB_ANDROID_APP_ID=ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy
+// ADMOB_IOS_APP_ID=ca-app-pub-xxxxxxxxxxxxxxxx~zzzzzzzzzz
+// BANNER_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+// INTERSTITIAL_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+// REWARDED_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+// (Opcional iOS separados)
+// BANNER_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+// INTERSTITIAL_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+// REWARDED_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
 ```
 
 ### PASO 2: Verificar App ID
 
 ```javascript
 const AD_CONFIG = {
-  APP_ID: 'ca-app-pub-6159996738450051~7339939476', ✅ Real
+  APP_ID: '(se obtiene desde expo.extra.admobAndroidAppId / admobIosAppId)',
 };
 ```
 

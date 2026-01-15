@@ -53,9 +53,15 @@ firebasePerformanceService.trackAdLoadComplete('banner', true);
 **AdMob Unit IDs (Production):**
 
 ```env
-EXPO_PUBLIC_ADMOB_BANNER_ANDROID=ca-app-pub-1234567890123456/1234567890
-EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID=ca-app-pub-1234567890123456/0987654321
-EXPO_PUBLIC_ADMOB_REWARDED_ANDROID=ca-app-pub-1234567890123456/1122334455
+# Android (required for production ads)
+BANNER_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+INTERSTITIAL_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+REWARDED_AD_UNIT_ID=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+
+# iOS (optional if you use different ad units on iOS)
+BANNER_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+INTERSTITIAL_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
+REWARDED_AD_UNIT_IOS=ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy
 ```
 
 ---

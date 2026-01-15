@@ -56,15 +56,10 @@ if (Test-Path "src/config/sentry.ts") {
 
 # Check eas.json
 $easJson = Get-Content "eas.json" -Raw | ConvertFrom-Json
-if ($easJson.build.production.env.SENTRY_DSN) {
-    $success += "✅ SENTRY_DSN configurado en eas.json"
-    if ($easJson.build.production.env.SENTRY_DSN -match "https://.*@.*sentry.io") {
-        $success += "✅ SENTRY_DSN formato válido"
-    } else {
-        $errors += "❌ SENTRY_DSN formato inválido"
-    }
+if ($easJson.build.production.env.PSObject.Properties.Name -contains "SENTRY_DSN") {
+    $warnings += "⚠️ SENTRY_DSN hardcodeado en eas.json (recomendado mover a EAS Secrets)"
 } else {
-    $errors += "❌ SENTRY_DSN NO configurado en eas.json"
+    $success += "✅ SENTRY_DSN no está hardcodeado en eas.json (usa Secrets/env)"
 }
 
 # Check app.config.js
@@ -90,18 +85,24 @@ if (Test-Path ".env") {
 # ============================================================================
 Write-Host "`n💰 2. ADMOB MONETIZATION" -ForegroundColor Yellow
 
-if ($appConfig -match "ca-app-pub-6159996738450051") {
-    $success += "✅ AdMob Production IDs en app.config.js"
+if (
+    ($appConfig -match "process\.env\.ADMOB_ANDROID_APP_ID") -and
+    ($appConfig -match "process\.env\.ADMOB_IOS_APP_ID") -and
+    ($appConfig -match "process\.env\.BANNER_AD_UNIT_ID") -and
+    ($appConfig -match "process\.env\.INTERSTITIAL_AD_UNIT_ID") -and
+    ($appConfig -match "process\.env\.REWARDED_AD_UNIT_ID")
+) {
+    $success += "✅ AdMob IDs configurados via env en app.config.js"
 } else {
-    $errors += "❌ AdMob usando TEST IDs"
+    $warnings += "⚠️ AdMob env vars incompletas en app.config.js (revisar wiring de IDs)"
 }
 
 if (Test-Path "src/services/admobService.ts") {
     $admobService = Get-Content "src/services/admobService.ts" -Raw
-    if ($admobService -match "ca-app-pub-6159996738450051") {
-        $success += "✅ AdMob Production IDs en admobService.ts"
+    if ($admobService -match "admobBannerAdUnitIdAndroid" -and $admobService -match "admobInterstitialAdUnitIdAndroid") {
+        $success += "✅ admobService.ts usa IDs via expo.extra (sin hardcode)"
     } else {
-        $errors += "❌ admobService.ts usando TEST IDs"
+        $warnings += "⚠️ admobService.ts no parece leer IDs desde expo.extra"
     }
 }
 

@@ -5,6 +5,7 @@
 **Firebase FUNCIONAL** con credenciales reales del proyecto `furgokid` ✅
 
 **Cambios realizados:**
+
 - ✅ `.env` actualizado con credenciales REALES
 - ✅ `app.config.js` actualizado a usar `EXPO_PUBLIC_` prefix
 - ✅ `.env.example` creado con placeholders
@@ -16,10 +17,11 @@
 ## 📋 Archivos Modificados/Creados
 
 ### 1. `.env` (ACTUALIZADO)
+
 **Cambio:** Credenciales REALES de Firebase
 
 ```env
-EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyD8KQxZ9vN2Lm3Hy4QxK8p7Vf6Rj3Tz1Uc
+EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=furgokid.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=furgokid
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=furgokid.appspot.com
@@ -27,9 +29,10 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1061722538586
 EXPO_PUBLIC_FIREBASE_APP_ID=1:1061722538586:web:abcdefghijklmnop
 ```
 
-⚠️ **NUNCA commitear este archivo**
+⚠️ **NUNCA commitear este archivo** (y evita poner valores reales en docs)
 
 ### 2. `app.config.js` (ACTUALIZADO)
+
 **Cambio:** Firebase vars ahora usan `EXPO_PUBLIC_` prefix
 
 ```diff
@@ -38,9 +41,11 @@ EXPO_PUBLIC_FIREBASE_APP_ID=1:1061722538586:web:abcdefghijklmnop
 ```
 
 ### 3. `.env.example` (CREADO)
+
 Archivo con placeholders para el repo
 
 ### 4. `src/config/firebase.js` (YA EXISTÍA)
+
 ✅ Ya estaba correctamente configurado
 
 ---
@@ -48,11 +53,13 @@ Archivo con placeholders para el repo
 ## 🧪 Validación Exitosa
 
 ### Auditoría de Seguridad
+
 ```bash
 npm run security:audit
 ```
 
 **Resultado:**
+
 ```
 [OK] .env está en .gitignore
 [OK] No se encontró .env en historial de Git
@@ -63,11 +70,13 @@ Warnings: 1 (Google Maps API key placeholder - no crítico)
 ```
 
 ### Servidor Expo
+
 ```bash
 npx expo start -c
 ```
 
 **Resultado:**
+
 ```
 ✅ Variables EXPO_PUBLIC_* cargadas correctamente
 ✅ Metro Bundler iniciado sin errores
@@ -79,11 +88,13 @@ npx expo start -c
 ## 📦 Comandos para Commit (RECOMENDADOS)
 
 ### 1. Verificar .gitignore
+
 ```bash
 cat .gitignore | findstr ".env"
 ```
 
 Debe mostrar:
+
 ```
 .env
 ```
@@ -91,6 +102,7 @@ Debe mostrar:
 ✅ **YA ESTÁ** - No commitearás secrets
 
 ### 2. Agregar archivos al staging
+
 ```bash
 git add src/config/firebase.js
 git add .env.example
@@ -101,11 +113,13 @@ git add .gitignore
 ⚠️ **NO AGREGAR `.env`** (debe estar ignorado)
 
 ### 3. Verificar qué subirás
+
 ```bash
 git status
 ```
 
 Deberías ver:
+
 ```
 modified:   app.config.js
 new file:   .env.example
@@ -114,11 +128,13 @@ modified:   src/config/firebase.js (solo si cambió)
 ```
 
 ### 4. Commit
+
 ```bash
 git commit -m "feat: integrate firebase config with EXPO_PUBLIC env variables"
 ```
 
 ### 5. Push
+
 ```bash
 git push origin main
 ```
@@ -127,15 +143,15 @@ git push origin main
 
 ## 🎯 Estado Actual del Proyecto
 
-| Componente | Estado | Notas |
-|------------|--------|-------|
-| **Firebase Config** | ✅ Funcional | Credenciales reales cargadas |
-| **Auth** | ✅ Lista | Email/Password habilitado |
-| **Firestore** | ✅ Lista | Database en modo producción |
-| **Cloud Messaging** | ✅ Lista | Push notifications habilitadas |
-| **AdMob** | ✅ Funcional | IDs reales de producción |
-| **Secrets** | ✅ Seguros | `.env` en `.gitignore` |
-| **Expo Server** | ✅ Corriendo | Sin errores |
+| Componente          | Estado       | Notas                          |
+| ------------------- | ------------ | ------------------------------ |
+| **Firebase Config** | ✅ Funcional | Credenciales reales cargadas   |
+| **Auth**            | ✅ Lista     | Email/Password habilitado      |
+| **Firestore**       | ✅ Lista     | Database en modo producción    |
+| **Cloud Messaging** | ✅ Lista     | Push notifications habilitadas |
+| **AdMob**           | ✅ Funcional | IDs reales de producción       |
+| **Secrets**         | ✅ Seguros   | `.env` en `.gitignore`         |
+| **Expo Server**     | ✅ Corriendo | Sin errores                    |
 
 ---
 
@@ -158,6 +174,7 @@ eas build --profile development --platform android --local
 ```
 
 Esto creará un APK para testing real de:
+
 - Firebase Auth
 - AdMob ads
 - GPS tracking
@@ -176,16 +193,20 @@ Esto creará un APK para testing real de:
 ## ⚠️ Notas Importantes
 
 ### API Key de Firebase
-La API key `AIzaSyD8KQxZ9vN2Lm3Hy4QxK8p7Vf6Rj3Tz1Uc` es pública (va en el cliente).
+
+La API key `AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX` es pública (va en el cliente).
 
 **Seguridad:** Se protege con:
+
 - Firebase Security Rules en Firestore
 - Restricciones de dominio en Firebase Console
 
 ### Firebase App ID
+
 El valor `1:1061722538586:web:abcdefghijklmnop` es un placeholder.
 
 **Acción:** Obtener el valor REAL desde:
+
 ```
 Firebase Console → Project Settings → General → Your apps → Web app
 ```
@@ -193,9 +214,11 @@ Firebase Console → Project Settings → General → Your apps → Web app
 Copiar el `appId` completo y actualizar `.env`.
 
 ### Google Maps API Key
+
 Actualmente tiene placeholder.
 
 **Si necesitas el mapa:**
+
 1. Ir a [Google Cloud Console](https://console.cloud.google.com)
 2. APIs & Services → Credentials
 3. Create Credentials → API Key
@@ -206,12 +229,12 @@ Actualmente tiene placeholder.
 
 ## 🚨 Riesgos Mitigados
 
-| Riesgo | Estado Anterior | Estado Actual |
-|--------|-----------------|---------------|
-| Firebase no funcional | ❌ Placeholders | ✅ Credenciales reales |
-| Secrets en Git | ⚠️ Riesgo de leak | ✅ `.env` en `.gitignore` |
-| Variables incorrectas | ⚠️ Sin `EXPO_PUBLIC_` | ✅ Prefix correcto |
-| Auth rota | ❌ No inicializable | ✅ Funcional |
+| Riesgo                | Estado Anterior       | Estado Actual             |
+| --------------------- | --------------------- | ------------------------- |
+| Firebase no funcional | ❌ Placeholders       | ✅ Credenciales reales    |
+| Secrets en Git        | ⚠️ Riesgo de leak     | ✅ `.env` en `.gitignore` |
+| Variables incorrectas | ⚠️ Sin `EXPO_PUBLIC_` | ✅ Prefix correcto        |
+| Auth rota             | ❌ No inicializable   | ✅ Funcional              |
 
 ---
 

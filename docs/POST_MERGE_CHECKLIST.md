@@ -84,6 +84,11 @@ En [app.config.js](../app.config.js) los App IDs de AdMob salen de env:
 - `ADMOB_ANDROID_APP_ID`
 - `ADMOB_IOS_APP_ID`
 
+Y los Ad Unit IDs (por plataforma) también salen de env (expuestos vía `expo.extra`):
+
+- Android: `BANNER_AD_UNIT_ID`, `INTERSTITIAL_AD_UNIT_ID`, `REWARDED_AD_UNIT_ID`
+- iOS (opcional si son distintos): `BANNER_AD_UNIT_IOS`, `INTERSTITIAL_AD_UNIT_IOS`, `REWARDED_AD_UNIT_IOS`
+
 Checklist:
 
 - [ ] Confirmar que NO se usen IDs de test en builds de producción
@@ -98,6 +103,8 @@ GitHub → Settings → Secrets and variables → Actions:
 
 - [ ] `EXPO_PUBLIC_FIREBASE_*`
 - [ ] `ADMOB_ANDROID_APP_ID`, `ADMOB_IOS_APP_ID`
+- [ ] `BANNER_AD_UNIT_ID`, `INTERSTITIAL_AD_UNIT_ID`, `REWARDED_AD_UNIT_ID`
+- [ ] (Opcional iOS separados) `BANNER_AD_UNIT_IOS`, `INTERSTITIAL_AD_UNIT_IOS`, `REWARDED_AD_UNIT_IOS`
 - [ ] `GOOGLE_MAPS_API_KEY`
 - [ ] `SENTRY_DSN`, `SENTRY_ENABLED`
 

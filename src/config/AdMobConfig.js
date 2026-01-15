@@ -1,23 +1,43 @@
 /**
  * AdMobConfig.js - Configuracion centralizada de Google AdMob para FurgoKid
- * Ultra Senior Architect: IDs REALES de AdMob configurados - PRODUCCION READY
+ * Nota: No hardcodear IDs de producción en el repo. Usar env/EAS Secrets.
  */
 
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-const AD_UNITS = {
-  // Banner Ads - Mostrador pequeno en parte inferior/superior
-  BANNER_HOME: 'ca-app-pub-6159996738450051/5061917035',
-  BANNER_MAP: 'ca-app-pub-6159996738450051/5061917035',
-  BANNER_SETTINGS: 'ca-app-pub-6159996738450051/5061917035',
+const getExtra = () => Constants?.expoConfig?.extra || Constants?.manifest?.extra || {};
 
-  // Interstitial Ads - Pantalla completa (cuando cambian de pantalla)
-  INTERSTITIAL_NAV: 'ca-app-pub-6159996738450051/9969972240',
-  INTERSTITIAL_TRACKING: 'ca-app-pub-6159996738450051/9969972240',
+const getProductionAdUnits = () => {
+  const extra = getExtra();
+  const isIos = Platform.OS === 'ios';
 
-  // Rewarded Ads - Anuncios con recompensa
-  REWARDED_FEATURE: 'ca-app-pub-6159996738450051/5608055408',
+  const banner = String(
+    (isIos ? extra.admobBannerAdUnitIdIos : extra.admobBannerAdUnitIdAndroid) || ''
+  );
+  const interstitial = String(
+    (isIos ? extra.admobInterstitialAdUnitIdIos : extra.admobInterstitialAdUnitIdAndroid) || ''
+  );
+  const rewarded = String(
+    (isIos ? extra.admobRewardedAdUnitIdIos : extra.admobRewardedAdUnitIdAndroid) || ''
+  );
+
+  return {
+    // Banner Ads - Mostrador pequeno en parte inferior/superior
+    BANNER_HOME: banner,
+    BANNER_MAP: banner,
+    BANNER_SETTINGS: banner,
+
+    // Interstitial Ads - Pantalla completa (cuando cambian de pantalla)
+    INTERSTITIAL_NAV: interstitial,
+    INTERSTITIAL_TRACKING: interstitial,
+
+    // Rewarded Ads - Anuncios con recompensa
+    REWARDED_FEATURE: rewarded,
+  };
 };
+
+const AD_UNITS = getProductionAdUnits();
 
 // Google-provided test ad unit IDs (safe for development)
 const TEST_AD_UNITS = {
@@ -46,12 +66,14 @@ const AD_CONFIG = {
   // Cap diario (en memoria) para proteger UX/retención
   DAILY_INTERSTITIAL_CAP: 10,
 
-  // ID de la aplicacion - REAL de Google Play Console
-  APP_ID: 'ca-app-pub-6159996738450051~7339939476',
+  // ID de la aplicacion (via app.config.js -> extra)
+  APP_ID: String(
+    (Platform.OS === 'ios' ? getExtra().admobIosAppId : getExtra().admobAndroidAppId) || ''
+  ),
 };
 
 const getAdsRuntimeConfig = () => {
-  const extra = Constants?.expoConfig?.extra || Constants?.manifest?.extra || {};
+  const extra = getExtra();
   const adsModeRaw = String(extra.adsMode || '').toLowerCase();
   const forceTestRaw = String(extra.adsForceTest || '').toLowerCase();
 

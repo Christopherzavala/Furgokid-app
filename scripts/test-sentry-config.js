@@ -78,7 +78,7 @@ console.log('\n\n📋 Test 2: Production Environment with DSN');
 Constants.expoConfig.extra.APP_VARIANT = 'production';
 Constants.expoConfig.extra.SENTRY_ENABLED = 'true';
 Constants.expoConfig.extra.SENTRY_DSN =
-  'https://c87e2f9ecae7cda95071794487ae92d9@o4510621040574464.ingest.us.sentry.io/4510621106176000';
+  'https://YOUR_SENTRY_DSN_HERE@o123.ingest.sentry.io/1234567';
 initSentry();
 
 console.log('\n' + '='.repeat(80));

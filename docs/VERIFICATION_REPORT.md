@@ -40,7 +40,8 @@ initSentry(); // ✓ Línea 21
 **Variables de entorno:**
 
 - `.env`: SENTRY_DSN, SENTRY_ENABLED, APP_VARIANT ✓
-- `eas.json` production: SENTRY_DSN configurado ✓
+- `eas.json` production: SENTRY_ENABLED configurado ✓
+- Secrets (EAS/GitHub): SENTRY_DSN configurado ✓
 - `app.config.js`: Variables expuestas en `extra` ✓
 
 **Comportamiento:**
@@ -64,11 +65,11 @@ initSentry(); // ✓ Línea 21
 **Production IDs en app.config.js:**
 
 ```javascript
-androidAppId: 'ca-app-pub-6159996738450051~7339939476' ✓
-iosAppId: 'ca-app-pub-6159996738450051~7339939476' ✓
+androidAppId: process.env.ADMOB_ANDROID_APP_ID ✓
+iosAppId: process.env.ADMOB_IOS_APP_ID ✓
 ```
 
-**Estado:** IDs reales configurados (no test IDs)
+**Estado:** IDs configurados vía env/EAS Secrets (sin hardcode en repo)
 
 ---
 

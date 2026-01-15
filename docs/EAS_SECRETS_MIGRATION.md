@@ -49,7 +49,7 @@ foreach ($line in $envContent) {
     if ($line -match "^([A-Z_]+)=(.+)$") {
         $key = $matches[1]
         $value = $matches[2]
-        
+
         # Saltar comentarios y líneas vacías
         if ($key -notmatch "^#") {
             Write-Host "Creando secret: $key" -ForegroundColor Cyan
@@ -62,6 +62,7 @@ Write-Host "`n✅ Migración completada" -ForegroundColor Green
 ```
 
 Ejecutar:
+
 ```powershell
 .\migrate-to-eas.ps1
 ```
@@ -75,9 +76,10 @@ eas secret:list
 ```
 
 Deberías ver:
+
 - `FIREBASE_API_KEY`
 - `FIREBASE_AUTH_DOMAIN`
-- `FIREBASE_PROJECT_ID`
+- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
 - `FIREBASE_STORAGE_BUCKET`
 - `FIREBASE_MESSAGING_SENDER_ID`
 - `FIREBASE_APP_ID`
@@ -133,7 +135,7 @@ Para desarrollo local, **mantener `.env` pero con valores de desarrollo/test:**
 ```bash
 # .env (DESARROLLO LOCAL ÚNICAMENTE)
 FIREBASE_API_KEY=your-dev-key-here
-FIREBASE_PROJECT_ID=furgokid-dev
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=furgokid-dev
 ADMOB_ANDROID_APP_ID=ca-app-pub-3940256099942544~3347511713  # Test ID
 ADMOB_IOS_APP_ID=ca-app-pub-3940256099942544~1458002511      # Test ID
 ```
@@ -153,6 +155,7 @@ eas build --profile production --platform android
 ```
 
 Durante el build de producción, verás:
+
 ```
 ✔ Loaded environment variables from EAS
 ```
@@ -176,6 +179,7 @@ Durante el build de producción, verás:
 2. APIs & Services → Credentials
 3. Rotar API key (crea nueva, elimina antigua)
 4. Actualizar secret en EAS:
+
 ```bash
 eas secret:create --scope project --name GOOGLE_MAPS_API_KEY --value "NEW_KEY" --force
 ```
@@ -267,12 +271,12 @@ Para startups pequeñas: 1-2 personas de confianza con acceso total, resto sin a
 
 ## Costo-Beneficio
 
-| Opción | Costo Setup | Costo/Mes | Riesgo | TTR (Time to Recover) |
-|--------|-------------|-----------|--------|----------------------|
-| `.env` en Git | 0 min | $0 | 🔴 **Crítico** | Horas-Días |
-| `.env` gitignored | 5 min | $0 | 🟡 Medio | Minutos |
-| **EAS Secrets** | **30 min** | **$0** | **🟢 Bajo** | **Segundos** |
-| HashiCorp Vault | 8-16 hrs | $50-200 | 🟢 Muy Bajo | Segundos |
+| Opción            | Costo Setup | Costo/Mes | Riesgo         | TTR (Time to Recover) |
+| ----------------- | ----------- | --------- | -------------- | --------------------- |
+| `.env` en Git     | 0 min       | $0        | 🔴 **Crítico** | Horas-Días            |
+| `.env` gitignored | 5 min       | $0        | 🟡 Medio       | Minutos               |
+| **EAS Secrets**   | **30 min**  | **$0**    | **🟢 Bajo**    | **Segundos**          |
+| HashiCorp Vault   | 8-16 hrs    | $50-200   | 🟢 Muy Bajo    | Segundos              |
 
 **Recomendación CTO:** EAS Secrets es el sweet spot para startups. Vault es overkill hasta 10M+ usuarios.
 

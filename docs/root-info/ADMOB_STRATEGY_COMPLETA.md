@@ -13,11 +13,11 @@
 ### ✅ Lo que YA ESTÁ IMPLEMENTADO
 
 ```javascript
-// Config de AdMob (REAL - en producción)
-BANNER_HOME:          'ca-app-pub-6159996738450051/5061917035'
-INTERSTITIAL_NAV:     'ca-app-pub-6159996738450051/9969972240'
-REWARDED_FEATURE:     'ca-app-pub-6159996738450051/5608055408'
-APP_ID:               'ca-app-pub-6159996738450051~7339939476'
+// Config de AdMob (producción via env/EAS Secrets)
+BANNER_HOME:          'ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy'
+INTERSTITIAL_NAV:     'ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy'
+REWARDED_FEATURE:     'ca-app-pub-xxxxxxxxxxxxxxxx/yyyyyyyyyy'
+APP_ID:               'ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy'
 
 // Componentes creados:
 ✓ AdBannerComponent.js      - Banners reutilizables

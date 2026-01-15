@@ -37,12 +37,25 @@ if [ "$ALLOW_POSSIBLE_KEYS" != "1" ]; then
   # Excluir archivos que normalmente contienen API keys públicas o textos (evita falsos positivos)
   # - google-services.json / GoogleService-Info.plist: contienen config pública de Firebase
   # - docs/**: documentación puede incluir ejemplos/formatos
+  # 1) Google API keys (AIza...) and Firebase server keys (AAAA...) - always block
   if git diff --cached -U0 -- . ':(exclude)google-services.json' ':(exclude)**/GoogleService-Info.plist' ':(exclude)docs/**' \
     | grep -E '^\+' \
     | grep -v -E '^\+\+\+' \
-    | grep -E "(AIza[0-9A-Za-z_-]{35}|AAAA[0-9A-Za-z_:-]{100,}|ca-app-pub-[0-9]{16})"; then
-    echo "❌ ERROR: Se detectaron posibles API keys hardcodeadas en cambios staged"
-    echo "Revisa y elimina keys del código (usa .env / EAS Secrets / GitHub Secrets)."
+    | grep -E "(AIza[0-9A-Za-z_-]{35}|AAAA[0-9A-Za-z_:-]{100,})"; then
+    echo " ERROR: Se detectaron posibles API keys hardcodeadas en cambios staged"
+    echo "Revisa y elimina keys del cdigo (usa .env / EAS Secrets / GitHub Secrets)."
+    echo "Si es intencional (no recomendado), reintenta con: ALLOW_POSSIBLE_KEYS=1 git commit ..."
+    exit 1
+  fi
+
+  # 2) AdMob IDs: allow Google's official test publisher id (3940256099942544)
+  if git diff --cached -U0 -- . ':(exclude)google-services.json' ':(exclude)**/GoogleService-Info.plist' ':(exclude)docs/**' \
+    | grep -E '^\+' \
+    | grep -v -E '^\+\+\+' \
+    | grep -E "ca-app-pub-[0-9]{16}" \
+    | grep -v -E "ca-app-pub-3940256099942544"; then
+    echo " ERROR: Se detectaron posibles AdMob IDs de produccin hardcodeados en cambios staged"
+    echo "Revisa y elimina IDs del cdigo (usa env/EAS Secrets/GitHub Secrets)."
     echo "Si es intencional (no recomendado), reintenta con: ALLOW_POSSIBLE_KEYS=1 git commit ..."
     exit 1
   fi

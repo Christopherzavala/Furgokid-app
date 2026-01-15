@@ -42,6 +42,9 @@ jobs:
       - name: Validate App Identifiers
         run: npm run validate:ids
 
+      - name: Validate No Sensitive Literals
+        run: npm run validate:secrets
+
       - name: Validate Environment Config
         run: npm run validate:env
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -54,6 +57,14 @@ jobs:
           EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
           ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
           ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+          BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
+          INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
+          REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
+          BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
+          INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
+          REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
+          EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
+          EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}
@@ -212,7 +223,7 @@ jobs:
           fi
 
       - name: Pre-build Validation
-        run: npm run pre-build
+        run: npm run pre-build:prod
         env:
           EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
           EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
@@ -222,6 +233,14 @@ jobs:
           EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
           ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
           ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+          BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
+          INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
+          REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
+          BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
+          INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
+          REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
+          EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
+          EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}

@@ -86,7 +86,7 @@ npm run pre-deploy -- -Fix  # Auto-fix issues
 ```json
 "staging": {
   "env": {
-    "FIREBASE_PROJECT_ID": "furgokid-staging",  // ← NUEVO
+    "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "furgokid-staging",  // ← NUEVO
     ...
   }
 }

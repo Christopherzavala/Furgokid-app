@@ -1,6 +1,6 @@
 # Firebase Setup Guide - FurgoKid
 
-## ⚠️  BLOQUEANTE: Auth NO funciona sin esto
+## ⚠️ BLOQUEANTE: Auth NO funciona sin esto
 
 **Estado actual:** Firebase tiene placeholders → **App no funcional**
 
@@ -27,6 +27,7 @@ https://console.firebase.google.com
 2. General tab
 3. Scroll down hasta "Your apps"
 4. Si **NO hay app web** creada:
+
    - Click "Add app" → Web (</>)
    - Nickname: `FurgoKid Web`
    - Firebase Hosting: NO
@@ -36,13 +37,13 @@ https://console.firebase.google.com
 
 ```javascript
 const firebaseConfig = {
-  apiKey: "AIza...",  // <-- COPIAR
-  authDomain: "tu-proyecto.firebaseapp.com",  // <-- COPIAR
-  projectId: "tu-proyecto",  // <-- COPIAR
-  storageBucket: "tu-proyecto.appspot.com",  // <-- COPIAR
-  messagingSenderId: "123456789012",  // <-- COPIAR
-  appId: "1:123456789012:web:abc...",  // <-- COPIAR
-  databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com"  // <-- COPIAR (si existe)
+  apiKey: 'AIza...', // <-- COPIAR
+  authDomain: 'tu-proyecto.firebaseapp.com', // <-- COPIAR
+  projectId: 'tu-proyecto', // <-- COPIAR
+  storageBucket: 'tu-proyecto.appspot.com', // <-- COPIAR
+  messagingSenderId: '123456789012', // <-- COPIAR
+  appId: '1:123456789012:web:abc...', // <-- COPIAR
+  databaseURL: 'https://tu-proyecto-default-rtdb.firebaseio.com', // <-- COPIAR (si existe)
 };
 ```
 
@@ -80,7 +81,7 @@ const firebaseConfig = {
 
 1. Sidebar: **Build** → **Cloud Messaging**
 2. Click **"Get started"** (si aparece)
-3. *Ya está habilitado por defecto en proyectos nuevos*
+3. _Ya está habilitado por defecto en proyectos nuevos_
 
 ### Paso 5: Crear App Web
 
@@ -108,7 +109,7 @@ notepad .env
 ```bash
 FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 FIREBASE_AUTH_DOMAIN=furgokid-prod.firebaseapp.com
-FIREBASE_PROJECT_ID=furgokid-prod
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=furgokid-prod
 FIREBASE_STORAGE_BUCKET=furgokid-prod.appspot.com
 FIREBASE_MESSAGING_SENDER_ID=123456789012
 FIREBASE_APP_ID=1:123456789012:web:abcdef123456
@@ -126,6 +127,7 @@ npm run security:audit
 ```
 
 **Resultado esperado:**
+
 ```
 [OK] Todas las variables requeridas están presentes
 ```

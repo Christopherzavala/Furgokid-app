@@ -23,7 +23,7 @@
       "env": {
         "NODE_ENV": "staging",
         "APP_VARIANT": "staging",
-        "FIREBASE_PROJECT_ID": "furgokid-staging",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "furgokid-staging",
         "SENTRY_ENABLED": "true",
         "SENTRY_ENVIRONMENT": "staging",
         "FIREBASE_ANALYTICS_ENABLED": "true",
@@ -61,8 +61,9 @@
         "NODE_ENV": "production",
         "APP_VARIANT": "production",
         "SENTRY_ENABLED": "true",
-        "SENTRY_DSN": "https://c87e2f9ecae7cda95071794487ae92d9@o4510621040574464.ingest.us.sentry.io/4510621106176000",
-        "FIREBASE_ANALYTICS_ENABLED": "false"
+        "FIREBASE_ANALYTICS_ENABLED": "false",
+        "EXPO_PUBLIC_ADS_MODE": "production",
+        "EXPO_PUBLIC_ADS_FORCE_TEST": "0"
       },
       "autoIncrement": true
     }

@@ -46,21 +46,31 @@ else {
 # ============================================================================
 Write-Host "`n[3/5] Buscando API keys hardcodeadas..." -ForegroundColor Yellow
 
-# Patrones de API keys conocidas
-$patterns = @{
-    "Google API Key"      = "AIza[0-9A-Za-z\-_]{35}"
-    "Firebase Server Key" = "AAAA[0-9A-Za-z\-_:]{100,}"
-    "AdMob ID"            = "ca-app-pub-[0-9]{16}"
+$codeFiles = Get-ChildItem -Path "src", "App.js" -Recurse -Include *.js, *.jsx, *.ts, *.tsx -ErrorAction SilentlyContinue
+
+# Google API Key
+$googleKeyMatches = $codeFiles | Select-String -Pattern "AIza[0-9A-Za-z\-_]{35}"
+if ($googleKeyMatches) {
+    Write-Host "[WARNING] Posible Google API Key hardcodeada encontrada:" -ForegroundColor Yellow
+    $googleKeyMatches | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" -ForegroundColor Gray }
+    $warningsFound++
 }
 
-foreach ($name in $patterns.Keys) {
-    $pattern = $patterns[$name]
-    $matches = Get-ChildItem -Path "src", "App.js" -Recurse -Include *.js, *.jsx, *.ts, *.tsx -ErrorAction SilentlyContinue | 
-    Select-String -Pattern $pattern
-    
-    if ($matches) {
-        Write-Host "[WARNING] Posible $name hardcodeada encontrada:" -ForegroundColor Yellow
-        $matches | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" -ForegroundColor Gray }
+# Firebase Server Key
+$firebaseServerKeyMatches = $codeFiles | Select-String -Pattern "AAAA[0-9A-Za-z\-_:]{100,}"
+if ($firebaseServerKeyMatches) {
+    Write-Host "[WARNING] Posible Firebase Server Key hardcodeada encontrada:" -ForegroundColor Yellow
+    $firebaseServerKeyMatches | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" -ForegroundColor Gray }
+    $warningsFound++
+}
+
+# AdMob IDs: allow Google test IDs (3940256099942544)
+$admobMatches = $codeFiles | Select-String -Pattern "ca-app-pub-[0-9]{16}"
+if ($admobMatches) {
+    $nonTestAdmobMatches = $admobMatches | Where-Object { $_.Line -notmatch "ca-app-pub-3940256099942544" }
+    if ($nonTestAdmobMatches) {
+        Write-Host "[WARNING] Posible AdMob ID de producción hardcodeado encontrado:" -ForegroundColor Yellow
+        $nonTestAdmobMatches | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" -ForegroundColor Gray }
         $warningsFound++
     }
 }
@@ -78,10 +88,11 @@ if (Test-Path ".env") {
     $envContent = Get-Content ".env" -Raw
     
     $requiredVars = @(
-        "FIREBASE_API_KEY",
-        "FIREBASE_PROJECT_ID",
+        "EXPO_PUBLIC_FIREBASE_API_KEY",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID",
         "ADMOB_ANDROID_APP_ID",
-        "ADMOB_IOS_APP_ID"
+        "ADMOB_IOS_APP_ID",
+        "GOOGLE_MAPS_API_KEY"
     )
     
     $missingVars = @()
@@ -119,14 +130,19 @@ Write-Host "`n[5/5] Validando configuracion de AdMob..." -ForegroundColor Yellow
 
 $appConfigContent = Get-Content "app.config.js" -Raw
 
-if ($appConfigContent -match "ca-app-pub-3940256099942544") {
-    Write-Host "[CRITICO] AdMob usando IDs de TEST en produccion" -ForegroundColor Red
-    Write-Host "  Impacto: `$0 revenue + riesgo de ban de Google" -ForegroundColor Red
-    Write-Host "  Accion: Configurar IDs reales en https://admob.google.com" -ForegroundColor Yellow
-    $errorsFound++
+if (
+    ($appConfigContent -match "process\.env\.ADMOB_ANDROID_APP_ID") -and
+    ($appConfigContent -match "process\.env\.ADMOB_IOS_APP_ID") -and
+    ($appConfigContent -match "process\.env\.BANNER_AD_UNIT_ID") -and
+    ($appConfigContent -match "process\.env\.INTERSTITIAL_AD_UNIT_ID") -and
+    ($appConfigContent -match "process\.env\.REWARDED_AD_UNIT_ID")
+) {
+    Write-Host "[OK] AdMob configurado via variables de entorno (sin hardcode)" -ForegroundColor Green
 }
 else {
-    Write-Host "[OK] AdMob configurado con IDs reales" -ForegroundColor Green
+    Write-Host "[WARNING] AdMob env wiring incompleto en app.config.js" -ForegroundColor Yellow
+    Write-Host "  Revisa ADMOB_*_APP_ID y *_AD_UNIT_* en env/EAS Secrets" -ForegroundColor Gray
+    $warningsFound++
 }
 
 # ============================================================================
