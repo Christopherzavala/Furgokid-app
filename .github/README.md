@@ -33,7 +33,7 @@ firebase login:ci
 
 ## 📋 Workflows
 
-### **CI/CD Pipeline (ci.yml)**
+### **CI/CD Pipeline - Production Ready (ci-cd.yml)**
 
 Se ejecuta en:
 
@@ -42,30 +42,24 @@ Se ejecuta en:
 
 **Jobs:**
 
-1. **test-functions** - Test Cloud Functions
+1. **test** - Gates de calidad
 
-   - Lint con ESLint
-   - Unit tests con Jest
-   - Coverage report
+   - `validate:ids`, `validate:secrets`, typecheck, lint, tests
+   - `npm audit` (bloqueante)
+   - `validate:env:production` en push a `main`
 
-2. **test-app** - Test React Native
+2. **build-preview** - EAS preview build (Android)
 
-   - Jest tests (87 tests)
-   - Coverage report
+   - Solo en PRs del mismo repo
+   - Solo si existe `EAS_TOKEN`
 
-3. **build-android** - Build APK
+3. **e2e-android** - Detox (manual)
 
-   - Solo en PRs
-   - Build preview con EAS
+   - Solo via `workflow_dispatch`
 
-4. **deploy-functions** - Deploy a Firebase
-
-   - Solo en `main` branch
-   - Deploy functions + rules + indexes
-   - Verifica deployment
-
-5. **notify** - Notificación de status
-   - Success/failure notification
+4. **deploy** - Gate de producción
+   - Solo en `main`
+   - Ejecuta `npm run pre-build:prod`
 
 ---
 

@@ -9,6 +9,7 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import logger from './logger';
 
 const isExpoGo = () => {
   return Constants.executionEnvironment === 'StoreClient';
@@ -59,7 +60,7 @@ export async function registerForPushNotificationsAsync() {
     }
 
     if (finalStatus !== 'granted') {
-      logger.warn('Notification permissions not granted', { status });
+      logger.warn('Notification permissions not granted', { status: finalStatus });
       return null;
     }
 
@@ -82,6 +83,10 @@ export async function registerForPushNotificationsAsync() {
  */
 export async function scheduleLocalNotification(title, body, data = {}, seconds = 1) {
   try {
+    const trigger = {
+      seconds,
+    };
+
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title,
@@ -89,14 +94,12 @@ export async function scheduleLocalNotification(title, body, data = {}, seconds 
         data,
         sound: true,
       },
-      trigger: {
-        seconds,
-      },
+      trigger,
     });
 
     logger.info('Local notification scheduled', {
       id,
-      trigger: trigger?.type || 'immediate',
+      seconds,
     });
     return id;
   } catch (error) {

@@ -719,7 +719,7 @@ const handleResendVerification = async () => {
 
 ```yaml
 # 1. Activar GitHub Actions CI/CD
-# .github/workflows/ci.yml (YA EXISTE, solo activar)
+# .github/workflows/ci-cd.yml (YA EXISTE, solo activar)
 # Trigger: push to main, pull request
 # Jobs: lint, test, build
 

@@ -12,6 +12,29 @@ on:
         required: false
         default: 'false'
 
+# Centralized env mapping (reduces duplication/noise in editors)
+env:
+  EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
+  EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
+  EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
+  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
+  EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
+  ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
+  ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+  BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
+  INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
+  REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
+  BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
+  INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
+  REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
+  EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
+  EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
+  GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+  SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}
+  FIREBASE_ANALYTICS_ENABLED: ${{ secrets.FIREBASE_ANALYTICS_ENABLED }}
+
 # Cancel in-progress runs when new commit pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,10 +45,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -46,29 +69,8 @@ jobs:
         run: npm run validate:secrets
 
       - name: Validate Environment Config
-        run: npm run validate:env
+        run: npm run validate:env:production
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
-          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
-          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
-          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
-          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
-          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
-          ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
-          ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
-          BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
-          INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
-          REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
-          BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
-          INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
-          REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
-          EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
-          EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}
-          FIREBASE_ANALYTICS_ENABLED: ${{ secrets.FIREBASE_ANALYTICS_ENABLED }}
 
       - name: TypeScript Check
         run: npm run type-check
@@ -99,16 +101,64 @@ jobs:
           "
 
       - name: Security Audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=low
 
-      - name: Check for secrets in code
+      - name: Check for secrets in code (PR)
+        if: github.event_name == 'pull_request'
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
         continue-on-error: true
+
+      - name: Check for secrets in code (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+  build-preview:
+    name: Build Preview (Android)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      HAS_EAS_TOKEN: ${{ secrets.EAS_TOKEN != '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Expo
+        if: env.HAS_EAS_TOKEN == 'true'
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EAS_TOKEN }}
+
+      - name: Skip preview build (missing EAS_TOKEN)
+        if: env.HAS_EAS_TOKEN != 'true'
+        run: |
+          echo "EAS_TOKEN is not configured in GitHub Secrets. Skipping EAS preview build."
+          echo "To enable: add repository secret EAS_TOKEN (Expo access token)."
+
+      - name: Install dependencies
+        if: env.HAS_EAS_TOKEN == 'true'
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Android Preview
+        if: env.HAS_EAS_TOKEN == 'true'
+        run: eas build --platform android --profile preview --non-interactive
 
   # E2E Tests with Detox (Android)
   e2e-android:
@@ -118,10 +168,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -193,22 +243,16 @@ jobs:
           name: e2e-test-results-android
           path: e2e/artifacts/
 
-      - name: Build Android (Preview)
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "Skipping EAS build for PR (requires EAS credentials)"
-          echo "Run locally with: npm run build:preview"
-
   deploy:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -224,27 +268,6 @@ jobs:
 
       - name: Pre-build Validation
         run: npm run pre-build:prod
-        env:
-          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
-          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
-          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
-          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
-          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
-          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
-          ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
-          ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
-          BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
-          INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
-          REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
-          BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
-          INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
-          REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
-          EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
-          EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}
-          FIREBASE_ANALYTICS_ENABLED: ${{ secrets.FIREBASE_ANALYTICS_ENABLED }}
 
       - name: Build Production (Android)
         run: |
