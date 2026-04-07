@@ -1,4 +1,27 @@
-# Firebase Cost Monitoring Setup
+# 💰 Firebase Cost Monitoring & Optimization
+
+## Checklist de monitoreo (pendiente usuario)
+
+### 1. Alertas de presupuesto
+
+- [ ] Ir a [Firebase Console > Billing > Budgets & Alerts](https://console.firebase.google.com/)
+- [ ] Crear alerta de presupuesto mensual (ej: $10 USD)
+- [ ] Agregar email de notificación
+
+### 2. Limitar instancias de Cloud Functions
+
+- [ ] Ir a [Firebase Console > Functions](https://console.firebase.google.com/)
+- [ ] Editar cada función crítica
+- [ ] En "maxInstances", poner un límite (ej: 10)
+- [ ] Guardar y redeploy
+
+### 3. TTL (Time To Live) en Firestore
+
+- [ ] Ir a [Firestore > Rules](https://console.firebase.google.com/)
+- [ ] Configurar TTL para colecciones grandes (requests, logs)
+- [ ] Documentar política de retención
+
+---
 
 ## Overview
 

@@ -1,3 +1,32 @@
+# 🔒 Checklist de Seguridad y Compliance (pendiente usuario)
+
+## ProGuard/R8 (ofuscación de código)
+
+- [ ] Abrir `android/app/build.gradle`
+- [ ] Verificar que en `buildTypes > release` esté:
+  ```gradle
+  minifyEnabled true
+  proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+  ```
+- [ ] Si no existe, agregarlo y hacer build de release
+
+## Firebase API Key restringida
+
+- [ ] Ir a [Firebase Console > Project Settings > API Keys](https://console.firebase.google.com/)
+- [ ] Click en la API Key usada por la app
+- [ ] Agregar restricción por bundle ID (Android/iOS)
+- [ ] Guardar cambios
+
+## GDPR Consent Banner
+
+- [ ] Implementar banner de consentimiento en el primer launch
+- [ ] Puede usar [react-native-cookie-consent](https://github.com/andrew-codes/react-native-cookie-consent) o similar
+- [ ] Documentar en README si ya está implementado
+
+## Documentar fecha de cumplimiento
+
+- [ ] Completar este checklist y registrar fecha en este archivo
+
 # 📋 LISTA DE ARCHIVOS GENERADOS POR AUDITORÍA
 
 **Auditoría completada:** 26 Diciembre 2025  
