@@ -2,6 +2,49 @@
 // Jest setup file
 import '@testing-library/jest-native/extend-expect';
 
+// Mock expo-secure-store
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(() => Promise.resolve(null)),
+  setItemAsync: jest.fn(() => Promise.resolve()),
+  deleteItemAsync: jest.fn(() => Promise.resolve()),
+  isAvailableAsync: jest.fn(() => Promise.resolve(true)),
+}));
+
+// Mock expo-modules-core EventEmitter
+jest.mock('expo-modules-core', () => ({
+  EventEmitter: class EventEmitter {
+    addListener() {}
+    removeAllListeners() {}
+    removeListener() {}
+  },
+  NativeModulesProxy: {},
+  requireNativeModule: jest.fn(),
+  ProxyNativeModule: jest.fn(),
+  _getProvider: jest.fn(),
+}));
+
+// Mock firebase
+jest.mock('firebase/app', () => ({
+  getApps: jest.fn(() => []),
+  initializeApp: jest.fn(() => ({})),
+}));
+
+jest.mock('firebase/firestore', () => ({
+  getFirestore: jest.fn(() => ({})),
+  collection: jest.fn(),
+  getDocs: jest.fn(() => Promise.resolve({ docs: [] })),
+  query: jest.fn(),
+  where: jest.fn(),
+  orderBy: jest.fn(),
+}));
+
+jest.mock('firebase/auth', () => ({
+  getAuth: jest.fn(() => ({})),
+  signInWithEmailAndPassword: jest.fn(),
+  createUserWithEmailAndPassword: jest.fn(),
+  signOut: jest.fn(),
+}));
+
 // Silence test logs by default to keep Jest output clean.
 // Opt-in to verbose logs by setting JEST_VERBOSE_LOGS=1.
 const VERBOSE_TEST_LOGS = process.env.JEST_VERBOSE_LOGS === '1';

@@ -30,14 +30,14 @@ GitHub → Settings → Secrets and variables → Actions
 | `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`      | Firebase Console → Settings → Storage Bucket | Secret | ✅ SÍ            | `furgokid.firebasestorage.app`               |
 | `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase Console → Settings → Sender ID      | Secret | ✅ SÍ            | `1061722538586`                              |
 | `EXPO_PUBLIC_FIREBASE_APP_ID`              | Firebase Console → Settings → App ID         | Secret | ✅ SÍ            | `1:1061722538586:web:25d...`                 |
-| `ADMOB_ANDROID_APP_ID`                     | AdMob Console → Apps → App Settings          | Secret | ✅ SÍ            | `ca-app-pub-6159996738450051~7339939476`     |
-| `ADMOB_IOS_APP_ID`                         | AdMob Console → Apps → App Settings          | Secret | ✅ SÍ            | `ca-app-pub-6159996738450051~7339939476`     |
-| `BANNER_AD_UNIT_ID`                        | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-6159996738450051/5061917035`     |
-| `INTERSTITIAL_AD_UNIT_ID`                  | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-6159996738450051/9969972240`     |
-| `REWARDED_AD_UNIT_ID`                      | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-6159996738450051/5608055408`     |
-| `BANNER_AD_UNIT_IOS`                       | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-6159996738450051/5061917035`     |
-| `INTERSTITIAL_AD_UNIT_IOS`                 | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-6159996738450051/9969972240`     |
-| `REWARDED_AD_UNIT_IOS`                     | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-6159996738450051/5608055408`     |
+| `ADMOB_ANDROID_APP_ID`                     | AdMob Console → Apps → App Settings          | Secret | ✅ SÍ            | `ca-app-pub-XXXXXXXXXX~YYYYYYYYYY`           |
+| `ADMOB_IOS_APP_ID`                         | AdMob Console → Apps → App Settings          | Secret | ✅ SÍ            | `ca-app-pub-XXXXXXXXXX~YYYYYYYYYY`           |
+| `BANNER_AD_UNIT_ID`                        | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
+| `INTERSTITIAL_AD_UNIT_ID`                  | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
+| `REWARDED_AD_UNIT_ID`                      | AdMob Console → Ad units                     | Secret | ✅ SÍ            | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
+| `BANNER_AD_UNIT_IOS`                       | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
+| `INTERSTITIAL_AD_UNIT_IOS`                 | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
+| `REWARDED_AD_UNIT_IOS`                     | AdMob Console → Ad units (iOS)               | Secret | ⚠️ Opcional      | `ca-app-pub-XXXXXXXXXX/ZZZZZZZZZZ`           |
 | `GOOGLE_MAPS_API_KEY`                      | Google Cloud Console → APIs → Maps API Key   | Secret | ✅ SÍ            | `AIzaSyCLirll_b9IkkQ5vAo...`                 |
 | `SENTRY_DSN`                               | Sentry Project → Settings → DSN              | Secret | ⚠️ Opcional      | `https://xxxxx@xxxxx.ingest.sentry.io/xxxxx` |
 | `SENTRY_ENABLED`                           | Configuración interna                        | Secret | ⚠️ Opcional      | `true` o `false`                             |
