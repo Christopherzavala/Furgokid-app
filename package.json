@@ -44,7 +44,8 @@
     "e2e:build:android": "detox build --configuration android.debug",
     "e2e:test:android": "detox test --configuration android.debug",
     "e2e:build:ios": "detox build --configuration ios.debug",
-    "e2e:test:ios": "detox test --configuration ios.debug"
+    "e2e:test:ios": "detox test --configuration ios.debug",
+    "test:rules": "cross-env FIREBASE_EMULATOR_HOST=127.0.0.1:8080 firebase emulators:exec --only firestore \"npx jest tests/firestore.rules.test.ts --runInBand --testEnvironment=node --no-coverage\""
   },
   "dependencies": {
     "@expo/cli": "^54.0.20",
@@ -86,6 +87,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@babel/eslint-parser": "^7.28.5",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@react-native-community/eslint-config": "^3.2.0",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
@@ -96,6 +98,7 @@
     "@typescript-eslint/parser": "^8.51.0",
     "babel-preset-expo": "^54.0.7",
     "chalk": "^4.1.2",
+    "cross-env": "^10.1.0",
     "detox": "^20.46.3",
     "eslint": "^8.44.0",
     "eslint-config-expo": "~10.0.0",

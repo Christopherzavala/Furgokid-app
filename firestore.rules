@@ -15,9 +15,10 @@ service cloud.firestore {
     }
     
     function hasRole(role) {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
-    }
+              return isAuthenticated() &&
+                exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+            }
     
     function isAdmin() {
       return hasRole('admin');

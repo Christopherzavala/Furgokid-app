@@ -1,8 +1,8 @@
 module.exports = {
   preset: 'react-native',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.test.{ts,tsx,js,jsx}'],
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testMatch: ['**/__tests__/**/*.test.{ts,tsx,js,jsx}', '**/tests/**/*.test.{ts,tsx,js,jsx}'],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx,js,jsx}',
     '!src/**/*.d.ts',
