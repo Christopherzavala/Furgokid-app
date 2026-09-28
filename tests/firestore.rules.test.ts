@@ -19,18 +19,6 @@ async function seedUser(
   });
 }
 
-/** Seed an arbitrary document via admin context. */
-async function seedDoc(
-  testEnv: any,
-  collection: string,
-  docId: string,
-  data: Record<string, unknown>
-): Promise<void> {
-  await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
-    await ctx.firestore().collection(collection).doc(docId).set(data);
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------

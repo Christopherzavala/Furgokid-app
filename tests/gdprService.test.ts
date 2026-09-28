@@ -75,7 +75,6 @@ jest.mock('firebase/auth', () => {
 
 // Get reference to the mock auth for test manipulation
 const mockAuth = jest.requireMock('firebase/auth').__mockAuth;
-const mockGetAuth = jest.requireMock('firebase/auth').getAuth;
 
 // ---------------------------------------------------------------------------
 // Mock: logger
