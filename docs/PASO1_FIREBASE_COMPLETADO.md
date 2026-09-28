@@ -21,7 +21,7 @@
 **Cambio:** Credenciales REALES de Firebase
 
 ```env
-EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=furgokid.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=furgokid
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=furgokid.appspot.com
@@ -194,7 +194,7 @@ Esto creará un APK para testing real de:
 
 ### API Key de Firebase
 
-La API key `AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX` es pública (va en el cliente).
+La API key `your_firebase_api_key_here` es pública (va en el cliente).
 
 **Seguridad:** Se protege con:
 
