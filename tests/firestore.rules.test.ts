@@ -213,4 +213,132 @@ describe('Firestore Rules', () => {
       );
     });
   });
+
+  // -------------------------------------------------------------------------
+  // /users collection – role escalation protection (SECURITY CRITICAL)
+  // These tests use authenticatedContext (NOT withSecurityRulesDisabled) to
+  // simulate real attacker attempts. They MUST fail with current rules.
+  // -------------------------------------------------------------------------
+
+  describe('/users – role escalation protection', () => {
+    // Helper: create a profile via authenticatedContext (simulates real client write)
+    async function createProfileAs(uid: string, profileData: Record<string, unknown>) {
+      return testEnv
+        .authenticatedContext(uid)
+        .firestore()
+        .collection('users')
+        .doc(uid)
+        .set(profileData);
+    }
+
+    // Helper: update a profile via authenticatedContext
+    async function updateProfileAs(uid: string, updates: Record<string, unknown>) {
+      return testEnv
+        .authenticatedContext(uid)
+        .firestore()
+        .collection('users')
+        .doc(uid)
+        .update(updates);
+    }
+
+    runOrSkip('ATTACK: user without profile CANNOT create profile with role:admin', async () => {
+      // Attacker has no /users doc → tries to create their own with role: 'admin'
+      await assertFails(
+        createProfileAs('attacker-no-profile', {
+          role: 'admin',
+          email: 'attacker@example.com',
+          displayName: 'Attacker',
+          createdAt: new Date(),
+        })
+      );
+    });
+
+    runOrSkip('ATTACK: user without profile CANNOT create profile with invalid role (superadmin)', async () => {
+      // Attacker tries to create profile with arbitrary invalid role
+      await assertFails(
+        createProfileAs('attacker-invalid-role', {
+          role: 'superadmin',
+          email: 'attacker@example.com',
+          displayName: 'Attacker',
+          createdAt: new Date(),
+        })
+      );
+    });
+
+    runOrSkip('ATTACK: user without profile CANNOT create profile with invalid role (hacker)', async () => {
+      // Attacker tries another arbitrary invalid role
+      await assertFails(
+        createProfileAs('attacker-invalid-role-2', {
+          role: 'hacker',
+          email: 'attacker2@example.com',
+          displayName: 'Attacker 2',
+          createdAt: new Date(),
+        })
+      );
+    });
+
+    runOrSkip('ATTACK: existing parent CANNOT update role to admin', async () => {
+      // Seed a legitimate parent profile
+      await seedUser(testEnv, 'legit-parent', { role: 'parent', name: 'Legit Parent' });
+
+      // Parent tries to escalate to admin
+      await assertFails(
+        updateProfileAs('legit-parent', { role: 'admin' })
+      );
+    });
+
+    runOrSkip('ATTACK: existing parent CANNOT update role to driver', async () => {
+      await seedUser(testEnv, 'legit-parent-2', { role: 'parent', name: 'Legit Parent 2' });
+
+      await assertFails(
+        updateProfileAs('legit-parent-2', { role: 'driver' })
+      );
+    });
+
+    runOrSkip('ATTACK: user CANNOT write another user\'s profile', async () => {
+      await seedUser(testEnv, 'victim', { role: 'parent', name: 'Victim' });
+
+      // Attacker tries to overwrite victim's profile
+      await assertFails(
+        testEnv
+          .authenticatedContext('attacker')
+          .firestore()
+          .collection('users')
+          .doc('victim')
+          .set({ role: 'parent', name: 'Hacked' })
+      );
+    });
+
+    // Positive test: legitimate profile creation with allowed role
+    runOrSkip('LEGIT: user CAN create profile with role:parent', async () => {
+      await assertSucceeds(
+        createProfileAs('new-parent', {
+          role: 'parent',
+          email: 'newparent@example.com',
+          displayName: 'New Parent',
+          createdAt: new Date(),
+        })
+      );
+    });
+
+    runOrSkip('LEGIT: user CAN create profile with role:driver', async () => {
+      await assertSucceeds(
+        createProfileAs('new-driver', {
+          role: 'driver',
+          email: 'newdriver@example.com',
+          displayName: 'New Driver',
+          createdAt: new Date(),
+        })
+      );
+    });
+
+    // Positive test: user can update allowed fields (name, whatsapp, etc.)
+    runOrSkip('LEGIT: user CAN update allowed profile fields (name, whatsapp)', async () => {
+      await seedUser(testEnv, 'editable-user', { role: 'parent', name: 'Original', whatsapp: '+123' });
+
+      await assertSucceeds(
+        updateProfileAs('editable-user', { name: 'Updated Name', whatsapp: '+456' })
+      );
+    });
+  });
 });
