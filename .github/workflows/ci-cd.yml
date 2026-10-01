@@ -145,6 +145,7 @@ jobs:
           expo-version: latest
           eas-version: latest
           token: ${{ secrets.EAS_TOKEN }}
+          packager: npm
 
       - name: Skip preview build (missing EAS_TOKEN)
         if: env.HAS_EAS_TOKEN != 'true'
