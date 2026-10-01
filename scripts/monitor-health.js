@@ -23,6 +23,22 @@ const colors = {
   cyan: '\x1b[36m',
 };
 
+/**
+ * Sanitiza un valor para log seguro: elimina CR/LF y caracteres de control ASCII,
+ * limita longitud. No altera números ni métricas calculadas localmente.
+ * @param {any} value - Valor a sanitizar
+ * @param {number} maxLength - Longitud máxima (default 200)
+ * @returns {string} Valor seguro para interpolar en console.log
+ */
+function sanitizeForLog(value, maxLength = 200) {
+  if (value === null || value === undefined) return '';
+  const str = typeof value === 'string' ? value : String(value);
+  return str
+    .replace(/[\r\n]+/g, ' ')   // CR/LF → espacio
+    .replace(/[\x00-\x1F\x7F]/g, '') // elimina otros controles ASCII
+    .slice(0, maxLength);
+}
+
 // Inicializar Firebase Admin
 let serviceAccountPath = './serviceAccountKey.json';
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -169,7 +185,7 @@ async function checkErrors() {
 
     console.log(`${colors.cyan}   Por tipo:${colors.reset}`);
     Object.entries(errorTypes).forEach(([type, count]) => {
-      console.log(`   - ${type}: ${count}`);
+      console.log(`   - ${sanitizeForLog(type)}: ${count}`);
     });
 
     if (errorCount > 20) {

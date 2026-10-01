@@ -15,9 +15,10 @@ service cloud.firestore {
     }
     
     function hasRole(role) {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
-    }
+              return isAuthenticated() &&
+                exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+            }
     
     function isAdmin() {
       return hasRole('admin');
@@ -81,8 +82,10 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       
       // Users can create their own profile during registration
+      // Role must be 'parent' or 'driver' (NOT 'admin') - prevents privilege escalation
       allow create: if isAuthenticated() && 
                       isOwner(userId) &&
+                      request.resource.data.role in ['parent', 'driver'] &&
                       validRequestSize();
       
       // Users can update their own profile but cannot change their role

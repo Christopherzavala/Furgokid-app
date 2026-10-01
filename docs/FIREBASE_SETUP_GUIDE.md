@@ -107,7 +107,7 @@ notepad .env
 **Reemplazar** estas líneas con tus valores REALES:
 
 ```bash
-FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+FIREBASE_API_KEY=your_firebase_api_key_here
 FIREBASE_AUTH_DOMAIN=furgokid-prod.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=furgokid-prod
 FIREBASE_STORAGE_BUCKET=furgokid-prod.appspot.com

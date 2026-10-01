@@ -17,6 +17,7 @@ import { getAuth } from 'firebase/auth';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
   query,
@@ -57,9 +58,10 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
     };
 
     // 1. Get user profile
-    const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-    if (!userDoc.empty) {
-      userData.profile = userDoc.docs[0].data();
+    const userDocRef = doc(db, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      userData.profile = userDocSnap.data();
     }
 
     // 2. Get user routes (if driver)
@@ -124,7 +126,7 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
 
 /**
  * Delete all user data from Firestore and Storage
- * GDPR Article 17: Right to Erasure ("Right to be Forgotten")
+ * GDPR Article 17: Right to Erasure (\"Right to be Forgotten\")
  *
  * This is irreversible and complies with legal requirements.
  */
@@ -138,12 +140,12 @@ export const deleteUserAccount = async (userId: string): Promise<void> => {
     let deletedDocs = 0;
 
     // 1. Delete user profile
-    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
-    const userDocs = await getDocs(userQuery);
-    userDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'users', docSnapshot.id));
+    const userDocRef = doc(db, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      batch.delete(userDocRef);
       deletedDocs++;
-    });
+    }
 
     // 2. Delete routes (if driver)
     const routesQuery = query(collection(db, 'routes'), where('driverId', '==', userId));
@@ -246,11 +248,12 @@ export const getUserDataSummary = async (userId: string) => {
       lastUpdated: null as string | null,
     };
 
-    // Count documents in each collection
-    const userDocs = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-    summary.hasProfile = !userDocs.empty;
-    if (!userDocs.empty) {
-      const userData = userDocs.docs[0].data();
+    // Get user profile
+    const userDocRef = doc(db, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
+    summary.hasProfile = userDocSnap.exists();
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
       summary.lastUpdated = userData.updatedAt || userData.createdAt || null;
     }
 
