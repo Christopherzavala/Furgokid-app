@@ -125,7 +125,7 @@
       "prettier --write"
     ],
     "functions/**/*.js": [
-      "cd functions && npm run lint -- --fix"
+      "npm --prefix functions run lint -- --fix"
     ]
   },
   "private": true

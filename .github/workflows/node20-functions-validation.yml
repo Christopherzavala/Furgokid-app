@@ -1,0 +1,252 @@
+name: Node 20 Functions validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-functions:
+    name: Validate Functions on Node 20
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Set up Java for Firebase emulators
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Node.js runtime
+        run: |
+          node -e "if (process.versions.node.split('.')[0] !== '20') process.exit(1); console.log(process.version)"
+
+      - name: Install Functions dependencies from lockfile
+        run: npm ci --prefix functions
+
+      - name: Verify Firebase CLI version
+        run: |
+          version="$(npx --yes --package=firebase-tools@15.28.1 firebase --version)"
+          printf 'Firebase CLI: %s\n' "$version"
+          test "$version" = "15.28.1"
+
+      - name: Run non-emulator Functions tests
+        env:
+          CI_DISABLE_EXTERNAL_NOTIFICATIONS: 'true'
+          CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: ${{ runner.temp }}/functions-unit-guard-ready-${{ github.run_id }}-${{ github.run_attempt }}.txt
+          CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: ${{ runner.temp }}/functions-unit-notification-attempt-${{ github.run_id }}-${{ github.run_attempt }}.txt
+        run: |
+          set -euo pipefail
+
+          report="$RUNNER_TEMP/functions-unit-results.json"
+          : > "$CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE"
+          : > "$CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE"
+
+          npm --prefix functions test -- \
+            --runInBand \
+            --testPathIgnorePatterns='(/node_modules/|\.emulator\.test\.js$)' \
+            --json \
+            --outputFile="$report"
+
+          node - "$report" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const fail = (message) => {
+            console.error(`Jest report validation failed: ${message}`);
+            process.exit(1);
+          };
+          const requiredGuardTests = new Set([
+            'Cloud Functions Unit Tests CI external notification guard notifyDriversNewRequest blocks Expo Push and records the attempt',
+            'Cloud Functions Unit Tests CI external notification guard notifyParentsNewVacancy blocks Expo Push and records the attempt',
+            'Cloud Functions Unit Tests CI external notification guard testNotification reports a blocked Expo Push attempt without calling fetch',
+          ]);
+
+          if (report.success !== true || report.wasInterrupted !== false) {
+            fail('Jest did not report a successful, uninterrupted run.');
+          }
+          if (!Array.isArray(report.testResults) || report.testResults.length === 0) {
+            fail('No non-emulator test suites were reported.');
+          }
+          if (
+            report.numTotalTests <= 0 ||
+            report.numPassedTests !== report.numTotalTests ||
+            report.numFailedTests !== 0 ||
+            report.numPendingTests !== 0 ||
+            report.numFailedTestSuites !== 0 ||
+            report.numPendingTestSuites !== 0 ||
+            report.numRuntimeErrorTestSuites !== 0 ||
+            report.numPassedTestSuites !== report.numTotalTestSuites
+          ) {
+            fail('The aggregate report contains failed, pending, empty, or non-passing tests/suites.');
+          }
+
+          for (const suite of report.testResults) {
+            if (path.basename(suite.name).endsWith('.emulator.test.js')) {
+              fail(`Emulator suite leaked into the unit-test run: ${suite.name}`);
+            }
+            if (
+              suite.status !== 'passed' ||
+              !Array.isArray(suite.assertionResults) ||
+              suite.assertionResults.length === 0 ||
+              suite.assertionResults.some((test) => test.status !== 'passed')
+            ) {
+              fail(`Suite is failed, skipped, pending, todo, or empty: ${suite.name}`);
+            }
+            for (const assertion of suite.assertionResults) {
+              requiredGuardTests.delete(assertion.fullName);
+            }
+          }
+
+          if (requiredGuardTests.size > 0) {
+            fail(`Required guard tests were not executed: ${[...requiredGuardTests].join(', ')}`);
+          }
+
+          console.log(`Validated ${report.testResults.length} non-emulator suites.`);
+          NODE
+
+          node - <<'NODE'
+          const fs = require('node:fs');
+
+          const ready = fs.readFileSync(process.env.CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE, 'utf8');
+          const attempts = fs.readFileSync(process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE, 'utf8');
+          if (!ready.includes('CI_EXTERNAL_NOTIFICATION_GUARD_ACTIVE')) {
+            throw new Error('Jest process did not initialize the CI notification guard.');
+          }
+          if (attempts !== '') {
+            throw new Error('Unexpected blocked notification attempt in the unit-test process.');
+          }
+          NODE
+
+      - name: Run and validate all four Emulator suites
+        env:
+          CI_DISABLE_EXTERNAL_NOTIFICATIONS: 'true'
+          CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: ${{ runner.temp }}/functions-emulator-guard-ready-${{ github.run_id }}-${{ github.run_attempt }}.txt
+          CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: ${{ runner.temp }}/functions-emulator-notification-attempt-${{ github.run_id }}-${{ github.run_attempt }}.txt
+          GCLOUD_PROJECT: demo-furgokid
+          GOOGLE_CLOUD_PROJECT: demo-furgokid
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+          FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
+          MATCH_LIFECYCLE_EMULATOR: 'true'
+          MATCH_LIFECYCLE_EMULATOR_PROJECT_ID: demo-furgokid
+          GPS_CLEANUP_EMULATOR: 'true'
+          GPS_CLEANUP_EMULATOR_PROJECT_ID: demo-furgokid
+          GPS_FINALIZATION_EMULATOR: 'true'
+          GPS_FINALIZATION_EMULATOR_PROJECT_ID: demo-furgokid
+          GPS_STOP_TRACKING_EMULATOR: 'true'
+          GPS_STOP_TRACKING_EMULATOR_PROJECT_ID: demo-furgokid
+        run: |
+          set -euo pipefail
+
+          test "$GCLOUD_PROJECT" = "demo-furgokid"
+          test "$GOOGLE_CLOUD_PROJECT" = "demo-furgokid"
+          test "$FIRESTORE_EMULATOR_HOST" = "127.0.0.1:8080"
+          test "$FIREBASE_AUTH_EMULATOR_HOST" = "127.0.0.1:9099"
+          test "$MATCH_LIFECYCLE_EMULATOR_PROJECT_ID" = "demo-furgokid"
+          test "$GPS_CLEANUP_EMULATOR_PROJECT_ID" = "demo-furgokid"
+          test "$GPS_FINALIZATION_EMULATOR_PROJECT_ID" = "demo-furgokid"
+          test "$GPS_STOP_TRACKING_EMULATOR_PROJECT_ID" = "demo-furgokid"
+
+          report="$RUNNER_TEMP/functions-emulator-results.json"
+          : > "$CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE"
+          : > "$CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE"
+
+          npx --yes --package=firebase-tools@15.28.1 firebase emulators:exec \
+            --project demo-furgokid \
+            --only auth,firestore,functions \
+            "npm --prefix functions test -- --runInBand --runTestsByPath test/matchLifecycle.emulator.test.js test/firestoreGpsCleanup.emulator.test.js test/matchFinalizationCleanup.emulator.test.js test/stopTracking.emulator.test.js --coverage=false --json --outputFile=$report"
+
+          node - <<'NODE'
+          const fs = require('node:fs');
+
+          const ready = fs.readFileSync(process.env.CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE, 'utf8');
+          const attempts = fs.readFileSync(process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE, 'utf8');
+          if (!ready.includes('CI_EXTERNAL_NOTIFICATION_GUARD_ACTIVE')) {
+            throw new Error('Functions Emulator runtime did not initialize the CI notification guard.');
+          }
+          if (attempts.trim()) {
+            throw new Error(`Functions Emulator runtime blocked an Expo Push attempt: ${attempts.trim()}`);
+          }
+          NODE
+
+          node - "$report" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const expected = new Set([
+            'matchLifecycle.emulator.test.js',
+            'firestoreGpsCleanup.emulator.test.js',
+            'matchFinalizationCleanup.emulator.test.js',
+            'stopTracking.emulator.test.js',
+          ]);
+
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const fail = (message) => {
+            console.error(`Emulator report validation failed: ${message}`);
+            process.exit(1);
+          };
+
+          if (report.success !== true || report.wasInterrupted !== false) {
+            fail('Jest did not report a successful, uninterrupted run.');
+          }
+          if (!Array.isArray(report.testResults) || report.testResults.length !== expected.size) {
+            fail(`Expected exactly ${expected.size} Emulator suites.`);
+          }
+          if (
+            report.numTotalTestSuites !== expected.size ||
+            report.numPassedTestSuites !== expected.size ||
+            report.numFailedTestSuites !== 0 ||
+            report.numPendingTestSuites !== 0 ||
+            report.numRuntimeErrorTestSuites !== 0 ||
+            report.numTotalTests <= 0 ||
+            report.numPassedTests !== report.numTotalTests ||
+            report.numFailedTests !== 0 ||
+            report.numPendingTests !== 0
+          ) {
+            fail('Aggregate results include a failed, skipped, pending, or non-passing test/suite.');
+          }
+
+          const seen = new Set();
+
+          for (const suite of report.testResults) {
+            const filename = path.basename(suite.name);
+
+            if (!expected.has(filename)) {
+              fail(`Unexpected suite was reported: ${suite.name}`);
+            }
+            if (seen.has(filename)) {
+              fail(`Suite was reported more than once: ${filename}`);
+            }
+            seen.add(filename);
+
+            if (
+              suite.status !== 'passed' ||
+              !Array.isArray(suite.assertionResults) ||
+              suite.assertionResults.length === 0 ||
+              suite.assertionResults.some((test) => test.status !== 'passed')
+            ) {
+              fail(`Suite is failed, skipped, pending, todo, or empty: ${suite.name}`);
+            }
+          }
+
+          for (const filename of expected) {
+            if (!seen.has(filename)) {
+              fail(`Required suite is missing: ${filename}`);
+            }
+          }
+
+          console.log(`Validated all ${seen.size} Emulator suites.`);
+          NODE
