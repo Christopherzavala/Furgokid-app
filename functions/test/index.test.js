@@ -8,8 +8,15 @@
  * - testNotification
  */
 
-const test = require('firebase-functions-test')();
 const admin = require('firebase-admin');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const createFirestoreEvent = (data, params) => ({
+  data: { data: () => data },
+  params,
+});
 
 // Mock data
 const mockRequest = {
@@ -31,29 +38,6 @@ const mockVacancy = {
   schools: ['Liceo Central', 'Colegio Santa María'],
   status: 'active',
 };
-
-const mockDriverUsers = [
-  {
-    id: 'driver1',
-    data: () => ({
-      uid: 'driver1',
-      role: 'driver',
-      zone: 'Norte',
-      pushToken: 'ExponentPushToken[AAAA]',
-      displayName: 'Driver 1',
-    }),
-  },
-  {
-    id: 'driver2',
-    data: () => ({
-      uid: 'driver2',
-      role: 'driver',
-      zone: 'Norte',
-      pushToken: 'ExponentPushToken[BBBB]',
-      displayName: 'Driver 2',
-    }),
-  },
-];
 
 const mockParentRequests = [
   {
@@ -81,6 +65,7 @@ const mockParentRequests = [
 describe('Cloud Functions Unit Tests', () => {
   let myFunctions;
   let adminInitStub;
+  const originalGuardValue = process.env.CI_DISABLE_EXTERNAL_NOTIFICATIONS;
 
   beforeAll(() => {
     // Mock admin.initializeApp
@@ -91,8 +76,19 @@ describe('Cloud Functions Unit Tests', () => {
   });
 
   afterAll(() => {
-    test.cleanup();
     adminInitStub.mockRestore();
+  });
+
+  beforeEach(() => {
+    process.env.CI_DISABLE_EXTERNAL_NOTIFICATIONS = 'false';
+  });
+
+  afterEach(() => {
+    if (originalGuardValue === undefined) {
+      delete process.env.CI_DISABLE_EXTERNAL_NOTIFICATIONS;
+    } else {
+      process.env.CI_DISABLE_EXTERNAL_NOTIFICATIONS = originalGuardValue;
+    }
   });
 
   describe('notifyDriversNewRequest', () => {
@@ -108,17 +104,24 @@ describe('Cloud Functions Unit Tests', () => {
       );
     });
 
-    test('should find drivers in same zone and send notifications', async () => {
-      // Mock Firestore query
-      const mockSnapshot = {
-        empty: false,
-        size: 2,
-        forEach: (callback) => mockDriverUsers.forEach(callback),
+    test('notifies only the driver assigned to the pending match', async () => {
+      const assignedDriver = {
+        exists: true,
+        get: (field) => (field === 'role' ? 'driver' : undefined),
+        data: () => ({
+          role: 'driver',
+          pushToken: 'ExponentPushToken[AAAA]',
+        }),
       };
-
-      const mockGet = jest.fn(() => Promise.resolve(mockSnapshot));
-      const mockWhere = jest.fn(() => ({ where: mockWhere, get: mockGet }));
-      const mockCollection = jest.fn(() => ({ where: mockWhere }));
+      const notificationLogAdd = jest.fn(() => Promise.resolve());
+      const mockCollection = jest.fn((collectionName) => {
+        if (collectionName === 'users') {
+          return {
+            doc: jest.fn(() => ({ get: jest.fn(() => Promise.resolve(assignedDriver)) })),
+          };
+        }
+        return { add: notificationLogAdd };
+      });
 
       // Mock admin.firestore
       jest.spyOn(admin, 'firestore').mockReturnValue({
@@ -131,16 +134,22 @@ describe('Cloud Functions Unit Tests', () => {
       };
 
       // Create mock snapshot
-      const snap = test.firestore.makeDocumentSnapshot(mockRequest, 'requests/request123');
-      const context = { params: { requestId: 'request123' } };
+      const event = createFirestoreEvent(
+        {
+          ...mockRequest,
+          driverId: 'driver456',
+          requestId: 'request123',
+          status: 'pending',
+        },
+        { matchId: 'match123' }
+      );
 
       // Call function
-      await myFunctions.notifyDriversNewRequest(snap, context);
+      await myFunctions.notifyDriversNewRequest.run(event);
 
-      // Verify Firestore query
+      // Verify the assigned driver is resolved directly, not by zone-wide fan-out.
       expect(mockCollection).toHaveBeenCalledWith('users');
-      expect(mockWhere).toHaveBeenCalledWith('role', '==', 'driver');
-      expect(mockWhere).toHaveBeenCalledWith('zone', '==', 'Norte');
+      expect(mockCollection).toHaveBeenCalledWith('notification_logs');
 
       // Verify Expo Push API call
       expect(global.fetch).toHaveBeenCalledWith(
@@ -156,56 +165,72 @@ describe('Cloud Functions Unit Tests', () => {
       // Verify notification payload
       const fetchCall = global.fetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1].body);
-      expect(payload).toHaveLength(2); // 2 drivers with push tokens
+      expect(payload).toHaveLength(1);
       expect(payload[0]).toMatchObject({
         to: 'ExponentPushToken[AAAA]',
-        title: '🚌 Nueva solicitud en tu zona',
+        title: '🚌 Nueva solicitud asignada',
         body: expect.stringContaining('María García'),
         data: {
           type: 'new_request',
           requestId: 'request123',
+          matchId: 'match123',
           zone: 'Norte',
         },
       });
     });
 
-    test('should handle no drivers in zone gracefully', async () => {
-      // Mock empty snapshot
-      const mockSnapshot = {
-        empty: true,
-        size: 0,
-        forEach: jest.fn(),
+    test('does not send a notification if the assigned driver has no push token', async () => {
+      const assignedDriver = {
+        exists: true,
+        get: (field) => (field === 'role' ? 'driver' : undefined),
+        data: () => ({ role: 'driver' }),
       };
-
-      const mockGet = jest.fn(() => Promise.resolve(mockSnapshot));
-      const mockWhere = jest.fn(() => ({ where: mockWhere, get: mockGet }));
-      const mockCollection = jest.fn(() => ({ where: mockWhere }));
+      const mockCollection = jest.fn(() => ({
+        doc: jest.fn(() => ({ get: jest.fn(() => Promise.resolve(assignedDriver)) })),
+      }));
 
       jest.spyOn(admin, 'firestore').mockReturnValue({
         collection: mockCollection,
       });
 
-      const snap = test.firestore.makeDocumentSnapshot(mockRequest, 'requests/request123');
-      const context = { params: { requestId: 'request123' } };
+      const event = createFirestoreEvent(
+        { ...mockRequest, driverId: 'driver456', status: 'pending' },
+        { matchId: 'match123' }
+      );
 
       // Should not throw
-      await expect(myFunctions.notifyDriversNewRequest(snap, context)).resolves.toBe(null);
+      await expect(myFunctions.notifyDriversNewRequest.run(event)).resolves.toBe(null);
 
       // Should not call Expo API
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
     test('should handle errors and log to notification_errors', async () => {
-      // Mock Firestore to throw error
-      jest.spyOn(admin, 'firestore').mockImplementation(() => {
-        throw new Error('Firestore connection failed');
+      const errorLogAdd = jest.fn(() => Promise.resolve());
+      const mockCollection = jest.fn((collectionName) => {
+        if (collectionName === 'users') {
+          return {
+            doc: jest.fn(() => ({
+              get: jest.fn(() => Promise.reject(new Error('Firestore connection failed'))),
+            })),
+          };
+        }
+        return { add: errorLogAdd };
       });
+      jest.spyOn(admin, 'firestore').mockReturnValue({ collection: mockCollection });
+      admin.firestore.FieldValue = {
+        serverTimestamp: jest.fn(() => new Date()),
+      };
 
-      const snap = test.firestore.makeDocumentSnapshot(mockRequest, 'requests/request123');
-      const context = { params: { requestId: 'request123' } };
+      const event = createFirestoreEvent(
+        { ...mockRequest, driverId: 'driver456', status: 'pending' },
+        { matchId: 'match123' }
+      );
 
       // Should not throw (graceful degradation)
-      await expect(myFunctions.notifyDriversNewRequest(snap, context)).resolves.toBe(null);
+      await expect(myFunctions.notifyDriversNewRequest.run(event)).resolves.toBe(null);
+      expect(mockCollection).toHaveBeenCalledWith('notification_errors');
+      expect(errorLogAdd).toHaveBeenCalled();
     });
   });
 
@@ -248,7 +273,11 @@ describe('Cloud Functions Unit Tests', () => {
 
       const mockDoc = jest.fn(() => ({ get: mockGet }));
       const mockWhere = jest.fn(() => ({ where: mockWhere, get: mockGet }));
-      const mockCollection = jest.fn(() => ({ where: mockWhere }));
+      const mockCollection = jest.fn(() => ({
+        where: mockWhere,
+        doc: mockDoc,
+        add: jest.fn(() => Promise.resolve()),
+      }));
 
       jest.spyOn(admin, 'firestore').mockReturnValue({
         collection: mockCollection,
@@ -259,10 +288,9 @@ describe('Cloud Functions Unit Tests', () => {
         serverTimestamp: jest.fn(() => new Date()),
       };
 
-      const snap = test.firestore.makeDocumentSnapshot(mockVacancy, 'vacancies/vacancy456');
-      const context = { params: { vacancyId: 'vacancy456' } };
+      const event = createFirestoreEvent(mockVacancy, { vacancyId: 'vacancy456' });
 
-      await myFunctions.notifyParentsNewVacancy(snap, context);
+      await myFunctions.notifyParentsNewVacancy.run(event);
 
       // Verify requests query
       expect(mockCollection).toHaveBeenCalledWith('requests');
@@ -302,10 +330,9 @@ describe('Cloud Functions Unit Tests', () => {
         collection: mockCollection,
       });
 
-      const snap = test.firestore.makeDocumentSnapshot(entradaVacancy, 'vacancies/vacancy456');
-      const context = { params: { vacancyId: 'vacancy456' } };
+      const event = createFirestoreEvent(entradaVacancy, { vacancyId: 'vacancy456' });
 
-      await myFunctions.notifyParentsNewVacancy(snap, context);
+      await myFunctions.notifyParentsNewVacancy.run(event);
 
       // Should not send notifications (schedule mismatch)
       expect(global.fetch).not.toHaveBeenCalled();
@@ -379,6 +406,118 @@ describe('Cloud Functions Unit Tests', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.send).toHaveBeenCalledWith('Missing pushToken');
+    });
+  });
+
+  describe('CI external notification guard', () => {
+    let originalAttemptFile;
+    let originalFetch;
+    let markerDirectory;
+    let attemptFile;
+
+    beforeEach(() => {
+      originalAttemptFile = process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE;
+      originalFetch = global.fetch;
+      markerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'furgokid-notification-guard-'));
+      attemptFile = path.join(markerDirectory, 'attempts.txt');
+      process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE = attemptFile;
+      process.env.CI_DISABLE_EXTERNAL_NOTIFICATIONS = 'true';
+      global.fetch = jest.fn();
+    });
+
+    afterEach(() => {
+      if (originalAttemptFile === undefined) {
+        delete process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE;
+      } else {
+        process.env.CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE = originalAttemptFile;
+      }
+      global.fetch = originalFetch;
+      fs.rmSync(markerDirectory, { recursive: true, force: true });
+    });
+
+    test('notifyDriversNewRequest blocks Expo Push and records the attempt', async () => {
+      const driver = {
+        exists: true,
+        get: (field) => (field === 'role' ? 'driver' : undefined),
+        data: () => ({ role: 'driver', pushToken: 'ExponentPushToken[CI]' }),
+      };
+      const errorLogAdd = jest.fn();
+      jest.spyOn(admin, 'firestore').mockReturnValue({
+        collection: jest.fn((name) => {
+          if (name === 'users') {
+            return { doc: () => ({ get: async () => driver }) };
+          }
+          return { add: errorLogAdd };
+        }),
+      });
+
+      await expect(
+        myFunctions.notifyDriversNewRequest.run(
+          createFirestoreEvent(
+            { ...mockRequest, driverId: 'driver456', status: 'pending' },
+            { matchId: 'match-ci-guard' }
+          )
+        )
+      ).rejects.toMatchObject({ code: 'CI_EXTERNAL_NOTIFICATION_BLOCKED' });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(errorLogAdd).not.toHaveBeenCalled();
+      expect(fs.readFileSync(attemptFile, 'utf8')).toBe('CI_EXTERNAL_NOTIFICATION_BLOCKED\n');
+    });
+
+    test('notifyParentsNewVacancy blocks Expo Push and records the attempt', async () => {
+      const requestsSnapshot = { empty: false, docs: [mockParentRequests[0]] };
+      const parentSnapshot = {
+        data: () => ({ pushToken: 'ExponentPushToken[CI]' }),
+      };
+      const mockGet = jest
+        .fn()
+        .mockResolvedValueOnce(requestsSnapshot)
+        .mockResolvedValue(parentSnapshot);
+      const mockWhere = jest.fn(() => ({ where: mockWhere, get: mockGet }));
+      const errorLogAdd = jest.fn();
+      jest.spyOn(admin, 'firestore').mockReturnValue({
+        collection: jest.fn((name) =>
+          name === 'requests'
+            ? { where: mockWhere }
+            : { doc: () => ({ get: mockGet }), add: errorLogAdd }
+        ),
+      });
+
+      await expect(
+        myFunctions.notifyParentsNewVacancy.run(
+          createFirestoreEvent(mockVacancy, { vacancyId: 'vacancy-ci-guard' })
+        )
+      ).rejects.toMatchObject({ code: 'CI_EXTERNAL_NOTIFICATION_BLOCKED' });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(errorLogAdd).not.toHaveBeenCalled();
+      expect(fs.readFileSync(attemptFile, 'utf8')).toBe('CI_EXTERNAL_NOTIFICATION_BLOCKED\n');
+    });
+
+    test('testNotification reports a blocked Expo Push attempt without calling fetch', async () => {
+      const response = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      };
+
+      await myFunctions.testNotification(
+        {
+          method: 'POST',
+          body: { pushToken: 'ExponentPushToken[CI]', message: 'CI guard test' },
+        },
+        response
+      );
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(response.status).toHaveBeenCalledWith(500);
+      expect(response.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          code: 'CI_EXTERNAL_NOTIFICATION_BLOCKED',
+        })
+      );
+      expect(fs.readFileSync(attemptFile, 'utf8')).toBe('CI_EXTERNAL_NOTIFICATION_BLOCKED\n');
     });
   });
 });
