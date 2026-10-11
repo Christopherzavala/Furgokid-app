@@ -31,10 +31,57 @@ service cloud.firestore {
     function isParent() {
       return hasRole('parent');
     }
+
+    // Driver approved by admin (role == 'driver' AND approved == true)
+    function isApprovedDriver() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      let userData = userDoc.data;
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             userData.role == 'driver' &&
+             userData.keys().hasAny(['approved']) &&
+             userData.approved == true;
+    }
+
+    function validTrackingLocation(driverId) {
+      return request.resource.data.keys().hasOnly([
+               'driverId',
+               'latitude',
+               'longitude',
+               'speed',
+               'active',
+               'updatedAt',
+               'matchId'
+             ]) &&
+             request.resource.data.driverId == driverId &&
+             request.resource.data.latitude is number &&
+             request.resource.data.latitude >= -90 &&
+             request.resource.data.latitude <= 90 &&
+             request.resource.data.longitude is number &&
+             request.resource.data.longitude >= -180 &&
+             request.resource.data.longitude <= 180 &&
+             request.resource.data.speed is number &&
+             request.resource.data.speed >= 0 &&
+             request.resource.data.active is bool &&
+             request.resource.data.updatedAt is timestamp &&
+             request.resource.data.updatedAt <= request.time &&
+             request.resource.data.updatedAt >
+               request.time - duration.value(2, 'm');
+    }
+
+    function activeMatch(matchId) {
+      return exists(/databases/$(database)/documents/matches/$(matchId)) &&
+             get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'active';
+    }
     
     // Prevent role escalation
     function roleUnchanged() {
       return request.resource.data.role == resource.data.role;
+    }
+
+    // Prevent self-approval
+    function approvedUnchanged() {
+      return request.resource.data.approved == resource.data.approved;
     }
     
     // ============================================================================
@@ -60,6 +107,15 @@ service cloud.firestore {
     // Validate request size (prevent large document spam)
     function validRequestSize() {
       return request.resource.size() < 1000000; // 1MB max document size
+    }
+
+    function validNewVacancyCapacity() {
+      return request.resource.data.totalSeats is int &&
+             request.resource.data.totalSeats > 0 &&
+             request.resource.data.availableSeats is int &&
+             request.resource.data.availableSeats == request.resource.data.totalSeats &&
+             request.resource.data.reservedSeats is int &&
+             request.resource.data.reservedSeats == 0;
     }
     
     // Ensure required fields for rate limiting are set
@@ -90,8 +146,9 @@ service cloud.firestore {
       
       // Users can update their own profile but cannot change their role
       // Rate limit: max 1 update per minute (prevent spam)
-      allow update: if isOwner(userId) && 
+      allow update: if isOwner(userId) &&
                       roleUnchanged() &&
+                      approvedUnchanged() &&
                       rateLimit(60) &&
                       validRequestSize();
       
@@ -104,24 +161,26 @@ service cloud.firestore {
     // ============================================================================
     
     match /routes/{routeId} {
-      // Anyone authenticated can read routes
-      allow read: if isAuthenticated();
+      // Only route owner (approved driver) or admin can read routes
+      allow read: if isAdmin() ||
+                    (isApprovedDriver() && resource.data.driverId == request.auth.uid);
       
-      // Only drivers can create routes
+      // Only APPROVED drivers can create routes
       // Rate limit: max 10 routes per day
-      allow create: if isDriver() &&
+      allow create: if isApprovedDriver() &&
+                      request.resource.data.driverId == request.auth.uid &&
                       validRequestSize();
       
       // Only the route owner (driver) can update their routes
       // Rate limit: max 1 update per 5 minutes
-      allow update: if isDriver() && 
-                      resource.data.driverId == request.auth.uid &&
-                      rateLimit(300) &&
-                      validRequestSize();
+      allow update: if isApprovedDriver() &&
+                        resource.data.driverId == request.auth.uid &&
+                        rateLimit(300) &&
+                        validRequestSize();
       
       // Only route owner or admin can delete
-      allow delete: if isAdmin() || 
-                      (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if isAdmin() ||
+                        (isApprovedDriver() && resource.data.driverId == request.auth.uid);
     }
     
     // ============================================================================
@@ -129,19 +188,31 @@ service cloud.firestore {
     // ============================================================================
     
     match /trackingPoints/{pointId} {
-      // Anyone authenticated can read tracking points
-      allow read: if isAuthenticated();
+      // Historical GPS data is private to its owner and administrators.
+      allow read: if isAdmin() ||
+                    (isAuthenticated() && resource.data.userId == request.auth.uid);
       
-      // Only drivers can create/update tracking points
-      // Rate limit: max 1 per 5 seconds (prevent GPS spam)
-      allow create, update: if isDriver() &&
-                              rateLimit(5) &&
-                              validRequestSize();
+      // The app has no supported writer for this legacy history collection.
+      allow create, update: if false;
       
-      // Only admin can delete
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() ||
+                              (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
     
+    // ============================================================================
+    // DRIVER TRACKING
+    // ============================================================================
+
+    match /tracking/{driverId} {
+      allow read: if isAdmin() ||
+                    (isDriver() && request.auth.uid == driverId);
+
+      allow create, update: if false;
+
+      allow delete: if isAdmin() ||
+                      (isDriver() && request.auth.uid == driverId);
+    }
+
     // ============================================================================
     // REQUESTS COLLECTION
     // ============================================================================
@@ -150,26 +221,14 @@ service cloud.firestore {
       // Users can read requests where they are parent or driver
       allow read: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
         isAdmin()
       );
       
-      // Only parents can create requests
-      // Rate limit: max 20 requests per day
-      allow create: if isParent() &&
-                      validRequestSize();
+      // Request identity, matching, and status are written by authenticated backend operations.
+      allow create, update: if false;
       
-      // Parents and drivers can update requests (for status changes)
-      // Rate limit: max 1 update per minute
-      allow update: if isAuthenticated() && (
-        resource.data.parentId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
-        isAdmin()
-      ) && rateLimit(60) && validRequestSize();
-      
-      // Only parent who created or admin can delete
-      allow delete: if isAdmin() || 
-                      (isParent() && resource.data.parentId == request.auth.uid);
+      // Request removal requires a backend operation that can validate related matches.
+      allow delete: if false;
     }
     
     // ============================================================================
@@ -177,24 +236,35 @@ service cloud.firestore {
     // ============================================================================
     
     match /vacancies/{vacancyId} {
-      // Anyone authenticated can read vacancies
-      allow read: if isAuthenticated();
+      // Only vacancy owner (approved driver) or admin can read vacancies
+      allow read: if isAdmin() ||
+                    (isApprovedDriver() && resource.data.driverId == request.auth.uid);
       
-      // Only drivers can create vacancies
+      // Only APPROVED drivers can create vacancies
       // Rate limit: max 5 vacancies per day
-      allow create: if isDriver() &&
+      allow create: if isApprovedDriver() &&
+                      request.resource.data.driverId == request.auth.uid &&
+                      validNewVacancyCapacity() &&
                       validRequestSize();
       
       // Only the driver who created can update
-      // Rate limit: max 1 update per 10 minutes
-      allow update: if isDriver() && 
+      // Capacity is reserved and edited by trusted backend operations.
+      allow update: if isApprovedDriver() &&
                       resource.data.driverId == request.auth.uid &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                        'driverId',
+                        'totalSeats',
+                        'availableSeats',
+                        'reservedSeats'
+                      ]) &&
                       rateLimit(600) &&
                       validRequestSize();
       
       // Only owner or admin can delete
-      allow delete: if isAdmin() || 
-                      (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if resource.data.reservedSeats is int &&
+                      resource.data.reservedSeats == 0 &&
+                      (isAdmin() ||
+                       (isApprovedDriver() && resource.data.driverId == request.auth.uid));
     }
     
     // ============================================================================
@@ -210,13 +280,40 @@ service cloud.firestore {
       );
       
       // System/admin creates matches
-      allow create: if isAdmin();
+      allow create, update, delete: if false;
       
-      // No updates allowed (immutable)
-      allow update: if false;
-      
-      // Only admin can delete
-      allow delete: if isAdmin();
+      match /tracking/{locationId} {
+        function canReadMatchLocation() {
+          let matchData = get(
+            /databases/$(database)/documents/matches/$(matchId)
+          ).data;
+          return isAuthenticated() &&
+                 matchData.status == 'active' &&
+                 (matchData.parentId == request.auth.uid ||
+                  matchData.driverId == request.auth.uid ||
+                  isAdmin());
+        }
+
+        allow read: if locationId == 'current' &&
+                      canReadMatchLocation() &&
+                      (!exists(
+                        /databases/$(database)/documents/matches/$(matchId)/tracking/current
+                      ) ||
+                       resource.data.updatedAt >
+                         request.time - duration.value(2, 'm'));
+
+        allow create, update: if locationId == 'current' &&
+                                isDriver() &&
+                                activeMatch(matchId) &&
+                                get(
+                                  /databases/$(database)/documents/matches/$(matchId)
+                                ).data.driverId == request.auth.uid &&
+                                request.resource.data.matchId == matchId &&
+                                validTrackingLocation(request.auth.uid);
+
+        // Shared current points are deleted only by trusted backend code.
+        allow delete: if false;
+      }
     }
     
     // ============================================================================

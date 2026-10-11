@@ -1,7 +1,11 @@
 if (!process.env.FIREBASE_EMULATOR_HOST) {
   process.env.FIREBASE_EMULATOR_HOST = '127.0.0.1:8080';
 }
-import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import {
+  initializeTestEnvironment,
+  assertFails,
+  assertSucceeds,
+} from '@firebase/rules-unit-testing';
 import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
@@ -9,11 +13,7 @@ import * as fs from 'fs';
 // ---------------------------------------------------------------------------
 
 /** Seed a /users/{uid} document via admin (security-rules-disabled) context. */
-async function seedUser(
-  testEnv: any,
-  uid: string,
-  data: Record<string, unknown>
-): Promise<void> {
+async function seedUser(testEnv: any, uid: string, data: Record<string, unknown>): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
     await ctx.firestore().collection('users').doc(uid).set(data);
   });
@@ -29,8 +29,7 @@ describe('Firestore Rules', () => {
 
   // Skip tests if not running under Firebase emulators (e.g., during `npm test`)
   const isEmulatorMode =
-    !!process.env.FIREBASE_EMULATOR_HOST ||
-    process.env.npm_lifecycle_event === 'test:rules';
+    !!process.env.FIREBASE_EMULATOR_HOST || process.env.npm_lifecycle_event === 'test:rules';
   const runOrSkip = isEmulatorMode ? it : it.skip;
 
   beforeAll(async () => {
@@ -112,19 +111,22 @@ describe('Firestore Rules', () => {
       );
     });
 
-    runOrSkip('denies read of another profile when /users/{uid} doc is missing (no role)', async () => {
-      // Seed only the target; the reader has NO /users document → hasRole returns false
-      await seedUser(testEnv, 'target-user', { role: 'parent' });
+    runOrSkip(
+      'denies read of another profile when /users/{uid} doc is missing (no role)',
+      async () => {
+        // Seed only the target; the reader has NO /users document → hasRole returns false
+        await seedUser(testEnv, 'target-user', { role: 'parent' });
 
-      await assertFails(
-        testEnv
-          .authenticatedContext('no-doc-user')
-          .firestore()
-          .collection('users')
-          .doc('target-user')
-          .get()
-      );
-    });
+        await assertFails(
+          testEnv
+            .authenticatedContext('no-doc-user')
+            .firestore()
+            .collection('users')
+            .doc('target-user')
+            .get()
+        );
+      }
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -133,7 +135,7 @@ describe('Firestore Rules', () => {
 
   describe('/routes – driver role', () => {
     runOrSkip('allows driver to create a route', async () => {
-      await seedUser(testEnv, 'driver-user', { role: 'driver' });
+      await seedUser(testEnv, 'driver-user', { role: 'driver', approved: true });
 
       await assertSucceeds(
         testEnv
@@ -176,10 +178,10 @@ describe('Firestore Rules', () => {
   // -------------------------------------------------------------------------
 
   describe('/requests – parent role', () => {
-    runOrSkip('allows parent to create a request', async () => {
+    runOrSkip('prevents parent from creating a request directly (backend-only)', async () => {
       await seedUser(testEnv, 'parent-user', { role: 'parent' });
 
-      await assertSucceeds(
+      await assertFails(
         testEnv
           .authenticatedContext('parent-user')
           .firestore()
@@ -253,49 +255,51 @@ describe('Firestore Rules', () => {
       );
     });
 
-    runOrSkip('ATTACK: user without profile CANNOT create profile with invalid role (superadmin)', async () => {
-      // Attacker tries to create profile with arbitrary invalid role
-      await assertFails(
-        createProfileAs('attacker-invalid-role', {
-          role: 'superadmin',
-          email: 'attacker@example.com',
-          displayName: 'Attacker',
-          createdAt: new Date(),
-        })
-      );
-    });
+    runOrSkip(
+      'ATTACK: user without profile CANNOT create profile with invalid role (superadmin)',
+      async () => {
+        // Attacker tries to create profile with arbitrary invalid role
+        await assertFails(
+          createProfileAs('attacker-invalid-role', {
+            role: 'superadmin',
+            email: 'attacker@example.com',
+            displayName: 'Attacker',
+            createdAt: new Date(),
+          })
+        );
+      }
+    );
 
-    runOrSkip('ATTACK: user without profile CANNOT create profile with invalid role (hacker)', async () => {
-      // Attacker tries another arbitrary invalid role
-      await assertFails(
-        createProfileAs('attacker-invalid-role-2', {
-          role: 'hacker',
-          email: 'attacker2@example.com',
-          displayName: 'Attacker 2',
-          createdAt: new Date(),
-        })
-      );
-    });
+    runOrSkip(
+      'ATTACK: user without profile CANNOT create profile with invalid role (hacker)',
+      async () => {
+        // Attacker tries another arbitrary invalid role
+        await assertFails(
+          createProfileAs('attacker-invalid-role-2', {
+            role: 'hacker',
+            email: 'attacker2@example.com',
+            displayName: 'Attacker 2',
+            createdAt: new Date(),
+          })
+        );
+      }
+    );
 
     runOrSkip('ATTACK: existing parent CANNOT update role to admin', async () => {
       // Seed a legitimate parent profile
       await seedUser(testEnv, 'legit-parent', { role: 'parent', name: 'Legit Parent' });
 
       // Parent tries to escalate to admin
-      await assertFails(
-        updateProfileAs('legit-parent', { role: 'admin' })
-      );
+      await assertFails(updateProfileAs('legit-parent', { role: 'admin' }));
     });
 
     runOrSkip('ATTACK: existing parent CANNOT update role to driver', async () => {
       await seedUser(testEnv, 'legit-parent-2', { role: 'parent', name: 'Legit Parent 2' });
 
-      await assertFails(
-        updateProfileAs('legit-parent-2', { role: 'driver' })
-      );
+      await assertFails(updateProfileAs('legit-parent-2', { role: 'driver' }));
     });
 
-    runOrSkip('ATTACK: user CANNOT write another user\'s profile', async () => {
+    runOrSkip("ATTACK: user CANNOT write another user's profile", async () => {
       await seedUser(testEnv, 'victim', { role: 'parent', name: 'Victim' });
 
       // Attacker tries to overwrite victim's profile
@@ -334,7 +338,12 @@ describe('Firestore Rules', () => {
 
     // Positive test: user can update allowed fields (name, whatsapp, etc.)
     runOrSkip('LEGIT: user CAN update allowed profile fields (name, whatsapp)', async () => {
-      await seedUser(testEnv, 'editable-user', { role: 'parent', name: 'Original', whatsapp: '+123' });
+      await seedUser(testEnv, 'editable-user', {
+        role: 'parent',
+        name: 'Original',
+        whatsapp: '+123',
+        approved: false,
+      });
 
       await assertSucceeds(
         updateProfileAs('editable-user', { name: 'Updated Name', whatsapp: '+456' })
