@@ -1,7 +1,7 @@
 const { createStopTrackingHandler } = require('../src/stopTrackingCallable');
 
 const createHarness = ({
-  profile = { role: 'driver' },
+  profile = { role: 'driver', approved: true },
   cleanupResult = 'deleted',
   deleteFailure,
 } = {}) => {
@@ -79,6 +79,48 @@ describe('stopTracking callable handler', () => {
       handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
     ).rejects.toMatchObject({ code: 'permission-denied' });
     expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+  });
+
+  test('rejects users whose server-side profile has approved: false', async () => {
+    const { handler, repository } = createHarness({ profile: { role: 'driver', approved: false } });
+
+    await expect(
+      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+  });
+
+  test('rejects users whose server-side profile lacks approved field', async () => {
+    const { handler, repository } = createHarness({ profile: { role: 'driver' } });
+
+    await expect(
+      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+  });
+
+  test('rejects users whose server-side profile does not exist', async () => {
+    const { handler, repository } = createHarness({ profile: null });
+
+    await expect(
+      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+  });
+
+  test('accepts users whose server-side profile has approved: true', async () => {
+    const { handler, repository } = createHarness({ profile: { role: 'driver', approved: true } });
+
+    const response = await handler({
+      auth: { uid: 'verified-driver' },
+      data: { matchId: 'match-owned' },
+    });
+
+    expect(response).toEqual({ status: 'stopped', locationDeleted: true });
+    expect(repository.deleteMatchCurrentTracking).toHaveBeenCalledWith('match-owned', {
+      field: 'driverId',
+      uid: 'verified-driver',
+    });
   });
 
   test('returns an idempotent response when the current location is absent', async () => {

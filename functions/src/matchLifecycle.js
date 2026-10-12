@@ -218,7 +218,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
         transaction.get(requestRef),
         transaction.get(vacancyRef),
       ]);
-      if (profile?.role !== 'driver' || match.driverId !== actorUid) fail('permission-denied');
+      if (profile?.role !== 'driver' || profile?.approved !== true || match.driverId !== actorUid)
+        fail('permission-denied');
       if (match.status === 'active') {
         if (
           !requestSnapshot.exists ||
@@ -451,7 +452,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
       ]);
       if (!vacancySnapshot.exists) fail('not-found');
       const vacancy = vacancySnapshot.data();
-      if (profile?.role !== 'driver' || vacancy.driverId !== actorUid) fail('permission-denied');
+      if (profile?.role !== 'driver' || profile?.approved !== true || vacancy.driverId !== actorUid)
+        fail('permission-denied');
       assertVacancyCapacity(vacancy);
       if (totalSeats < vacancy.reservedSeats || totalSeats < 1) fail('failed-precondition');
       transaction.update(vacancyRef, {
@@ -477,7 +479,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
       ]);
       if (!vacancySnapshot.exists) fail('not-found');
       const vacancy = vacancySnapshot.data();
-      if (profile?.role !== 'driver' || vacancy.driverId !== actorUid) fail('permission-denied');
+      if (profile?.role !== 'driver' || profile?.approved !== true || vacancy.driverId !== actorUid)
+        fail('permission-denied');
       if (Object.prototype.hasOwnProperty.call(vacancy, 'reservedSeats')) {
         return { status: 'already-initialized' };
       }

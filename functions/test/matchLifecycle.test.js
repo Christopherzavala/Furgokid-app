@@ -108,7 +108,7 @@ const createFirestore = () => {
 
 const seedBase = (firestore, { reservedSeats = 0, availableSeats = 4, totalSeats = 4 } = {}) => {
   firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
-  firestore.seed('users/driver-1', { role: 'driver' });
+  firestore.seed('users/driver-1', { role: 'driver', approved: true });
   firestore.seed('vacancies/vacancy-1', {
     driverId: 'driver-1',
     driverName: 'Driver',
@@ -201,6 +201,106 @@ describe('match lifecycle repository', () => {
         requestData,
       })
     ).resolves.toMatchObject({ idempotent: true, status: 'active' });
+  });
+
+  test('rejects acceptMatch when driver profile has approved: false', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
+    firestore.seed('users/driver-1', { role: 'driver', approved: false });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+    const { matchId } = await repository.createOrAddMatch({
+      actorUid: 'parent-1',
+      requestId: 'request-1',
+      vacancyId: 'vacancy-1',
+      requestData,
+    });
+
+    await expect(repository.acceptMatch({ actorUid: 'driver-1', matchId })).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
+    expect(firestore.read(`matches/${matchId}`).status).toBe('pending');
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+  });
+
+  test('rejects acceptMatch when driver profile lacks approved field', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
+    firestore.seed('users/driver-1', { role: 'driver' });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+    const { matchId } = await repository.createOrAddMatch({
+      actorUid: 'parent-1',
+      requestId: 'request-1',
+      vacancyId: 'vacancy-1',
+      requestData,
+    });
+
+    await expect(repository.acceptMatch({ actorUid: 'driver-1', matchId })).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
+    expect(firestore.read(`matches/${matchId}`).status).toBe('pending');
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+  });
+
+  test('accepts acceptMatch when driver profile has approved: true', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
+    firestore.seed('users/driver-1', { role: 'driver', approved: true });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+    const { matchId } = await repository.createOrAddMatch({
+      actorUid: 'parent-1',
+      requestId: 'request-1',
+      vacancyId: 'vacancy-1',
+      requestData,
+    });
+
+    await expect(repository.acceptMatch({ actorUid: 'driver-1', matchId })).resolves.toEqual({
+      status: 'active',
+      idempotent: false,
+    });
+    expect(firestore.read('requests/request-1').activeMatchId).toBe(matchId);
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
   });
 
   test.each([
@@ -489,6 +589,96 @@ describe('match lifecycle repository', () => {
     ).resolves.toMatchObject({ totalSeats: 3, availableSeats: 1, reservedSeats: 2 });
   });
 
+  test('rejects updateVacancyCapacity when driver profile has approved: false', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver', approved: false });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.updateVacancyCapacity({
+        actorUid: 'driver-1',
+        vacancyId: 'vacancy-1',
+        totalSeats: 5,
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      totalSeats: 4,
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('rejects updateVacancyCapacity when driver profile lacks approved field', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver' });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.updateVacancyCapacity({
+        actorUid: 'driver-1',
+        vacancyId: 'vacancy-1',
+        totalSeats: 5,
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      totalSeats: 4,
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('accepts updateVacancyCapacity when driver profile has approved: true', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver', approved: true });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.updateVacancyCapacity({
+        actorUid: 'driver-1',
+        vacancyId: 'vacancy-1',
+        totalSeats: 5,
+      })
+    ).resolves.toMatchObject({ totalSeats: 5, availableSeats: 3, reservedSeats: 2 });
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      totalSeats: 5,
+      availableSeats: 3,
+      reservedSeats: 2,
+    });
+  });
+
   test('rejects acceptance when current available capacity is insufficient', async () => {
     const firestore = createFirestore();
     seedBase(firestore);
@@ -543,6 +733,76 @@ describe('match lifecycle repository', () => {
         requestData,
       })
     ).resolves.toMatchObject({ status: 'pending' });
+  });
+
+  test('rejects initializeVacancyCapacity when driver profile has approved: false', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver', approved: false });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.initializeVacancyCapacity({ actorUid: 'driver-1', vacancyId: 'vacancy-1' })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      totalSeats: 4,
+      availableSeats: 4,
+    });
+    expect(firestore.read('vacancies/vacancy-1').reservedSeats).toBeUndefined();
+  });
+
+  test('rejects initializeVacancyCapacity when driver profile lacks approved field', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver' });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.initializeVacancyCapacity({ actorUid: 'driver-1', vacancyId: 'vacancy-1' })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(firestore.read('vacancies/vacancy-1')).toMatchObject({
+      totalSeats: 4,
+      availableSeats: 4,
+    });
+    expect(firestore.read('vacancies/vacancy-1').reservedSeats).toBeUndefined();
+  });
+
+  test('accepts initializeVacancyCapacity when driver profile has approved: true', async () => {
+    const firestore = createFirestore();
+    firestore.seed('users/driver-1', { role: 'driver', approved: true });
+    firestore.seed('vacancies/vacancy-1', {
+      driverId: 'driver-1',
+      driverName: 'Driver',
+      driverPhone: '222',
+      status: 'active',
+      zone: 'Zona Norte',
+      schedule: 'Mañana',
+      totalSeats: 4,
+      availableSeats: 4,
+    });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.initializeVacancyCapacity({ actorUid: 'driver-1', vacancyId: 'vacancy-1' })
+    ).resolves.toMatchObject({ status: 'initialized' });
   });
 
   test('does not partially reserve a disabled vacancy or one without enough seats', async () => {

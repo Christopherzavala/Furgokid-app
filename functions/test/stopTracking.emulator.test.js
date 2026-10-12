@@ -95,8 +95,8 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
       createAuthUser('parent'),
     ]);
     await Promise.all([
-      firestore.collection('users').doc(driver.uid).set({ role: 'driver' }),
-      firestore.collection('users').doc(otherDriver.uid).set({ role: 'driver' }),
+      firestore.collection('users').doc(driver.uid).set({ role: 'driver', approved: true }),
+      firestore.collection('users').doc(otherDriver.uid).set({ role: 'driver', approved: true }),
       firestore.collection('users').doc(parent.uid).set({ role: 'parent' }),
     ]);
   });

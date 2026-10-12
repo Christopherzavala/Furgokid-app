@@ -65,8 +65,8 @@ const createStopTrackingHandler = ({
       throw new HttpsErrorClass('internal', 'Unable to stop tracking.');
     }
 
-    if (userProfile?.role !== 'driver') {
-      throw new HttpsErrorClass('permission-denied', 'Only the match driver can stop tracking.');
+    if (userProfile?.role !== 'driver' || userProfile?.approved !== true) {
+      throw new HttpsErrorClass('permission-denied', 'Only approved drivers can stop tracking.');
     }
 
     let repository;

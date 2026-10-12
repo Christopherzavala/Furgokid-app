@@ -48,8 +48,11 @@ emulatorDescribe('match lifecycle (Firestore Emulator)', () => {
       });
   };
 
-  const createUser = async (id, role) => {
-    await firestore.collection('users').doc(`${prefix}-${id}`).set({ role });
+  const createUser = async (id, role, extra = {}) => {
+    await firestore
+      .collection('users')
+      .doc(`${prefix}-${id}`)
+      .set({ role, ...extra });
   };
 
   const createRequestAndMatch = async ({ requestId, vacancyId, seats = 2 }) => {
@@ -72,7 +75,10 @@ emulatorDescribe('match lifecycle (Firestore Emulator)', () => {
   };
 
   beforeAll(async () => {
-    await Promise.all([createUser('parent', 'parent'), createUser('driver', 'driver')]);
+    await Promise.all([
+      createUser('parent', 'parent'),
+      createUser('driver', 'driver', { approved: true }),
+    ]);
   });
 
   afterAll(async () => {
