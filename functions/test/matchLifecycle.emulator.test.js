@@ -145,6 +145,230 @@ emulatorDescribe('match lifecycle (Firestore Emulator)', () => {
     });
   });
 
+  test('rejects cancelMatch when driver profile has approved: false', async () => {
+    // Create approved driver, accept match, then change to unapproved
+    await createUser('driver-unapproved', 'driver', { approved: true });
+    const requestId = `${prefix}-request-cancel-false`;
+    const vacancyId = `${prefix}-vacancy-cancel-false`;
+    await createVacancy(vacancyId, 'driver-unapproved');
+    const created = await createRequestAndMatch({ requestId, vacancyId });
+    await repository.acceptMatch({
+      actorUid: `${prefix}-driver-unapproved`,
+      matchId: created.matchId,
+    });
+    await firestore
+      .collection('matches')
+      .doc(created.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    // Now change driver to unapproved
+    await firestore
+      .collection('users')
+      .doc(`${prefix}-driver-unapproved`)
+      .update({ approved: false });
+
+    await expect(
+      repository.cancelMatch({ actorUid: `${prefix}-driver-unapproved`, matchId: created.matchId })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect((await firestore.collection('matches').doc(created.matchId).get()).get('status')).toBe(
+      'active'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('reserved');
+    expect((await firestore.collection('vacancies').doc(vacancyId).get()).data()).toMatchObject({
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('rejects cancelMatch when driver profile lacks approved field', async () => {
+    // Create approved driver, accept match, then remove approved field
+    await createUser('driver-no-approved', 'driver', { approved: true });
+    const requestId = `${prefix}-request-cancel-missing`;
+    const vacancyId = `${prefix}-vacancy-cancel-missing`;
+    await createVacancy(vacancyId, 'driver-no-approved');
+    const created = await createRequestAndMatch({ requestId, vacancyId });
+    await repository.acceptMatch({
+      actorUid: `${prefix}-driver-no-approved`,
+      matchId: created.matchId,
+    });
+    await firestore
+      .collection('matches')
+      .doc(created.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    // Now remove approved field
+    await firestore
+      .collection('users')
+      .doc(`${prefix}-driver-no-approved`)
+      .update({ approved: admin.firestore.FieldValue.delete() });
+
+    await expect(
+      repository.cancelMatch({ actorUid: `${prefix}-driver-no-approved`, matchId: created.matchId })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect((await firestore.collection('matches').doc(created.matchId).get()).get('status')).toBe(
+      'active'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('reserved');
+    expect((await firestore.collection('vacancies').doc(vacancyId).get()).data()).toMatchObject({
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('rejects completeMatch when driver profile has approved: false', async () => {
+    // Create approved driver, accept match, then change to unapproved
+    await createUser('driver-unapproved-2', 'driver', { approved: true });
+    const requestId = `${prefix}-request-complete-false`;
+    const vacancyId = `${prefix}-vacancy-complete-false`;
+    await createVacancy(vacancyId, 'driver-unapproved-2');
+    const created = await createRequestAndMatch({ requestId, vacancyId });
+    await repository.acceptMatch({
+      actorUid: `${prefix}-driver-unapproved-2`,
+      matchId: created.matchId,
+    });
+    await firestore
+      .collection('matches')
+      .doc(created.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    // Now change driver to unapproved
+    await firestore
+      .collection('users')
+      .doc(`${prefix}-driver-unapproved-2`)
+      .update({ approved: false });
+
+    await expect(
+      repository.completeMatch({
+        actorUid: `${prefix}-driver-unapproved-2`,
+        matchId: created.matchId,
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect((await firestore.collection('matches').doc(created.matchId).get()).get('status')).toBe(
+      'active'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('reserved');
+    expect((await firestore.collection('vacancies').doc(vacancyId).get()).data()).toMatchObject({
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('rejects completeMatch when driver profile lacks approved field', async () => {
+    // Create approved driver, accept match, then remove approved field
+    await createUser('driver-no-approved-2', 'driver', { approved: true });
+    const requestId = `${prefix}-request-complete-missing`;
+    const vacancyId = `${prefix}-vacancy-complete-missing`;
+    await createVacancy(vacancyId, 'driver-no-approved-2');
+    const created = await createRequestAndMatch({ requestId, vacancyId });
+    await repository.acceptMatch({
+      actorUid: `${prefix}-driver-no-approved-2`,
+      matchId: created.matchId,
+    });
+    await firestore
+      .collection('matches')
+      .doc(created.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    // Now remove approved field
+    await firestore
+      .collection('users')
+      .doc(`${prefix}-driver-no-approved-2`)
+      .update({ approved: admin.firestore.FieldValue.delete() });
+
+    await expect(
+      repository.completeMatch({
+        actorUid: `${prefix}-driver-no-approved-2`,
+        matchId: created.matchId,
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect((await firestore.collection('matches').doc(created.matchId).get()).get('status')).toBe(
+      'active'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('reserved');
+    expect((await firestore.collection('vacancies').doc(vacancyId).get()).data()).toMatchObject({
+      availableSeats: 2,
+      reservedSeats: 2,
+    });
+  });
+
+  test('accepts cancelMatch and completeMatch when driver profile has approved: true', async () => {
+    const requestId = `${prefix}-request-cancel-complete-true`;
+    const vacancyId = `${prefix}-vacancy-cancel-complete-true`;
+    await createVacancy(vacancyId);
+    const created = await createRequestAndMatch({ requestId, vacancyId });
+    await repository.acceptMatch({ actorUid: `${prefix}-driver`, matchId: created.matchId });
+    await firestore
+      .collection('matches')
+      .doc(created.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    await repository.cancelMatch({ actorUid: `${prefix}-driver`, matchId: created.matchId });
+    expect((await firestore.collection('matches').doc(created.matchId).get()).get('status')).toBe(
+      'cancelled'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('released');
+    expect((await firestore.collection('vacancies').doc(vacancyId).get()).data()).toMatchObject({
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+
+    const requestId2 = `${prefix}-request-complete-true-2`;
+    const vacancyId2 = `${prefix}-vacancy-complete-true-2`;
+    await createVacancy(vacancyId2);
+    const created2 = await createRequestAndMatch({ requestId: requestId2, vacancyId: vacancyId2 });
+    await repository.acceptMatch({ actorUid: `${prefix}-driver`, matchId: created2.matchId });
+    await firestore
+      .collection('matches')
+      .doc(created2.matchId)
+      .collection('tracking')
+      .doc('current')
+      .set({ latitude: 1, longitude: 2 });
+
+    await repository.completeMatch({ actorUid: `${prefix}-driver`, matchId: created2.matchId });
+    expect((await firestore.collection('matches').doc(created2.matchId).get()).get('status')).toBe(
+      'completed'
+    );
+    expect(
+      (await firestore.collection('matches').doc(created2.matchId).get()).get(
+        'capacityReservationStatus'
+      )
+    ).toBe('released');
+    expect((await firestore.collection('vacancies').doc(vacancyId2).get()).data()).toMatchObject({
+      availableSeats: 4,
+      reservedSeats: 0,
+    });
+  });
+
   test('only one of two concurrent matches for a request can reserve and activate', async () => {
     const requestId = `${prefix}-concurrent-request`;
     const firstVacancyId = `${prefix}-first-vacancy`;

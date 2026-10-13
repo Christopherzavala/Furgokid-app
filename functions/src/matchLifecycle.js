@@ -301,7 +301,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
       ]);
       if (!requestSnapshot.exists) fail('failed-precondition');
       const actorIsParent = match.parentId === actorUid && profile?.role === 'parent';
-      const actorIsDriver = match.driverId === actorUid && profile?.role === 'driver';
+      const actorIsDriver =
+        match.driverId === actorUid && profile?.role === 'driver' && profile?.approved === true;
       if (targetStatus === 'completed' ? !actorIsDriver : !actorIsParent && !actorIsDriver) {
         fail('permission-denied');
       }
