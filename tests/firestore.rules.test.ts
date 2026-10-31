@@ -14,8 +14,33 @@ import * as fs from 'fs';
 
 /** Seed a /users/{uid} document via admin (security-rules-disabled) context. */
 async function seedUser(testEnv: any, uid: string, data: Record<string, unknown>): Promise<void> {
+  await seedDocument(testEnv, `users/${uid}`, data);
+}
+
+/** Seed any document via admin (security-rules-disabled) context. */
+async function seedDocument(
+  testEnv: any,
+  path: string,
+  data: Record<string, unknown>
+): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
-    await ctx.firestore().collection('users').doc(uid).set(data);
+    await ctx.firestore().doc(path).set(data);
+  });
+}
+
+/** Seed the participant profiles and active match used by match/tracking tests. */
+async function seedMatchFixture(
+  testEnv: any,
+  matchId = 'match-1',
+  overrides: Record<string, unknown> = {}
+): Promise<void> {
+  await seedUser(testEnv, 'match-parent', { role: 'parent', approved: false });
+  await seedUser(testEnv, 'match-driver', { role: 'driver', approved: true });
+  await seedDocument(testEnv, `matches/${matchId}`, {
+    parentId: 'match-parent',
+    driverId: 'match-driver',
+    status: 'active',
+    ...overrides,
   });
 }
 
@@ -313,9 +338,10 @@ describe('Firestore Rules', () => {
       );
     });
 
-    // Positive test: legitimate profile creation with allowed role
-    runOrSkip('LEGIT: user CAN create profile with role:parent', async () => {
-      await assertSucceeds(
+    // Client-side profile creation is forbidden for every role. The backend
+    // provisioning path uses the Admin SDK and therefore bypasses these rules.
+    runOrSkip('SECURITY: client CANNOT create a parent profile', async () => {
+      await assertFails(
         createProfileAs('new-parent', {
           role: 'parent',
           email: 'newparent@example.com',
@@ -325,8 +351,8 @@ describe('Firestore Rules', () => {
       );
     });
 
-    runOrSkip('LEGIT: user CAN create profile with role:driver', async () => {
-      await assertSucceeds(
+    runOrSkip('SECURITY: client CANNOT create a driver profile', async () => {
+      await assertFails(
         createProfileAs('new-driver', {
           role: 'driver',
           email: 'newdriver@example.com',
@@ -336,7 +362,20 @@ describe('Firestore Rules', () => {
       );
     });
 
-    // Positive test: user can update allowed fields (name, whatsapp, etc.)
+    runOrSkip('SERVER-SIDE: admin CAN provision a parent profile', async () => {
+      await assertSucceeds(
+        testEnv.withSecurityRulesDisabled(async (ctx: any) => {
+          await ctx.firestore().collection('users').doc('server-parent').set({
+            role: 'parent',
+            approved: false,
+            email: 'serverparent@example.com',
+            displayName: 'Server Parent',
+            createdAt: new Date(),
+          });
+        })
+      );
+    });
+
     runOrSkip('LEGIT: user CAN update allowed profile fields (name, whatsapp)', async () => {
       await seedUser(testEnv, 'editable-user', {
         role: 'parent',
@@ -347,6 +386,347 @@ describe('Firestore Rules', () => {
 
       await assertSucceeds(
         updateProfileAs('editable-user', { name: 'Updated Name', whatsapp: '+456' })
+      );
+    });
+
+    runOrSkip('ATTACK: user CANNOT add an approval flag to their profile', async () => {
+      await seedUser(testEnv, 'unapproved-user', { role: 'driver', name: 'Driver' });
+
+      await assertFails(updateProfileAs('unapproved-user', { approved: true }));
+    });
+
+    runOrSkip('ATTACK: user CANNOT approve themselves', async () => {
+      await seedUser(testEnv, 'driver-user', { role: 'driver', approved: false });
+
+      await assertFails(updateProfileAs('driver-user', { approved: true }));
+    });
+
+    runOrSkip('ATTACK: user CANNOT revoke their own approval', async () => {
+      await seedUser(testEnv, 'approved-driver', { role: 'driver', approved: true });
+
+      await assertFails(updateProfileAs('approved-driver', { approved: false }));
+    });
+
+    runOrSkip('ATTACK: user CANNOT remove the privileged approval field', async () => {
+      await seedUser(testEnv, 'approved-driver-2', { role: 'driver', approved: true });
+      const { deleteField } = jest.requireActual('@firebase/firestore');
+
+      await assertFails(updateProfileAs('approved-driver-2', { approved: deleteField() }));
+    });
+
+    runOrSkip('ATTACK: user CANNOT remove the privileged role field', async () => {
+      await seedUser(testEnv, 'parent-role', { role: 'parent', approved: false });
+      const { deleteField } = jest.requireActual('@firebase/firestore');
+
+      await assertFails(updateProfileAs('parent-role', { role: deleteField() }));
+    });
+  });
+  // -------------------------------------------------------------------------
+  // /users – child-data containment
+  // -------------------------------------------------------------------------
+
+  describe('/users – child-data containment', () => {
+    const uid = 'parent-with-children';
+
+    async function updateProfileAs(updates: Record<string, unknown>) {
+      return testEnv
+        .authenticatedContext(uid)
+        .firestore()
+        .collection('users')
+        .doc(uid)
+        .update(updates);
+    }
+
+    runOrSkip('BLOCKED: owner cannot add childrenCount', async () => {
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+
+      await assertFails(updateProfileAs({ childrenCount: 1 }));
+    });
+
+    runOrSkip('BLOCKED: owner cannot add childrenNames', async () => {
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+
+      await assertFails(updateProfileAs({ childrenNames: 'Child Name' }));
+    });
+
+    runOrSkip('BLOCKED: owner cannot add childrenAges', async () => {
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+
+      await assertFails(updateProfileAs({ childrenAges: '7' }));
+    });
+
+    runOrSkip('BLOCKED: owner cannot add school', async () => {
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+
+      await assertFails(updateProfileAs({ school: 'School Name' }));
+    });
+
+    runOrSkip('BLOCKED: owner cannot modify existing child data', async () => {
+      await seedUser(testEnv, uid, {
+        role: 'parent',
+        approved: false,
+        childrenCount: 1,
+        childrenNames: 'Old Name',
+        childrenAges: '7',
+        school: 'Old School',
+      });
+
+      await assertFails(updateProfileAs({ childrenNames: 'New Name' }));
+      await assertFails(updateProfileAs({ childrenAges: '8' }));
+      await assertFails(updateProfileAs({ school: 'New School' }));
+    });
+
+    runOrSkip('LEGIT: owner can update non-child profile fields', async () => {
+      await seedUser(testEnv, uid, {
+        role: 'parent',
+        approved: false,
+        childrenCount: 1,
+        childrenNames: 'Child Name',
+        childrenAges: '7',
+        school: 'School Name',
+      });
+
+      await assertSucceeds(
+        updateProfileAs({ name: 'Updated Parent', emergencyContact: '+56912345678' })
+      );
+    });
+
+    runOrSkip('BLOCKED: owner cannot write child data to another profile', async () => {
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+      await seedUser(testEnv, 'other-parent', { role: 'parent', approved: false });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext(uid)
+          .firestore()
+          .collection('users')
+          .doc('other-parent')
+          .update({ childrenNames: 'Child Name' })
+      );
+    });
+
+    runOrSkip('LEGIT: owner can remove existing child data', async () => {
+      await seedUser(testEnv, uid, {
+        role: 'parent',
+        approved: false,
+        childrenNames: 'Child Name',
+        school: 'School Name',
+      });
+      const { deleteField } = jest.requireActual('@firebase/firestore');
+
+      await assertSucceeds(
+        updateProfileAs({ childrenNames: deleteField(), school: deleteField() })
+      );
+    });
+
+    runOrSkip('BLOCKED: owner cannot recreate removed child data', async () => {
+      await seedUser(testEnv, uid, {
+        role: 'parent',
+        approved: false,
+        childrenNames: 'Child Name',
+      });
+      const { deleteField } = jest.requireActual('@firebase/firestore');
+
+      await assertSucceeds(updateProfileAs({ childrenNames: deleteField() }));
+      await assertFails(updateProfileAs({ childrenNames: 'Child Name Again' }));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // /matches – ownership and authorization
+  // -------------------------------------------------------------------------
+
+  describe('/matches – ownership and authorization', () => {
+    runOrSkip('allows the assigned parent to read the match', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .collection('matches')
+          .doc('match-1')
+          .get()
+      );
+    });
+
+    runOrSkip('allows the assigned approved driver to read the match', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .collection('matches')
+          .doc('match-1')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents an unrelated user from reading the match', async () => {
+      await seedMatchFixture(testEnv);
+      await seedUser(testEnv, 'other-parent', { role: 'parent', approved: false });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('other-parent')
+          .firestore()
+          .collection('matches')
+          .doc('match-1')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents an unapproved assigned driver from reading the match', async () => {
+      await seedMatchFixture(testEnv);
+      await seedUser(testEnv, 'match-driver', { role: 'driver', approved: false });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .collection('matches')
+          .doc('match-1')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents clients from creating or changing matches', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .collection('matches')
+          .doc('client-match')
+          .set({ parentId: 'match-parent', driverId: 'match-driver', status: 'active' })
+      );
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .collection('matches')
+          .doc('match-1')
+          .update({ status: 'completed' })
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // /matches/{matchId}/tracking/current – access and writes
+  // -------------------------------------------------------------------------
+
+  describe('/matches/{matchId}/tracking/current', () => {
+    function freshTrackingData(overrides: Record<string, unknown> = {}) {
+      const { Timestamp } = jest.requireActual('@firebase/firestore');
+      return {
+        driverId: 'match-driver',
+        matchId: 'match-1',
+        latitude: -33.4489,
+        longitude: -70.6693,
+        speed: 0,
+        active: true,
+        updatedAt: Timestamp.now(),
+        ...overrides,
+      };
+    }
+
+    runOrSkip('allows the assigned parent to read fresh tracking', async () => {
+      await seedMatchFixture(testEnv);
+      await seedDocument(testEnv, 'matches/match-1/tracking/current', freshTrackingData());
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents an unrelated user from reading tracking', async () => {
+      await seedMatchFixture(testEnv);
+      await seedUser(testEnv, 'other-parent', { role: 'parent', approved: false });
+      await seedDocument(testEnv, 'matches/match-1/tracking/current', freshTrackingData());
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('other-parent')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents participants from reading tracking for a completed match', async () => {
+      await seedMatchFixture(testEnv, 'match-1', { status: 'completed' });
+      await seedDocument(testEnv, 'matches/match-1/tracking/current', freshTrackingData());
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .get()
+      );
+    });
+
+    runOrSkip('allows the assigned approved driver to update tracking', async () => {
+      await seedMatchFixture(testEnv);
+      const driverDb = testEnv.authenticatedContext('match-driver').firestore();
+
+      await assertSucceeds(
+        driverDb.doc('matches/match-1/tracking/current').set(freshTrackingData())
+      );
+    });
+
+    runOrSkip('prevents the assigned parent from writing tracking', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-parent')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .set(freshTrackingData({ driverId: 'match-parent' }))
+      );
+    });
+
+    runOrSkip('prevents an unapproved driver from writing tracking', async () => {
+      await seedMatchFixture(testEnv);
+      await seedUser(testEnv, 'match-driver', { role: 'driver', approved: false });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .set(freshTrackingData())
+      );
+    });
+
+    runOrSkip('prevents an approved driver from forging another driverId', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .set(freshTrackingData({ driverId: 'another-driver' }))
+      );
+    });
+
+    runOrSkip('prevents an approved driver from forging another matchId', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .set(freshTrackingData({ matchId: 'another-match' }))
       );
     });
   });

@@ -32,15 +32,14 @@ service cloud.firestore {
       return hasRole('parent');
     }
 
-    // Driver approved by admin (role == 'driver' AND approved == true)
+    // Driver approved by admin (role == 'driver' AND approved == true).
+    // The existence check must precede access to the profile fields so a
+    // missing profile fails closed.
     function isApprovedDriver() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      let userData = userDoc.data;
       return isAuthenticated() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             userData.role == 'driver' &&
-             userData.keys().hasAny(['approved']) &&
-             userData.approved == true;
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
     }
 
     function validTrackingLocation(driverId) {
@@ -73,15 +72,41 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/matches/$(matchId)) &&
              get(/databases/$(database)/documents/matches/$(matchId)).data.status == 'active';
     }
+
+    // Match access is limited to the authenticated parent/driver assigned to
+    // that match. Drivers must be approved; admins retain break-glass access.
+    function canReadMatch(matchData) {
+      return isAuthenticated() &&
+             (isAdmin() ||
+              (isParent() && matchData.parentId == request.auth.uid) ||
+              (isApprovedDriver() && matchData.driverId == request.auth.uid));
+    }
     
-    // Prevent role escalation
+    // Prevent clients from adding, removing, or changing privileged fields.
+    // Missing values are treated as different so an attacker cannot delete
+    // `approved` or `role` and bypass a later comparison.
     function roleUnchanged() {
-      return request.resource.data.role == resource.data.role;
+      return request.resource.data.keys().hasAll(['role']) &&
+             resource.data.keys().hasAll(['role']) &&
+             request.resource.data.role == resource.data.role;
     }
 
-    // Prevent self-approval
+    // Prevent clients from adding, removing, or changing approval state.
     function approvedUnchanged() {
-      return request.resource.data.approved == resource.data.approved;
+      return request.resource.data.keys().hasAll(['approved']) ==
+             resource.data.keys().hasAll(['approved']) &&
+             (!request.resource.data.keys().hasAll(['approved']) ||
+              request.resource.data.approved == resource.data.approved);
+    }
+
+    // Temporary privacy containment: the client may remove existing child
+    // data for data minimization, but may not add or modify it. Trusted
+    // backend writes (Admin SDK / callable functions) bypass Security Rules.
+    function childFieldsUnchangedOrRemoved() {
+      let addedKeys = request.resource.data.diff(resource.data).addedKeys();
+      let changedKeys = request.resource.data.diff(resource.data).changedKeys();
+      let childKeys = ['childrenCount', 'childrenNames', 'childrenAges', 'school'];
+      return !addedKeys.hasAny(childKeys) && !changedKeys.hasAny(childKeys);
     }
     
     // ============================================================================
@@ -134,25 +159,23 @@ service cloud.firestore {
     // ============================================================================
     
     match /users/{userId} {
-      // Anyone authenticated can read their own profile or admin can read all
+      // A user can read their own profile. Admins can read any profile.
       allow read: if isOwner(userId) || isAdmin();
-      
-      // Users can create their own profile during registration
-      // Role must be 'parent' or 'driver' (NOT 'admin') - prevents privilege escalation
-      allow create: if isAuthenticated() && 
-                      isOwner(userId) &&
-                      request.resource.data.role in ['parent', 'driver'] &&
-                      validRequestSize();
-      
-      // Users can update their own profile but cannot change their role
-      // Rate limit: max 1 update per minute (prevent spam)
+
+      // Profiles are created only by the blocking beforeUserCreated Auth
+      // trigger. The Admin SDK bypasses Firestore Security Rules.
+      allow create: if false;
+
+      // Users can update their own profile but cannot add, remove, or change
+      // role/approval state, or add/modify child-data fields.
       allow update: if isOwner(userId) &&
                       roleUnchanged() &&
                       approvedUnchanged() &&
+                      childFieldsUnchangedOrRemoved() &&
                       rateLimit(60) &&
                       validRequestSize();
-      
-      // Only admins can delete users
+
+      // Only admins can delete users.
       allow delete: if isAdmin();
     }
     
@@ -272,14 +295,10 @@ service cloud.firestore {
     // ============================================================================
     
     match /matches/{matchId} {
-      // Users can read matches where they are involved
-      allow read: if isAuthenticated() && (
-        resource.data.parentId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
-        isAdmin()
-      );
-      
-      // System/admin creates matches
+      // Only the assigned parent/driver or an admin can read a match.
+      allow read: if canReadMatch(resource.data);
+
+      // Matches are created and transitioned only by trusted backend code.
       allow create, update, delete: if false;
       
       match /tracking/{locationId} {
@@ -287,11 +306,7 @@ service cloud.firestore {
           let matchData = get(
             /databases/$(database)/documents/matches/$(matchId)
           ).data;
-          return isAuthenticated() &&
-                 matchData.status == 'active' &&
-                 (matchData.parentId == request.auth.uid ||
-                  matchData.driverId == request.auth.uid ||
-                  isAdmin());
+          return matchData.status == 'active' && canReadMatch(matchData);
         }
 
         allow read: if locationId == 'current' &&
@@ -303,7 +318,7 @@ service cloud.firestore {
                          request.time - duration.value(2, 'm'));
 
         allow create, update: if locationId == 'current' &&
-                                isDriver() &&
+                                isApprovedDriver() &&
                                 activeMatch(matchId) &&
                                 get(
                                   /databases/$(database)/documents/matches/$(matchId)
