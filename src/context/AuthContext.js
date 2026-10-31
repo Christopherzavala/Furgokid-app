@@ -8,12 +8,14 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
 import { setUserContext } from '../config/sentry';
 import analyticsService from '../services/analyticsService';
 import notificationService from '../services/notificationService';
+import { ensureUserProfile, waitForUserProfile } from '../services/userProfileService';
+import { requestDriverApproval } from '../services/driverApprovalService';
 
 const AuthContext = createContext();
 
@@ -41,7 +43,7 @@ export const AuthProvider = ({ children }) => {
     let data = null;
     try {
       const userProfileDoc = await getDoc(doc(db, 'users', uid));
-      data = userProfileDoc.exists() ? userProfileDoc.data() : null;
+      data = userProfileDoc.exists() ? userProfileDoc.data() : await ensureUserProfile(uid);
       setUserProfile(data);
       analyticsService.trackPerformance('auth_load_profile', Date.now() - startedAt, {
         screen: 'Auth',
@@ -92,7 +94,7 @@ export const AuthProvider = ({ children }) => {
         try {
           await loadUserProfile(firebaseUser.uid);
         } catch (err) {
-          console.log('No se pudo cargar perfil:', err);
+          console.log('No se pudo cargar el perfil');
           setUserProfile(null); // tolera perfil faltante
         }
       } else {
@@ -137,48 +139,78 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signUp = async (email, password, displayName, role = 'parent') => {
+  const signUp = async (email, password, displayName, requestedRole = 'parent') => {
     try {
       setError(null);
       setLoading(true);
 
       const result = await createUserWithEmailAndPassword(auth, email, password);
 
+      // Auth displayName is updated after account creation, so it is not
+      // available to the beforeUserCreated trigger in this client flow.
       await updateProfile(result.user, { displayName });
 
-      const newUserProfile = {
-        uid: result.user.uid,
-        email,
+      // The trusted trigger creates the initial parent/unapproved profile
+      // before the Auth account is committed. Recovery is idempotent and
+      // never overwrites an existing profile.
+      let profile;
+      try {
+        profile = await waitForUserProfile(result.user.uid);
+      } catch (waitError) {
+        profile = await ensureUserProfile(result.user.uid);
+      }
+
+      // Enrich the already-created profile without writing privileged fields.
+      await updateDoc(doc(db, 'users', result.user.uid), {
         displayName,
-        role, // 'parent' or 'driver'
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        updatedAt: serverTimestamp(),
+      });
+      profile = {
+        ...profile,
+        displayName,
       };
 
-      await setDoc(doc(db, 'users', result.user.uid), newUserProfile);
-      setUserProfile(newUserProfile);
+      let driverRequestSubmitted = false;
+      if (requestedRole === 'driver') {
+        try {
+          await requestDriverApproval();
+          driverRequestSubmitted = true;
+          profile = await waitForUserProfile(result.user.uid);
+        } catch {
+          // The account and safe parent profile remain valid. A later increment
+          // can expose a retry action without turning signup into a partial
+          // authentication failure.
+          console.warn('Driver request could not be submitted');
+        }
+      }
+      setUserProfile(profile);
 
       // Send email verification
       try {
         await sendEmailVerification(result.user);
-        console.log('✅ Email verification sent to:', email);
+        console.log('✅ Email verification sent');
       } catch (emailError) {
-        console.warn('⚠️ Failed to send verification email:', emailError);
+        console.warn('⚠️ Failed to send verification email');
         // Don't fail signup if email verification fails
       }
 
       // Register for push notifications (non-blocking)
-      notificationService.registerForPushNotifications(result.user.uid).catch((err) => {
-        console.warn('⚠️ Push notification setup failed (non-critical):', err);
+      notificationService.registerForPushNotifications(result.user.uid).catch(() => {
+        console.warn('⚠️ Push notification setup failed (non-critical)');
       });
 
       // Track signup event
       await analyticsService.setUserId(result.user.uid);
-      await analyticsService.trackSignUp(role);
+      await analyticsService.trackSignUp(requestedRole);
 
-      return { success: true, user: result.user, emailVerificationSent: true };
+      return {
+        success: true,
+        user: result.user,
+        emailVerificationSent: true,
+        driverRequestSubmitted,
+      };
     } catch (err) {
-      console.error('Sign up error:', err);
+      console.error('Sign up failed:', err?.code || 'unknown');
       analyticsService.trackAppError(err?.message || 'Sign up failed', {
         name: err?.name,
         stack: err?.stack,
@@ -211,18 +243,27 @@ export const AuthProvider = ({ children }) => {
     try {
       if (!user) throw new Error('No user logged in');
 
+      const {
+        role: _role,
+        approved: _approved,
+        driverRequestStatus: _driverRequestStatus,
+        driverRequestUpdatedAt: _driverRequestUpdatedAt,
+        ...safeUpdates
+      } = updates;
       const updatedProfile = {
-        ...userProfile,
-        ...updates,
-        updatedAt: new Date(),
+        ...safeUpdates,
+        updatedAt: serverTimestamp(),
       };
 
-      await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
-      setUserProfile(updatedProfile);
+      await updateDoc(doc(db, 'users', user.uid), updatedProfile);
+      setUserProfile({
+        ...userProfile,
+        ...safeUpdates,
+      });
 
       return { success: true };
     } catch (err) {
-      console.error('Update profile error:', err);
+      console.error('Update profile failed:', err?.code || 'unknown');
       setError(err.message);
       return { success: false, error: err.message };
     }

@@ -420,6 +420,70 @@ describe('Firestore Rules', () => {
 
       await assertFails(updateProfileAs('parent-role', { role: deleteField() }));
     });
+
+    runOrSkip('ATTACK: user CANNOT add driver request state directly', async () => {
+      await seedUser(testEnv, 'driver-request-add', {
+        role: 'parent',
+        approved: false,
+      });
+
+      await assertFails(
+        updateProfileAs('driver-request-add', {
+          driverRequestStatus: 'pending',
+          driverRequestUpdatedAt: new Date(),
+        })
+      );
+    });
+
+    runOrSkip('ATTACK: user CANNOT change driver request state directly', async () => {
+      await seedUser(testEnv, 'driver-request-change', {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'pending',
+        driverRequestUpdatedAt: new Date('2026-01-01'),
+      });
+
+      await assertFails(
+        updateProfileAs('driver-request-change', {
+          driverRequestStatus: 'approved',
+        })
+      );
+    });
+
+    runOrSkip('ATTACK: user CANNOT remove driver request state directly', async () => {
+      await seedUser(testEnv, 'driver-request-remove', {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'pending',
+        driverRequestUpdatedAt: new Date('2026-01-01'),
+      });
+      const { deleteField } = jest.requireActual('@firebase/firestore');
+
+      await assertFails(
+        updateProfileAs('driver-request-remove', {
+          driverRequestStatus: deleteField(),
+          driverRequestUpdatedAt: deleteField(),
+        })
+      );
+    });
+
+    runOrSkip(
+      'LEGIT: user CAN update normal fields while backend request state is unchanged',
+      async () => {
+        await seedUser(testEnv, 'driver-request-unchanged', {
+          role: 'parent',
+          approved: false,
+          driverRequestStatus: 'pending',
+          driverRequestUpdatedAt: new Date('2026-01-01'),
+        });
+
+        await assertSucceeds(
+          updateProfileAs('driver-request-unchanged', {
+            displayName: 'Updated display name',
+          })
+        );
+      }
+    );
   });
   // -------------------------------------------------------------------------
   // /users – child-data containment

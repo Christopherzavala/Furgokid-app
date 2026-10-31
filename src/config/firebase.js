@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 // Detecta si estamos en Expo Go (desarrollo)
 // En Expo Go no funcionan módulos nativos compilados
@@ -49,3 +50,4 @@ if (getApps().length > 0) {
 
 export { auth };
 export const db = getFirestore(app);
+export const functions = getFunctions(app);

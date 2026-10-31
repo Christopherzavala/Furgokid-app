@@ -17,6 +17,12 @@ const { createStopTrackingHandler } = require('./src/stopTrackingCallable');
 const { createMatchLifecycleRepository } = require('./src/matchLifecycle');
 const { createMatchLifecycleCallables } = require('./src/matchLifecycleCallables');
 const {
+  createEnsureUserProfileHandler,
+  provisionUserProfile,
+} = require('./src/userProfileTrigger');
+const { createDriverApprovalRepository } = require('./src/driverApproval');
+const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
+const {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
   sendExpoPush,
@@ -58,6 +64,23 @@ exports.stopTracking = onCall(
   })
 );
 
+exports.provisionUserProfile = provisionUserProfile;
+
+exports.ensureUserProfile = onCall(
+  createEnsureUserProfileHandler({
+    firestore: admin.firestore(),
+    logger: (entry) => console.info('User profile provisioning', entry),
+  })
+);
+
+const driverApproval = createDriverApprovalCallables({
+  repository: createDriverApprovalRepository({ firestore: admin.firestore() }),
+  logger: (entry) => console.info('Driver approval', entry),
+});
+
+exports.requestDriverApproval = onCall(driverApproval.requestDriverApproval);
+exports.reviewDriverRequest = onCall(driverApproval.reviewDriverRequest);
+
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
   createMatchFinalizationCleanup({
@@ -80,7 +103,7 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
   const match = snap.data();
   if (match.status !== 'pending') return null;
 
-  console.log(`🚨 NEW MATCH: ${matchId} | Driver: ${match.driverId} | Zone: ${match.zone}`);
+  console.log('🚨 NEW MATCH RECEIVED');
   try {
     if (typeof match.driverId !== 'string' || !match.driverId) {
       console.warn('   Pending match has no assigned driver; notification skipped');
@@ -173,9 +196,7 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
   const vacancyId = event.params.vacancyId;
   const vacancy = snap.data();
 
-  console.log(
-    `🚐 NEW VACANCY: ${vacancyId} | Driver: ${vacancy.driverName} | Zone: ${vacancy.zone}`
-  );
+  console.log('🚐 NEW VACANCY RECEIVED');
 
   try {
     // 1. Find active parent requests in the same zone
@@ -299,11 +320,8 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
  * - Templates HTML para emails
  * - Link de onboarding
  */
-exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (event) => {
-  const snap = event.data;
-  const user = snap.data();
-
-  console.log(`👋 NEW USER: ${user.email} | Role: ${user.role}`);
+exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) => {
+  console.log('👋 NEW USER PROFILE');
 
   // TODO v1.1: Implementar email service
   // Por ahora solo log

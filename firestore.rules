@@ -99,6 +99,19 @@ service cloud.firestore {
               request.resource.data.approved == resource.data.approved);
     }
 
+    // Driver-request state is managed exclusively by trusted backend code.
+    // Owners cannot add, remove, or change these fields directly.
+    function driverRequestStateUnchanged() {
+      return request.resource.data.keys().hasAll(['driverRequestStatus']) ==
+             resource.data.keys().hasAll(['driverRequestStatus']) &&
+             (!request.resource.data.keys().hasAll(['driverRequestStatus']) ||
+              request.resource.data.driverRequestStatus == resource.data.driverRequestStatus) &&
+             request.resource.data.keys().hasAll(['driverRequestUpdatedAt']) ==
+             resource.data.keys().hasAll(['driverRequestUpdatedAt']) &&
+             (!request.resource.data.keys().hasAll(['driverRequestUpdatedAt']) ||
+              request.resource.data.driverRequestUpdatedAt == resource.data.driverRequestUpdatedAt);
+    }
+
     // Temporary privacy containment: the client may remove existing child
     // data for data minimization, but may not add or modify it. Trusted
     // backend writes (Admin SDK / callable functions) bypass Security Rules.
@@ -171,6 +184,7 @@ service cloud.firestore {
       allow update: if isOwner(userId) &&
                       roleUnchanged() &&
                       approvedUnchanged() &&
+                      driverRequestStateUnchanged() &&
                       childFieldsUnchangedOrRemoved() &&
                       rateLimit(60) &&
                       validRequestSize();
