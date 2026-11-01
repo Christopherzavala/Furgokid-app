@@ -1,7 +1,6 @@
 // LocationContext.js - Context API for GPS Location State Management
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { auth } from '../config/firebase';
 import * as locationService from '../services/locationService';
 
 const LocationContext = createContext();
@@ -17,7 +16,6 @@ export const useLocation = () => {
 export const LocationProvider = ({ children }) => {
   const [isTracking, setIsTracking] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [locationHistory, setLocationHistory] = useState([]);
   const [permissions, setPermissions] = useState({
     foreground: false,
     background: false,
@@ -73,7 +71,7 @@ export const LocationProvider = ({ children }) => {
   /**
    * Start GPS tracking
    */
-  const startTracking = async () => {
+  const startTracking = async (matchId) => {
     try {
       setError(null);
 
@@ -87,15 +85,14 @@ export const LocationProvider = ({ children }) => {
 
       // Try background tracking first, fallback to foreground
       if (perms.background) {
-        success = await locationService.startBackgroundLocationTracking();
+        success = await locationService.startBackgroundLocationTracking(matchId);
       } else {
-        success = await locationService.startForegroundLocationTracking();
+        success = await locationService.startForegroundLocationTracking(matchId);
       }
 
       if (success) {
         setIsTracking(true);
         await refreshLocation();
-        await loadLocationHistory();
       } else {
         throw new Error('Failed to start location tracking');
       }
@@ -109,9 +106,10 @@ export const LocationProvider = ({ children }) => {
   /**
    * Stop GPS tracking
    */
-  const stopTracking = async () => {
+  const stopTracking = async (matchId) => {
     try {
-      await locationService.stopLocationTracking();
+      const stopped = await locationService.stopLocationTracking(matchId);
+      if (!stopped) throw new Error('Failed to stop tracking');
       setIsTracking(false);
     } catch (err) {
       console.error('Error stopping tracking:', err);
@@ -130,21 +128,6 @@ export const LocationProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Error refreshing location:', err);
-    }
-  };
-
-  /**
-   * Load location history from Firebase
-   */
-  const loadLocationHistory = async () => {
-    try {
-      const user = auth.currentUser;
-      if (user) {
-        const history = await locationService.getLastLocations(user.uid, 50);
-        setLocationHistory(history);
-      }
-    } catch (err) {
-      console.error('Error loading location history:', err);
     }
   };
 
@@ -175,7 +158,6 @@ export const LocationProvider = ({ children }) => {
     // State
     isTracking,
     currentLocation,
-    locationHistory,
     permissions,
     error,
 
@@ -183,7 +165,6 @@ export const LocationProvider = ({ children }) => {
     startTracking,
     stopTracking,
     refreshLocation,
-    loadLocationHistory,
     checkPermissions,
     getDistanceTo,
     checkTrackingStatus,

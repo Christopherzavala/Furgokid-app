@@ -31,12 +31,11 @@ const getSafeErrorCode = (error) => {
 
 const createStopTrackingHandler = ({
   createRepository,
-  getUserProfile,
   logger = (entry) => console.info('GPS cleanup', entry),
   HttpsErrorClass = HttpsError,
 }) => {
-  if (typeof createRepository !== 'function' || typeof getUserProfile !== 'function') {
-    throw new TypeError('stopTracking requires repository and profile providers.');
+  if (typeof createRepository !== 'function') {
+    throw new TypeError('stopTracking requires a repository provider.');
   }
   if (typeof logger !== 'function') {
     throw new TypeError('stopTracking requires an injected logger.');
@@ -51,22 +50,6 @@ const createStopTrackingHandler = ({
     const matchId = request.data?.matchId;
     if (!VALID_DOCUMENT_ID(matchId)) {
       throw new HttpsErrorClass('invalid-argument', 'A valid matchId is required.');
-    }
-
-    let userProfile;
-    try {
-      userProfile = await getUserProfile(uid);
-    } catch (error) {
-      logger({
-        operation: 'stop_tracking_authorization',
-        result: 'failed',
-        errorCode: getSafeErrorCode(error),
-      });
-      throw new HttpsErrorClass('internal', 'Unable to stop tracking.');
-    }
-
-    if (userProfile?.role !== 'driver' || userProfile?.approved !== true) {
-      throw new HttpsErrorClass('permission-denied', 'Only approved drivers can stop tracking.');
     }
 
     let repository;
@@ -107,13 +90,6 @@ const createStopTrackingHandler = ({
     if (result.status === 'denied') {
       throw new HttpsErrorClass('permission-denied', 'Only the match driver can stop tracking.');
     }
-    if (result.status === 'skipped') {
-      throw new HttpsErrorClass(
-        'failed-precondition',
-        'Tracking can only be stopped for an active match.'
-      );
-    }
-
     throw new HttpsErrorClass('internal', 'Unable to stop tracking.');
   };
 };

@@ -159,6 +159,17 @@ emulatorDescribe('match finalization cleanup (Firestore and Functions Emulators)
     expect((await matchRef.collection('tracking').doc('current').get()).exists).toBe(false);
   });
 
+  test('cleans the orphaned current point when the match document is deleted', async () => {
+    const matchId = await seedMatch();
+    const matchRef = firestore.collection('matches').doc(matchId);
+    expect((await matchRef.collection('tracking').doc('current').get()).exists).toBe(true);
+
+    await matchRef.delete();
+    await waitForTrackingRemoval(matchId);
+
+    expect((await matchRef.collection('tracking').doc('current').get()).exists).toBe(false);
+  });
+
   test('repeated cleanup after a terminal transition is idempotent', async () => {
     const matchId = await seedMatch();
     const matchRef = firestore.collection('matches').doc(matchId);

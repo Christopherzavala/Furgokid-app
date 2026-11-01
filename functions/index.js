@@ -7,13 +7,24 @@
  * - sendWelcomeEmail: Email de bienvenida a nuevos usuarios (v1.1)
  */
 
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const {
+  onDocumentCreated,
+  onDocumentDeleted,
+  onDocumentUpdated,
+} = require('firebase-functions/v2/firestore');
 const { onCall, onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const { createFirestoreGpsCleanupRepository } = require('./src/firestoreGpsCleanupRepository');
 const { createMatchFinalizationCleanup } = require('./src/matchFinalizationCleanup');
 const { createStopTrackingHandler } = require('./src/stopTrackingCallable');
+const { createCleanupDriverTrackingHandler } = require('./src/cleanupDriverTrackingCallable');
+const { createTrackingAuthorizationHandler } = require('./src/trackingAuthorization');
+const { createDriverApprovalGpsCleanup } = require('./src/driverApprovalGpsCleanup');
+const { createMatchDeletionGpsCleanup } = require('./src/matchDeletionGpsCleanup');
+const { createStaleTrackingCleanup } = require('./src/staleTrackingCleanup');
+const { createDriverTrackingCleanup } = require('./src/driverTrackingCleanup');
 const { createMatchLifecycleRepository } = require('./src/matchLifecycle');
 const { createMatchLifecycleCallables } = require('./src/matchLifecycleCallables');
 const {
@@ -56,11 +67,27 @@ exports.initializeVacancyCapacity = onCall(matchLifecycle.initializeVacancyCapac
 exports.stopTracking = onCall(
   createStopTrackingHandler({
     createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupDriverTracking = onCall(
+  createCleanupDriverTrackingHandler({
+    createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.startTracking = onCall(
+  createTrackingAuthorizationHandler({
     getUserProfile: async (uid) => {
       const userSnapshot = await admin.firestore().collection('users').doc(uid).get();
       return userSnapshot.exists ? userSnapshot.data() : null;
     },
-    logger: (entry) => console.info('GPS cleanup', entry),
+    getMatch: async (matchId) => {
+      const matchSnapshot = await admin.firestore().collection('matches').doc(matchId).get();
+      return matchSnapshot.exists ? matchSnapshot.data() : null;
+    },
   })
 );
 
@@ -84,6 +111,38 @@ exports.reviewDriverRequest = onCall(driverApproval.reviewDriverRequest);
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
   createMatchFinalizationCleanup({
+    repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupDeletedMatchTracking = onDocumentDeleted(
+  { document: 'matches/{matchId}', retry: true },
+  createMatchDeletionGpsCleanup({
+    repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+const cleanupDriverTracking = async (driverId) => {
+  const repository = createFirestoreGpsCleanupRepository({ firestore: admin.firestore() });
+  return createDriverTrackingCleanup({
+    repository,
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })(driverId);
+};
+
+exports.cleanupRevokedDriverTracking = onDocumentUpdated(
+  { document: 'users/{userId}', retry: true },
+  createDriverApprovalGpsCleanup({
+    cleanupDriverTracking,
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupStaleTracking = onSchedule(
+  { schedule: 'every 5 minutes', retryCount: 3 },
+  createStaleTrackingCleanup({
     repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
     logger: (entry) => console.info('GPS cleanup', entry),
   })

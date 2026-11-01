@@ -21,12 +21,16 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
   const createdUsers = [];
   const app = admin.initializeApp({ projectId }, `stop-tracking-test-${Date.now()}`);
   const firestore = admin.firestore(app);
-  const callableUrl = `http://${functionsHost}/${projectId}/us-central1/stopTracking`;
+  const callableBaseUrl = `http://${functionsHost}/${projectId}/us-central1`;
+  const callableUrl = `${callableBaseUrl}/stopTracking`;
+  const startTrackingUrl = `${callableBaseUrl}/startTracking`;
+  const cleanupDriverTrackingUrl = `${callableBaseUrl}/cleanupDriverTracking`;
   const authBaseUrl = `http://${authHost}/identitytoolkit.googleapis.com/v1`;
   const prefix = `stop-tracking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let sequence = 0;
   let driver;
   let otherDriver;
+  let revocationDriver;
   let parent;
 
   const createAuthUser = async (label) => {
@@ -72,8 +76,8 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
     return matchId;
   };
 
-  const invokeCallable = async ({ idToken, data }) => {
-    const response = await fetch(callableUrl, {
+  const invokeCallable = async ({ idToken, data, url = callableUrl }) => {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,15 +92,29 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
     (await firestore.collection('matches').doc(matchId).collection('tracking').doc('current').get())
       .exists;
 
+  const waitForTrackingRemoval = async (matchId) => {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      if (!(await hasTracking(matchId))) return;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error('Timed out waiting for revoked-driver tracking cleanup.');
+  };
+
   beforeAll(async () => {
-    [driver, otherDriver, parent] = await Promise.all([
+    [driver, otherDriver, revocationDriver, parent] = await Promise.all([
       createAuthUser('driver'),
       createAuthUser('other-driver'),
+      createAuthUser('revocation-driver'),
       createAuthUser('parent'),
     ]);
     await Promise.all([
       firestore.collection('users').doc(driver.uid).set({ role: 'driver', approved: true }),
       firestore.collection('users').doc(otherDriver.uid).set({ role: 'driver', approved: true }),
+      firestore
+        .collection('users')
+        .doc(revocationDriver.uid)
+        .set({ role: 'driver', approved: true }),
       firestore.collection('users').doc(parent.uid).set({ role: 'parent' }),
     ]);
   });
@@ -120,10 +138,83 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
     await app.delete();
   });
 
+  test('startTracking authorizes only an approved assigned driver for an active match', async () => {
+    const activeMatchId = await seedMatch({ driverId: revocationDriver.uid });
+    const foreignMatchId = await seedMatch({ driverId: otherDriver.uid });
+    const terminalMatchId = await seedMatch({
+      driverId: revocationDriver.uid,
+      status: 'completed',
+    });
+
+    const authorized = await invokeCallable({
+      idToken: revocationDriver.idToken,
+      data: { matchId: activeMatchId },
+      url: startTrackingUrl,
+    });
+    const foreign = await invokeCallable({
+      idToken: revocationDriver.idToken,
+      data: { matchId: foreignMatchId },
+      url: startTrackingUrl,
+    });
+    const terminal = await invokeCallable({
+      idToken: revocationDriver.idToken,
+      data: { matchId: terminalMatchId },
+      url: startTrackingUrl,
+    });
+
+    expect(authorized.body.result).toEqual({ matchId: activeMatchId });
+    expect(foreign.body.error.status).toBe('PERMISSION_DENIED');
+    expect(terminal.body.error.status).toBe('PERMISSION_DENIED');
+
+    await firestore.collection('users').doc(revocationDriver.uid).update({ approved: false });
+    const unapproved = await invokeCallable({
+      idToken: revocationDriver.idToken,
+      data: { matchId: activeMatchId },
+      url: startTrackingUrl,
+    });
+    expect(unapproved.body.error.status).toBe('PERMISSION_DENIED');
+
+    await waitForTrackingRemoval(activeMatchId);
+    expect(await hasTracking(activeMatchId)).toBe(false);
+  });
+
+  test('cleanupDriverTracking sweeps every assigned match and ignores client identity', async () => {
+    const activeMatchId = await seedMatch();
+    const terminalMatchId = await seedMatch({ status: 'completed' });
+    const foreignMatchId = await seedMatch({ driverId: otherDriver.uid });
+
+    const rejected = await invokeCallable({
+      idToken: driver.idToken,
+      data: { driverId: otherDriver.uid },
+      url: cleanupDriverTrackingUrl,
+    });
+    const response = await invokeCallable({
+      idToken: driver.idToken,
+      data: {},
+      url: cleanupDriverTrackingUrl,
+    });
+
+    expect(rejected.body.error.status).toBe('INVALID_ARGUMENT');
+    expect(response.body.result.status).toBe('cleaned');
+    expect(response.body.result.deletedCount).toBeGreaterThanOrEqual(2);
+    expect(await hasTracking(activeMatchId)).toBe(false);
+    expect(await hasTracking(terminalMatchId)).toBe(false);
+    expect(await hasTracking(foreignMatchId)).toBe(true);
+  });
+
   test('rejects a request without authentication', async () => {
     const matchId = await seedMatch();
 
     const response = await invokeCallable({ data: { matchId } });
+
+    expect(response.body.error.status).toBe('UNAUTHENTICATED');
+    expect(await hasTracking(matchId)).toBe(true);
+  });
+
+  test('rejects an unauthenticated logout cleanup without deleting any location', async () => {
+    const matchId = await seedMatch();
+
+    const response = await invokeCallable({ data: {}, url: cleanupDriverTrackingUrl });
 
     expect(response.body.error.status).toBe('UNAUTHENTICATED');
     expect(await hasTracking(matchId)).toBe(true);
@@ -224,7 +315,7 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
     expect(repeatedStop.body.result).toEqual({ status: 'already-stopped', locationDeleted: false });
   });
 
-  test('refuses inactive matches without changing the match or its current point', async () => {
+  test('cleans an inactive match idempotently without changing the match state', async () => {
     const matchId = await seedMatch({ status: 'completed' });
     const before = (await firestore.collection('matches').doc(matchId).get()).data();
 
@@ -232,9 +323,17 @@ emulatorDescribe('stopTracking callable (Auth, Functions and Firestore Emulators
       idToken: driver.idToken,
       data: { matchId },
     });
+    const repeatedResponse = await invokeCallable({
+      idToken: driver.idToken,
+      data: { matchId },
+    });
 
-    expect(response.body.error.status).toBe('FAILED_PRECONDITION');
-    expect(await hasTracking(matchId)).toBe(true);
+    expect(response.body.result).toEqual({ status: 'stopped', locationDeleted: true });
+    expect(repeatedResponse.body.result).toEqual({
+      status: 'already-stopped',
+      locationDeleted: false,
+    });
+    expect(await hasTracking(matchId)).toBe(false);
     expect((await firestore.collection('matches').doc(matchId).get()).data()).toEqual(before);
   });
 });

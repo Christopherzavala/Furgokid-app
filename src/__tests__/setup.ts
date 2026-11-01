@@ -11,16 +11,38 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 // Mock expo-modules-core EventEmitter
-jest.mock('expo-modules-core', () => ({
-  EventEmitter: class EventEmitter {
+jest.mock('expo-modules-core', () => {
+  class MockEventEmitter {
     addListener() {}
     removeAllListeners() {}
     removeListener() {}
-  },
-  NativeModulesProxy: {},
-  requireNativeModule: jest.fn(),
-  ProxyNativeModule: jest.fn(),
-  _getProvider: jest.fn(),
+  }
+
+  return {
+    EventEmitter: MockEventEmitter,
+    LegacyEventEmitter: MockEventEmitter,
+    NativeModulesProxy: {},
+    requireNativeModule: jest.fn(),
+    ProxyNativeModule: jest.fn(),
+    _getProvider: jest.fn(),
+  };
+});
+
+// Mock native-only location modules so application context tests do not load Expo native code.
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3, High: 4 },
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 0, longitude: 0 } })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({ status: 'denied' })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  startLocationUpdatesAsync: jest.fn(async () => undefined),
+  stopLocationUpdatesAsync: jest.fn(async () => undefined),
+  watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
+}));
+
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskDefined: jest.fn(() => true),
 }));
 
 // Mock firebase

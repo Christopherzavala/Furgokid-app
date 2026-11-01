@@ -16,6 +16,9 @@ import analyticsService from '../services/analyticsService';
 import notificationService from '../services/notificationService';
 import { ensureUserProfile, waitForUserProfile } from '../services/userProfileService';
 import { requestDriverApproval } from '../services/driverApprovalService';
+import { stopBackgroundLocation } from '../services/backgroundLocation';
+import { stopForegroundLocationTracking } from '../services/locationService';
+import { cleanupDriverTracking } from '../services/matchTrackingService';
 
 const AuthContext = createContext();
 
@@ -228,6 +231,21 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       setError(null);
+
+      // Sensor cleanup is best-effort, but the authenticated backend sweep is
+      // mandatory. Logout is not completed until that sweep is confirmed.
+      try {
+        await stopBackgroundLocation();
+      } catch (error) {
+        console.warn('Background sensor could not be stopped during logout.');
+      }
+      try {
+        await stopForegroundLocationTracking();
+      } catch (error) {
+        console.warn('Foreground sensor could not be stopped during logout.');
+      }
+
+      await cleanupDriverTracking();
       await firebaseSignOut(auth);
       setUser(null);
       setUserProfile(null);

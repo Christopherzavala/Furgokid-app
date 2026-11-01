@@ -105,7 +105,7 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
     expect(await hasTracking(matchId)).toBe(true);
   });
 
-  test('does not delete a match location after the match is no longer active', async () => {
+  test('cleans a match location after the match is no longer active', async () => {
     const matchId = await seedMatch({ status: 'completed' });
 
     const result = await repository.deleteMatchCurrentTracking(matchId, {
@@ -113,27 +113,8 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
       uid: 'verified-driver',
     });
 
-    expect(result).toBe('skipped');
-    expect(await hasTracking(matchId)).toBe(true);
-  });
-
-  test('revalidates active status transactionally after a stale page result', async () => {
-    const matchId = await seedMatch();
-    const page = await repository.listActiveMatchesByDriver({
-      driverId: 'verified-driver',
-      pageToken: null,
-      pageSize: 10,
-    });
-    expect(page.matches.map((match) => match.id)).toContain(matchId);
-
-    await firestore.collection('matches').doc(matchId).update({ status: 'completed' });
-    const deletion = await repository.deleteDriverCurrentTrackingIfActiveMatch(
-      matchId,
-      'verified-driver'
-    );
-
-    expect(deletion).toBe('skipped');
-    expect(await hasTracking(matchId)).toBe(true);
+    expect(result).toBe('deleted');
+    expect(await hasTracking(matchId)).toBe(false);
   });
 
   test('does not delete after the match owner changes between query and transaction', async () => {
@@ -206,7 +187,7 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
     expect(await hasTracking(matchId)).toBe(true);
   });
 
-  test('does not delete when a match becomes inactive during the cleanup transaction', async () => {
+  test('deletes when a match becomes inactive during the cleanup transaction', async () => {
     const matchId = await seedMatch();
     const matchRef = firestore.collection('matches').doc(matchId);
     let releaseTrackingRead;
@@ -253,9 +234,9 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
     await matchRef.update({ status: 'pending' });
     releaseTrackingRead();
 
-    expect(await deletionPromise).toBe('skipped');
+    expect(await deletionPromise).toBe('deleted');
     expect((await matchRef.get()).get('status')).toBe('pending');
-    expect(await hasTracking(matchId)).toBe(true);
+    expect(await hasTracking(matchId)).toBe(false);
   });
 
   test('missing match and missing tracking are distinct and idempotent', async () => {

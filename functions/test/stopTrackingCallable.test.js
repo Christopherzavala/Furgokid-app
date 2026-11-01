@@ -72,40 +72,19 @@ describe('stopTracking callable handler', () => {
     });
   });
 
-  test('rejects users whose server-side profile is not a driver', async () => {
-    const { handler, repository } = createHarness({ profile: { role: 'parent' } });
-
-    await expect(
-      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
-    ).rejects.toMatchObject({ code: 'permission-denied' });
-    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
-  });
-
-  test('rejects users whose server-side profile has approved: false', async () => {
+  test('allows the assigned driver to clean up even after approval is revoked', async () => {
     const { handler, repository } = createHarness({ profile: { role: 'driver', approved: false } });
 
-    await expect(
-      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
-    ).rejects.toMatchObject({ code: 'permission-denied' });
-    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
-  });
+    const response = await handler({
+      auth: { uid: 'verified-driver' },
+      data: { matchId: 'match-owned' },
+    });
 
-  test('rejects users whose server-side profile lacks approved field', async () => {
-    const { handler, repository } = createHarness({ profile: { role: 'driver' } });
-
-    await expect(
-      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
-    ).rejects.toMatchObject({ code: 'permission-denied' });
-    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
-  });
-
-  test('rejects users whose server-side profile does not exist', async () => {
-    const { handler, repository } = createHarness({ profile: null });
-
-    await expect(
-      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
-    ).rejects.toMatchObject({ code: 'permission-denied' });
-    expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+    expect(response).toEqual({ status: 'stopped', locationDeleted: true });
+    expect(repository.deleteMatchCurrentTracking).toHaveBeenCalledWith('match-owned', {
+      field: 'driverId',
+      uid: 'verified-driver',
+    });
   });
 
   test('accepts users whose server-side profile has approved: true', async () => {
@@ -165,11 +144,11 @@ describe('stopTracking callable handler', () => {
     expect(serializedLogs).toContain('unavailable');
   });
 
-  test('maps a match status change to failed-precondition', async () => {
+  test('maps an invalid repository cleanup result to an internal error', async () => {
     const { handler } = createHarness({ cleanupResult: 'skipped' });
 
     await expect(
       handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
-    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    ).rejects.toMatchObject({ code: 'internal' });
   });
 });

@@ -655,6 +655,31 @@ describe('Firestore Rules', () => {
       );
     });
 
+    runOrSkip('allows an assigned parent to query only their active matches', async () => {
+      await seedMatchFixture(testEnv, 'match-owned');
+      await seedMatchFixture(testEnv, 'match-foreign', { parentId: 'other-parent' });
+      await seedUser(testEnv, 'other-parent', { role: 'parent', approved: false });
+      const matches = await testEnv
+        .authenticatedContext('match-parent')
+        .firestore()
+        .collection('matches')
+        .where('parentId', '==', 'match-parent')
+        .where('status', '==', 'active')
+        .get();
+
+      expect(matches.docs.map((match) => match.id)).toEqual(['match-owned']);
+
+      const foreignMatches = await testEnv
+        .authenticatedContext('other-parent')
+        .firestore()
+        .collection('matches')
+        .where('parentId', '==', 'other-parent')
+        .where('status', '==', 'active')
+        .get();
+
+      expect(foreignMatches.docs.map((match) => match.id)).toEqual(['match-foreign']);
+    });
+
     runOrSkip('prevents clients from creating or changing matches', async () => {
       await seedMatchFixture(testEnv);
 
@@ -685,8 +710,6 @@ describe('Firestore Rules', () => {
     function freshTrackingData(overrides: Record<string, unknown> = {}) {
       const { Timestamp } = jest.requireActual('@firebase/firestore');
       return {
-        driverId: 'match-driver',
-        matchId: 'match-1',
         latitude: -33.4489,
         longitude: -70.6693,
         speed: 0,
@@ -753,7 +776,7 @@ describe('Firestore Rules', () => {
           .authenticatedContext('match-parent')
           .firestore()
           .doc('matches/match-1/tracking/current')
-          .set(freshTrackingData({ driverId: 'match-parent' }))
+          .set(freshTrackingData())
       );
     });
 
@@ -792,6 +815,66 @@ describe('Firestore Rules', () => {
           .doc('matches/match-1/tracking/current')
           .set(freshTrackingData({ matchId: 'another-match' }))
       );
+    });
+
+    runOrSkip('prevents an approved driver from writing to another match', async () => {
+      await seedMatchFixture(testEnv, 'match-owned');
+      await seedMatchFixture(testEnv, 'match-foreign', { driverId: 'other-driver' });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .doc('matches/match-foreign/tracking/current')
+          .set(freshTrackingData())
+      );
+    });
+
+    runOrSkip('prevents an unauthenticated user from writing tracking', async () => {
+      await seedMatchFixture(testEnv);
+
+      await assertFails(
+        testEnv
+          .unauthenticatedContext()
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .set(freshTrackingData())
+      );
+    });
+
+    runOrSkip.each(['completed', 'cancelled'])(
+      'prevents writing tracking when the match is %s',
+      async (status) => {
+        await seedMatchFixture(testEnv, 'match-1', { status });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext('match-driver')
+            .firestore()
+            .doc('matches/match-1/tracking/current')
+            .set(freshTrackingData())
+        );
+      }
+    );
+
+    runOrSkip('allows the assigned approved driver to read fresh tracking', async () => {
+      await seedMatchFixture(testEnv);
+      await seedDocument(testEnv, 'matches/match-1/tracking/current', freshTrackingData());
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('match-driver')
+          .firestore()
+          .doc('matches/match-1/tracking/current')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents global tracking and GPS history writes', async () => {
+      const driverDb = testEnv.authenticatedContext('match-driver').firestore();
+
+      await assertFails(driverDb.doc('tracking/current').set(freshTrackingData()));
+      await assertFails(driverDb.collection('locations').doc('point-1').set(freshTrackingData()));
     });
   });
 });

@@ -25,6 +25,7 @@ import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import TrackingMap from './src/screens/TrackingMap';
 import analyticsService from './src/services/analyticsService';
 import consentService from './src/services/consentService';
 // import crashlyticsService from './src/services/crashlyticsService';
@@ -115,6 +116,7 @@ function Navigation() {
           <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
           <Stack.Screen name="ParentProfile" component={ParentProfileScreen} />
           <Stack.Screen name="ParentRequest" component={ParentRequestScreen} />
+          <Stack.Screen name="TrackingMap" component={TrackingMap} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
           <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
