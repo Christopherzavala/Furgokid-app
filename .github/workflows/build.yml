@@ -1,0 +1,123 @@
+name: EAS Build (manual)
+
+# Builds consume EAS credits, so they never run automatically:
+# - no push or pull_request triggers
+# - the production profile is intentionally unavailable
+# - every run records the actor, profile, platform and ref in the UI
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile (production is intentionally excluded)'
+        required: true
+        type: choice
+        default: preview
+        options:
+          - development
+          - staging
+          - preview
+      platform:
+        description: 'Target platform'
+        required: true
+        type: choice
+        default: android
+        options:
+          - android
+          - ios
+          - all
+      ref:
+        description: 'Git ref to build (branch, tag or full commit SHA)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-build-${{ github.event.inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: EAS build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Choice inputs are validated by GitHub, and re-validated here so a
+      # malformed API call cannot bypass the allowlist.
+      - name: Validate inputs
+        env:
+          BUILD_PROFILE: ${{ inputs.profile }}
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          BUILD_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          case "${BUILD_PROFILE}" in
+            development|staging|preview) ;;
+            *)
+              echo "profile '${BUILD_PROFILE}' is not allowed (development, staging, preview)."
+              exit 1
+              ;;
+          esac
+
+          if [ "${BUILD_PROFILE}" = "production" ]; then
+            echo "production builds are intentionally disabled in this workflow."
+            exit 1
+          fi
+
+          case "${BUILD_PLATFORM}" in
+            android|ios|all) ;;
+            *)
+              echo "platform '${BUILD_PLATFORM}' is not allowed (android, ios, all)."
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${BUILD_REF}" ]; then
+            echo "ref is required (branch, tag or full commit SHA)."
+            exit 1
+          fi
+
+          if ! printf '%s' "${BUILD_REF}" | grep -Eq '^[A-Za-z0-9._/-]+$'; then
+            echo "ref contains characters outside [A-Za-z0-9._/-]: ${BUILD_REF}"
+            exit 1
+          fi
+
+          echo "Inputs validated: profile=${BUILD_PROFILE} platform=${BUILD_PLATFORM} ref=${BUILD_REF}"
+
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Set up Expo and EAS CLI
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EAS_TOKEN }}
+
+      # The token is scoped to this step only; inputs are passed through the
+      # environment instead of shell interpolation.
+      - name: Run EAS build
+        env:
+          EAS_BUILD_PROFILE: ${{ inputs.profile }}
+          EAS_BUILD_PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          eas build \
+            --platform "${EAS_BUILD_PLATFORM}" \
+            --profile "${EAS_BUILD_PROFILE}" \
+            --non-interactive \
+            --no-wait

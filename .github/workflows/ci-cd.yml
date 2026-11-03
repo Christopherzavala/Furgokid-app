@@ -12,28 +12,11 @@ on:
         required: false
         default: 'false'
 
-# Centralized env mapping (reduces duplication/noise in editors)
-env:
-  EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
-  EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
-  EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
-  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
-  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
-  EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
-  ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
-  ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
-  BANNER_AD_UNIT_ID: ${{ secrets.BANNER_AD_UNIT_ID }}
-  INTERSTITIAL_AD_UNIT_ID: ${{ secrets.INTERSTITIAL_AD_UNIT_ID }}
-  REWARDED_AD_UNIT_ID: ${{ secrets.REWARDED_AD_UNIT_ID }}
-  BANNER_AD_UNIT_IOS: ${{ secrets.BANNER_AD_UNIT_IOS }}
-  INTERSTITIAL_AD_UNIT_IOS: ${{ secrets.INTERSTITIAL_AD_UNIT_IOS }}
-  REWARDED_AD_UNIT_IOS: ${{ secrets.REWARDED_AD_UNIT_IOS }}
-  EXPO_PUBLIC_ADS_MODE: ${{ secrets.EXPO_PUBLIC_ADS_MODE }}
-  EXPO_PUBLIC_ADS_FORCE_TEST: ${{ secrets.EXPO_PUBLIC_ADS_FORCE_TEST }}
-  GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-  SENTRY_ENABLED: ${{ secrets.SENTRY_ENABLED }}
-  FIREBASE_ANALYTICS_ENABLED: ${{ secrets.FIREBASE_ANALYTICS_ENABLED }}
+# Minimal token permissions for CI. Secrets are scoped to the specific jobs
+# and steps that consume them (see "Validate Environment Config" and the
+# deploy job) instead of being exposed to every step of the workflow.
+permissions:
+  contents: read
 
 # Cancel in-progress runs when new commit pushed
 concurrency:
@@ -45,16 +28,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
           java-version: '21'
@@ -83,6 +66,18 @@ jobs:
       - name: Validate Environment Config
         run: npm run validate:env:production
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Only the critical production variables required by validate-env.js
+        # are injected, and only into this step.
+        env:
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
+          ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
+          ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
       - name: TypeScript Check
         run: npm run type-check
@@ -100,7 +95,7 @@ jobs:
         run: npm test --prefix functions
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: ./coverage/lcov.info
           flags: unittests
@@ -121,63 +116,26 @@ jobs:
       - name: Security Audit
         run: npm audit --audit-level=high || true
 
+      # TruffleHog is pinned to an immutable SHA. A scanner failure must fail
+      # the workflow: do not add continue-on-error to this step. Verified
+      # false positives are allowlisted in .trufflehog-exclude (versioned).
       - name: Check for secrets in code (PR)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
-        continue-on-error: true
+          extra_args: --exclude-paths=.trufflehog-exclude
 
       - name: Check for secrets in code (main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
-
-  build-preview:
-    name: Build Preview (Android)
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    env:
-      HAS_EAS_TOKEN: ${{ secrets.EAS_TOKEN != '' }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Setup Expo
-        if: env.HAS_EAS_TOKEN == 'true'
-        uses: expo/expo-github-action@v8
-        with:
-          expo-version: latest
-          eas-version: latest
-          token: ${{ secrets.EAS_TOKEN }}
-          packager: npm
-
-      - name: Skip preview build (missing EAS_TOKEN)
-        if: env.HAS_EAS_TOKEN != 'true'
-        run: |
-          echo "EAS_TOKEN is not configured in GitHub Secrets. Skipping EAS preview build."
-          echo "To enable: add repository secret EAS_TOKEN (Expo access token)."
-
-      - name: Install dependencies
-        if: env.HAS_EAS_TOKEN == 'true'
-        run: npm ci --legacy-peer-deps
-
-      - name: Build Android Preview
-        if: env.HAS_EAS_TOKEN == 'true'
-        run: eas build --platform android --profile preview --non-interactive
+          extra_args: --exclude-paths=.trufflehog-exclude
 
   # E2E Tests with Detox (Android)
   e2e-android:
@@ -187,10 +145,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -205,16 +163,16 @@ jobs:
           fi
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.gradle/caches
@@ -222,7 +180,7 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
       - name: AVD cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: avd-cache
         with:
           path: |
@@ -232,7 +190,7 @@ jobs:
 
       - name: Create AVD
         if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 29
           arch: x86_64
@@ -246,7 +204,7 @@ jobs:
         run: npm run e2e:build:android
 
       - name: Run Detox E2E tests
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 29
           arch: x86_64
@@ -257,21 +215,37 @@ jobs:
 
       - name: Upload E2E test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-test-results-android
           path: e2e/artifacts/
+
+  # NOTE: there is intentionally no EAS build job here. Building with EAS
+  # consumes credits, so builds only run through .github/workflows/build.yml
+  # (workflow_dispatch) with an explicit profile and ref.
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    # Scoped credentials for the production pre-build validation only. No
+    # deployment credential is configured in this workflow.
+    env:
+      EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY || secrets.FIREBASE_API_KEY }}
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || secrets.FIREBASE_AUTH_DOMAIN }}
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID }}
+      EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || secrets.FIREBASE_STORAGE_BUCKET }}
+      EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || secrets.FIREBASE_MESSAGING_SENDER_ID }}
+      EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
+      ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
+      ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
