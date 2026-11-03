@@ -65,10 +65,12 @@ jobs:
       - name: Lint (Functions)
         run: npm --prefix functions run lint
 
-      # Client-side sources are not Prettier-gated yet (pre-existing drift is
-      # tracked as pending debt and must be fixed in a dedicated style commit).
-      - name: Prettier Check (Functions)
-        run: npx prettier --check "functions/src/**/*.js" "functions/test/**/*.js"
+      # Line endings are normalized by .gitattributes (LF everywhere except
+      # *.bat), so this check is deterministic on any platform.
+      - name: Prettier Check (client and Functions)
+        run: |
+          npx prettier --check "src/**/*.{ts,tsx,js,jsx,json}"
+          npx prettier --check "functions/src/**/*.js" "functions/test/**/*.js"
 
       - name: Client tests (with coverage thresholds)
         run: npm run test:coverage

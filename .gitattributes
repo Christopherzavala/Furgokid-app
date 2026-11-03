@@ -1,0 +1,20 @@
+# Normalize all text files to LF in the repository and on checkout.
+# This makes Windows and Linux working trees identical, which keeps Prettier
+# (endOfLine: lf) deterministic across platforms and removes the phantom
+# CRLF/LF modifications caused by core.autocrlf on Windows.
+* text=auto eol=lf
+
+# Windows batch scripts are the only demonstrated CRLF requirement:
+# cmd.exe can misparse labels and goto with LF-only files.
+*.bat text eol=crlf
+
+# Explicitly binary (defensive; text=auto already detects them).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.jar binary
+*.keystore binary
