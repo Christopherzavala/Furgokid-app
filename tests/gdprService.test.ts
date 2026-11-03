@@ -43,38 +43,24 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: firebase/storage
+// Mock: firebase/functions
 // ---------------------------------------------------------------------------
 
-const mockListAll = jest.fn(() => Promise.resolve({ items: [], prefixes: [] }));
-const mockDeleteObject = jest.fn(() => Promise.resolve());
-const mockRef = jest.fn((_storage: unknown, path: string) => ({ __path: path }));
-const mockGetStorage = jest.fn(() => ({}));
+const mockRequestCallable = jest.fn();
+const mockStatusCallable = jest.fn();
 
-jest.mock('firebase/storage', () => ({
-  getStorage: (...args: unknown[]) => mockGetStorage(...args),
-  ref: (...args: unknown[]) => mockRef(...args),
-  listAll: (...args: unknown[]) => mockListAll(...args),
-  deleteObject: (...args: unknown[]) => mockDeleteObject(...args),
+jest.mock('firebase/functions', () => ({
+  httpsCallable: jest.fn((_functions: unknown, name: string) => async (...args: unknown[]) => {
+    // Delegate at call time. Babel hoists imports above the mock constants,
+    // so capturing them while this factory is evaluated yields undefined.
+    const callable = name === 'requestAccountDeletion' ? mockRequestCallable : mockStatusCallable;
+    return callable(...args);
+  }),
 }));
 
-// ---------------------------------------------------------------------------
-// Mock: firebase/auth
-// ---------------------------------------------------------------------------
-
-jest.mock('firebase/auth', () => {
-  const mockAuth = {
-    currentUser: null,
-  };
-  const mockGetAuth = jest.fn(() => mockAuth);
-  return {
-    getAuth: mockGetAuth,
-    __mockAuth: mockAuth, // Export for test access
-  };
-});
-
-// Get reference to the mock auth for test manipulation
-const mockAuth = jest.requireMock('firebase/auth').__mockAuth;
+jest.mock('../src/config/firebase', () => ({
+  functions: {},
+}));
 
 // ---------------------------------------------------------------------------
 // Mock: logger
@@ -139,9 +125,13 @@ function makeQuerySnap(docs: Array<{ id: string; data: Record<string, unknown> }
 // ---------------------------------------------------------------------------
 
 import {
-  exportUserData,
+  AccountDeletionOperationError,
   deleteUserAccount,
+  exportUserData,
+  getAccountDeletionStatus,
   getUserDataSummary,
+  isAccountDeletionAuthenticationError,
+  requestAccountDeletion,
 } from '../src/services/gdprService';
 
 // ---------------------------------------------------------------------------
@@ -153,15 +143,31 @@ const USER_ID = 'user-123';
 beforeEach(() => {
   jest.clearAllMocks();
 
-  // Reset auth currentUser to match USER_ID for deleteUserAccount tests
-  mockAuth.currentUser = { uid: USER_ID, delete: jest.fn(() => Promise.resolve()) };
+  // Reset callable implementations explicitly so each test starts from a
+  // deterministic backend response.
+  mockRequestCallable.mockReset();
+  mockStatusCallable.mockReset();
 
   // Default: all getDocs return empty snapshots
   mockGetDocs.mockResolvedValue(makeQuerySnap([]));
 
-  // Default: storage operations succeed
-  mockListAll.mockResolvedValue({ items: [], prefixes: [] });
-  mockDeleteObject.mockResolvedValue(undefined);
+  // Default: the backend accepts the request and continues asynchronously.
+  mockRequestCallable.mockResolvedValue({
+    data: {
+      status: 'pending',
+      phase: 'matches',
+      errorCode: null,
+      updatedAt: null,
+    },
+  });
+  mockStatusCallable.mockResolvedValue({
+    data: {
+      status: 'processing',
+      phase: 'collections',
+      errorCode: null,
+      updatedAt: null,
+    },
+  });
 
   // Default: secureStorage returns nothing
   mockSecureStorage.getObject.mockResolvedValue(null);
@@ -181,9 +187,7 @@ describe('exportUserData', () => {
 
       // doc() must have been called with the users collection and the exact userId
       const docCalls = mockDoc.mock.calls;
-      const profileCall = docCalls.find(
-        (args) => args[1] === 'users' && args[2] === USER_ID
-      );
+      const profileCall = docCalls.find((args) => args[1] === 'users' && args[2] === USER_ID);
       expect(profileCall).toBeDefined();
     });
 
@@ -283,107 +287,97 @@ describe('exportUserData', () => {
 });
 
 // ===========================================================================
-// deleteUserAccount
+// Account deletion callables
 // ===========================================================================
 
-describe('deleteUserAccount', () => {
-  describe('profile access pattern (regression)', () => {
-    it('calls doc(db, "users", userId) to build the profile reference', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(false));
+describe('account deletion', () => {
+  it('requests deletion without sending a user ID or other payload', async () => {
+    const state = await requestAccountDeletion();
 
-      await deleteUserAccount(USER_ID);
-
-      const docCalls = mockDoc.mock.calls;
-      const profileCall = docCalls.find(
-        (args) => args[1] === 'users' && args[2] === USER_ID
-      );
-      expect(profileCall).toBeDefined();
-    });
-
-    it('calls getDoc() (not a uid-field query) to check profile existence', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(false));
-
-      await deleteUserAccount(USER_ID);
-
-      expect(mockGetDoc).toHaveBeenCalled();
-
-      const uidFieldQueries = mockWhere.mock.calls.filter(
-        (args) => args[0] === 'uid' && args[1] === '==' && args[2] === USER_ID
-      );
-      expect(uidFieldQueries).toHaveLength(0);
-    });
+    expect(mockRequestCallable).toHaveBeenCalledTimes(1);
+    expect(mockRequestCallable).toHaveBeenCalledWith({});
+    expect(state.status).toBe('pending');
+    expect(state.phase).toBe('matches');
   });
 
-  describe('when profile exists', () => {
-    it('adds the user document to the batch for deletion', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(true, { name: 'Alice' }));
+  it('keeps deleteUserAccount as a request-only compatibility alias', async () => {
+    const state = await deleteUserAccount();
 
-      await deleteUserAccount(USER_ID);
-
-      // batch.delete must have been called with the users/userId ref
-      const deletedRefs = mockBatchDelete.mock.calls.map((args) => args[0]);
-      const userRef = deletedRefs.find((r) => r.__path === `users/${USER_ID}`);
-      expect(userRef).toBeDefined();
-    });
-
-    it('commits the batch', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(true, { name: 'Alice' }));
-
-      await deleteUserAccount(USER_ID);
-
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-    });
-
-    it('deletes the Firebase Auth account when currentUser matches', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(true, { name: 'Alice' }));
-
-      await deleteUserAccount(USER_ID);
-
-      expect(mockAuth.currentUser.delete).toHaveBeenCalledTimes(1);
-    });
-
-    it('removes all expected keys from secureStorage', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(true, { name: 'Alice' }));
-
-      await deleteUserAccount(USER_ID);
-
-      const removedKeys = mockSecureStorage.removeItem.mock.calls.map((c) => c[0]);
-      expect(removedKeys).toContain('parental_consent');
-      expect(removedKeys).toContain('user_preferences');
-      expect(removedKeys).toContain('premium_status');
-      expect(removedKeys).toContain('consent_data');
-      expect(removedKeys).toContain('analytics_user_properties');
-    });
+    expect(mockRequestCallable).toHaveBeenCalledTimes(1);
+    expect(mockRequestCallable).toHaveBeenCalledWith({});
+    expect(state.status).toBe('pending');
   });
 
-  describe('when profile does NOT exist', () => {
-    it('does NOT add any users document to the batch', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(false));
+  it('returns the backend deletion status without mutating local data', async () => {
+    const state = await getAccountDeletionStatus();
 
-      await deleteUserAccount(USER_ID);
-
-      const deletedRefs = mockBatchDelete.mock.calls.map((args) => args[0]);
-      const userRef = deletedRefs.find((r) => r.__path === `users/${USER_ID}`);
-      expect(userRef).toBeUndefined();
+    expect(mockStatusCallable).toHaveBeenCalledTimes(1);
+    expect(mockStatusCallable).toHaveBeenCalledWith({});
+    expect(state).toEqual({
+      status: 'processing',
+      phase: 'collections',
+      errorCode: null,
+      updatedAt: null,
     });
-
-    it('still commits the batch (other collections may have docs)', async () => {
-      mockGetDoc.mockResolvedValue(makeDocSnap(false));
-
-      await deleteUserAccount(USER_ID);
-
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-    });
+    expect(mockSecureStorage.removeItem).not.toHaveBeenCalled();
   });
 
-  describe('error handling', () => {
-    it('throws a localised error when Firestore fails', async () => {
-      mockGetDoc.mockRejectedValue(new Error('Firestore unavailable'));
+  it('removes all expected local preference keys after acceptance', async () => {
+    await requestAccountDeletion();
 
-      await expect(deleteUserAccount(USER_ID)).rejects.toThrow(
-        'No se pudo eliminar la cuenta completamente'
-      );
+    const removedKeys = mockSecureStorage.removeItem.mock.calls.map((call) => call[0]);
+    expect(removedKeys).toEqual(
+      expect.arrayContaining([
+        'parental_consent',
+        'user_preferences',
+        'premium_status',
+        'consent_data',
+        'analytics_user_properties',
+      ])
+    );
+  });
+
+  it('does not delete Firestore, Storage, or Auth directly', async () => {
+    await requestAccountDeletion();
+
+    expect(mockBatchDelete).not.toHaveBeenCalled();
+    expect(mockBatchCommit).not.toHaveBeenCalled();
+    expect(mockGetDoc).not.toHaveBeenCalled();
+  });
+
+  it('throws a localised domain error when the request callable fails', async () => {
+    mockRequestCallable.mockRejectedValueOnce(new Error('network unavailable'));
+
+    const operation = requestAccountDeletion();
+
+    await expect(operation).rejects.toBeInstanceOf(AccountDeletionOperationError);
+    await expect(operation).rejects.toThrow('No se pudo solicitar la eliminación de la cuenta');
+  });
+
+  it('throws a localised domain error when the status callable fails', async () => {
+    mockStatusCallable.mockRejectedValueOnce(new Error('network unavailable'));
+
+    const operation = getAccountDeletionStatus();
+
+    await expect(operation).rejects.toBeInstanceOf(AccountDeletionOperationError);
+    await expect(operation).rejects.toThrow('No se pudo consultar el estado de eliminación');
+  });
+
+  it('preserves the callable code and status for authentication failures', async () => {
+    mockStatusCallable.mockRejectedValueOnce({
+      code: 'functions/unauthenticated',
+      status: 401,
     });
+
+    const operation = getAccountDeletionStatus();
+    const error = await operation.catch((caughtError) => caughtError);
+
+    expect(error).toBeInstanceOf(AccountDeletionOperationError);
+    expect(error).toMatchObject({
+      code: 'functions/unauthenticated',
+      status: 401,
+    });
+    expect(isAccountDeletionAuthenticationError(error)).toBe(true);
   });
 });
 

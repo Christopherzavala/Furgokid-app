@@ -18,7 +18,9 @@ import { ensureUserProfile, waitForUserProfile } from '../services/userProfileSe
 import { requestDriverApproval } from '../services/driverApprovalService';
 import { stopBackgroundLocation } from '../services/backgroundLocation';
 import { stopForegroundLocationTracking } from '../services/locationService';
-import { cleanupDriverTracking } from '../services/matchTrackingService';
+import { cleanupDriverTracking, clearTrackingMatchId } from '../services/matchTrackingService';
+import { isAuthenticationUnavailableError } from '../utils/authError';
+import { closeLocalAuthSession } from '../utils/localAuthSession';
 
 const AuthContext = createContext();
 
@@ -228,28 +230,87 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const stopSensors = async () => {
+    try {
+      await stopBackgroundLocation();
+    } catch (error) {
+      console.warn('Background sensor could not be stopped during logout.');
+    }
+    try {
+      await stopForegroundLocationTracking();
+    } catch (error) {
+      console.warn('Foreground sensor could not be stopped during logout.');
+    }
+  };
+
+  const clearLocalTrackingState = async () => {
+    try {
+      await clearTrackingMatchId();
+    } catch (error) {
+      console.warn('Local tracking state could not be cleared during logout.');
+    }
+  };
+
+  const clearLocalSessionState = () => {
+    setUser(null);
+    setUserProfile(null);
+  };
+
+  const completeLocalSignOut = async (allowAnySdkFailure = false) =>
+    closeLocalAuthSession({
+      signOut: () => firebaseSignOut(auth),
+      clearSession: clearLocalSessionState,
+      allowAnySdkFailure,
+    });
+
+  /**
+   * Close the local session without making an authenticated backend call.
+   * Used after account erasure, when the Auth identity has already been
+   * deleted and no longer authorizes cleanup callables.
+   */
+  const signOutLocally = async () => {
+    try {
+      setError(null);
+
+      // Leave the authenticated stack and revoke the SDK session immediately.
+      // Sensor cleanup is best-effort and must never delay the local closure
+      // after erasure.
+      clearLocalSessionState();
+      const result = await completeLocalSignOut(true);
+      await stopSensors();
+      await clearLocalTrackingState();
+      return result;
+    } catch (err) {
+      console.error('Local sign out error:', err);
+      setError(err.message);
+      return { success: false, error: err.message };
+    }
+  };
+
   const signOut = async () => {
     try {
       setError(null);
 
       // Sensor cleanup is best-effort, but the authenticated backend sweep is
-      // mandatory. Logout is not completed until that sweep is confirmed.
+      // mandatory while the identity is still valid. Logout is not completed
+      // until that sweep is confirmed.
+      await stopSensors();
+
       try {
-        await stopBackgroundLocation();
-      } catch (error) {
-        console.warn('Background sensor could not be stopped during logout.');
-      }
-      try {
-        await stopForegroundLocationTracking();
-      } catch (error) {
-        console.warn('Foreground sensor could not be stopped during logout.');
+        await cleanupDriverTracking();
+      } catch (err) {
+        // A deleted/disabled identity can no longer authorize the sweep.
+        // Close the local session instead of trapping the user in the app.
+        if (!isAuthenticationUnavailableError(err)) throw err;
+        console.warn('Identity is unavailable; completing logout locally.');
+        await clearLocalTrackingState();
       }
 
-      await cleanupDriverTracking();
-      await firebaseSignOut(auth);
-      setUser(null);
-      setUserProfile(null);
-      return { success: true };
+      const result = await completeLocalSignOut();
+      if (!result.success) {
+        throw new Error(result.sdkError || 'No se pudo cerrar la sesión');
+      }
+      return result;
     } catch (err) {
       console.error('Sign out error:', err);
       setError(err.message);
@@ -295,6 +356,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signUp,
     signOut,
+    signOutLocally,
     updateUserProfile,
     reloadUser: async () => {
       if (user) {

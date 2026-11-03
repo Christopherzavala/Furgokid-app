@@ -877,4 +877,189 @@ describe('Firestore Rules', () => {
       await assertFails(driverDb.collection('locations').doc('point-1').set(freshTrackingData()));
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Account deletion requests and actor-scoped write freeze
+  // -------------------------------------------------------------------------
+
+  describe('/accountDeletionRequests – deletion freeze', () => {
+    const seedDeletionRequest = async (uid: string, status: string) => {
+      await seedDocument(testEnv, `accountDeletionRequests/${uid}`, {
+        requestId: `request-${uid}`,
+        status,
+        phase: status === 'completed' ? 'completed' : 'matches',
+      });
+    };
+
+    runOrSkip('allows the owner to read their deletion request', async () => {
+      await seedDeletionRequest('deletion-owner', 'pending');
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('deletion-owner')
+          .firestore()
+          .collection('accountDeletionRequests')
+          .doc('deletion-owner')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents another user from reading the deletion request', async () => {
+      await seedDeletionRequest('deletion-owner', 'pending');
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('other-user')
+          .firestore()
+          .collection('accountDeletionRequests')
+          .doc('deletion-owner')
+          .get()
+      );
+    });
+
+    runOrSkip('prevents clients from writing their deletion request', async () => {
+      const requestRef = testEnv
+        .authenticatedContext('deletion-owner')
+        .firestore()
+        .collection('accountDeletionRequests')
+        .doc('deletion-owner');
+
+      await assertFails(requestRef.set({ status: 'pending' }));
+      await assertFails(requestRef.update({ status: 'completed' }));
+      await assertFails(requestRef.delete());
+    });
+
+    runOrSkip.each(['pending', 'processing', 'failed'])(
+      'freezes the owner profile while the request is %s',
+      async (status) => {
+        const uid = `frozen-profile-${status}`;
+        await seedUser(testEnv, uid, { role: 'parent', approved: false });
+        await seedDeletionRequest(uid, status);
+
+        await assertFails(
+          testEnv
+            .authenticatedContext(uid)
+            .firestore()
+            .collection('users')
+            .doc(uid)
+            .update({ name: 'Blocked update' })
+        );
+      }
+    );
+
+    runOrSkip('unfreezes the owner profile after the request is completed', async () => {
+      const uid = 'completed-profile';
+      await seedUser(testEnv, uid, { role: 'parent', approved: false });
+      await seedDeletionRequest(uid, 'completed');
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext(uid)
+          .firestore()
+          .collection('users')
+          .doc(uid)
+          .update({ name: 'Allowed update' })
+      );
+    });
+
+    runOrSkip.each(['pending', 'processing', 'failed'])(
+      'freezes route deletion while the request is %s',
+      async (status) => {
+        const uid = `frozen-route-${status}`;
+        await seedUser(testEnv, uid, { role: 'driver', approved: true });
+        await seedDocument(testEnv, `routes/route-${status}`, { driverId: uid });
+        await seedDeletionRequest(uid, status);
+
+        await assertFails(
+          testEnv
+            .authenticatedContext(uid)
+            .firestore()
+            .collection('routes')
+            .doc(`route-${status}`)
+            .delete()
+        );
+      }
+    );
+
+    runOrSkip('allows route deletion after the request is completed', async () => {
+      const uid = 'completed-route';
+      await seedUser(testEnv, uid, { role: 'driver', approved: true });
+      await seedDocument(testEnv, 'routes/route-completed', { driverId: uid });
+      await seedDeletionRequest(uid, 'completed');
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext(uid)
+          .firestore()
+          .collection('routes')
+          .doc('route-completed')
+          .delete()
+      );
+    });
+
+    runOrSkip('does not let a target request freeze an administrator', async () => {
+      await seedUser(testEnv, 'admin-without-request', { role: 'admin' });
+      await seedUser(testEnv, 'route-target', { role: 'driver', approved: true });
+      await seedDocument(testEnv, 'routes/admin-target-route', {
+        driverId: 'route-target',
+        reservedSeats: 0,
+      });
+      await seedDeletionRequest('route-target', 'pending');
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('admin-without-request')
+          .firestore()
+          .collection('routes')
+          .doc('admin-target-route')
+          .delete()
+      );
+    });
+
+    runOrSkip('freezes an administrator when the administrator has a request', async () => {
+      await seedUser(testEnv, 'admin-with-request', { role: 'admin' });
+      await seedUser(testEnv, 'other-route-owner', { role: 'driver', approved: true });
+      await seedDocument(testEnv, 'routes/admin-own-request-route', {
+        driverId: 'other-route-owner',
+        reservedSeats: 0,
+      });
+      await seedDeletionRequest('admin-with-request', 'processing');
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('admin-with-request')
+          .firestore()
+          .collection('routes')
+          .doc('admin-own-request-route')
+          .delete()
+      );
+    });
+
+    runOrSkip('does not let another participant request freeze shared chat writes', async () => {
+      await seedUser(testEnv, 'chat-owner', { role: 'parent', approved: false });
+      await seedUser(testEnv, 'chat-participant', { role: 'parent', approved: false });
+      await seedDocument(testEnv, 'chats/shared-chat', {
+        participants: ['chat-owner', 'chat-participant'],
+        updatedAt: new Date(),
+      });
+      await seedDeletionRequest('chat-owner', 'pending');
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('chat-participant')
+          .firestore()
+          .collection('chats')
+          .doc('shared-chat')
+          .update({ updatedAt: new Date() })
+      );
+      await assertFails(
+        testEnv
+          .authenticatedContext('chat-owner')
+          .firestore()
+          .collection('chats')
+          .doc('shared-chat')
+          .update({ updatedAt: new Date() })
+      );
+    });
+  });
 });

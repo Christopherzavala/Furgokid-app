@@ -33,6 +33,8 @@ const {
 } = require('./src/userProfileTrigger');
 const { createDriverApprovalRepository } = require('./src/driverApproval');
 const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
+const { createAccountDeletionService } = require('./src/accountDeletionService');
+const { createAccountDeletionCallables } = require('./src/accountDeletionCallables');
 const {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
@@ -49,6 +51,50 @@ setGlobalOptions({
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
+
+const resolveStorageBucket = () => {
+  let firebaseConfig = {};
+  if (process.env.FIREBASE_CONFIG) {
+    try {
+      firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
+    } catch (error) {
+      console.warn('FIREBASE_CONFIG could not be parsed; Storage bucket must be explicit.');
+    }
+  }
+  const projectId =
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    firebaseConfig.projectId ||
+    admin.app().options.projectId ||
+    null;
+  return (
+    process.env.STORAGE_BUCKET ||
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    firebaseConfig.storageBucket ||
+    admin.app().options.storageBucket ||
+    (projectId ? `${projectId}.firebasestorage.app` : null)
+  );
+};
+
+const accountDeletionService = createAccountDeletionService({
+  firestore: admin.firestore(),
+  auth: admin.auth(),
+  storage: admin.storage(),
+  storageBucket: resolveStorageBucket(),
+  logger: (entry) => console.info('Account deletion', entry),
+});
+
+const accountDeletion = createAccountDeletionCallables({
+  service: accountDeletionService,
+  logger: (entry) => console.info('Account deletion', entry),
+});
+
+exports.requestAccountDeletion = onCall(accountDeletion.requestAccountDeletion);
+exports.getAccountDeletionStatus = onCall(accountDeletion.getAccountDeletionStatus);
+exports.resumeAccountDeletionRequests = onSchedule(
+  { schedule: 'every 5 minutes', retryCount: 3 },
+  async () => accountDeletionService.resumePendingRequests()
+);
 
 const matchLifecycle = createMatchLifecycleCallables({
   repository: createMatchLifecycleRepository({ firestore: admin.firestore() }),
@@ -216,6 +262,7 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
     await admin.firestore().collection('notification_logs').add({
       type: 'new_match',
       matchId,
+      driverId: match.driverId,
       driversNotified: notifications.length,
       success: true,
       duration: duration,
@@ -230,6 +277,7 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
     await admin.firestore().collection('notification_errors').add({
       type: 'new_match',
       matchId,
+      driverId: match.driverId,
       error: error.message,
       stack: error.stack,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -342,6 +390,7 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     await admin.firestore().collection('notification_logs').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
+      driverId: vacancy.driverId,
       parentsNotified: notifications.length,
       success: true,
       duration: duration,
@@ -357,6 +406,7 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     await admin.firestore().collection('notification_errors').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
+      driverId: vacancy.driverId,
       error: error.message,
       stack: error.stack,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
