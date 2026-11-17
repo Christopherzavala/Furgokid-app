@@ -7,10 +7,41 @@
  * - sendWelcomeEmail: Email de bienvenida a nuevos usuarios (v1.1)
  */
 
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
-const { onRequest } = require('firebase-functions/v2/https');
+const {
+  onDocumentCreated,
+  onDocumentDeleted,
+  onDocumentUpdated,
+} = require('firebase-functions/v2/firestore');
+const { onCall, onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
+const { createFirestoreGpsCleanupRepository } = require('./src/firestoreGpsCleanupRepository');
+const { createMatchFinalizationCleanup } = require('./src/matchFinalizationCleanup');
+const { createStopTrackingHandler } = require('./src/stopTrackingCallable');
+const { createCleanupDriverTrackingHandler } = require('./src/cleanupDriverTrackingCallable');
+const { createTrackingAuthorizationHandler } = require('./src/trackingAuthorization');
+const { createDriverApprovalGpsCleanup } = require('./src/driverApprovalGpsCleanup');
+const { createMatchDeletionGpsCleanup } = require('./src/matchDeletionGpsCleanup');
+const { createStaleTrackingCleanup } = require('./src/staleTrackingCleanup');
+const { createDriverTrackingCleanup } = require('./src/driverTrackingCleanup');
+const { createMatchLifecycleRepository } = require('./src/matchLifecycle');
+const { createMatchLifecycleCallables } = require('./src/matchLifecycleCallables');
+const {
+  createEnsureUserProfileHandler,
+  provisionUserProfile,
+} = require('./src/userProfileTrigger');
+const { createDriverApprovalRepository } = require('./src/driverApproval');
+const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
+const { createAccountDeletionService } = require('./src/accountDeletionService');
+const { createAccountDeletionCallables } = require('./src/accountDeletionCallables');
+const {
+  BLOCKED_CODE,
+  initializeExternalNotificationGuard,
+  sendExpoPush,
+} = require('./src/externalNotifications');
+
+initializeExternalNotificationGuard();
 
 // Set global options
 setGlobalOptions({
@@ -21,86 +52,205 @@ setGlobalOptions({
 // Initialize Firebase Admin SDK
 admin.initializeApp();
 
+const resolveStorageBucket = () => {
+  let firebaseConfig = {};
+  if (process.env.FIREBASE_CONFIG) {
+    try {
+      firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
+    } catch (error) {
+      console.warn('FIREBASE_CONFIG could not be parsed; Storage bucket must be explicit.');
+    }
+  }
+  const projectId =
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    firebaseConfig.projectId ||
+    admin.app().options.projectId ||
+    null;
+  return (
+    process.env.STORAGE_BUCKET ||
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    firebaseConfig.storageBucket ||
+    admin.app().options.storageBucket ||
+    (projectId ? `${projectId}.firebasestorage.app` : null)
+  );
+};
+
+const accountDeletionService = createAccountDeletionService({
+  firestore: admin.firestore(),
+  auth: admin.auth(),
+  storage: admin.storage(),
+  storageBucket: resolveStorageBucket(),
+  logger: (entry) => console.info('Account deletion', entry),
+});
+
+const accountDeletion = createAccountDeletionCallables({
+  service: accountDeletionService,
+  logger: (entry) => console.info('Account deletion', entry),
+});
+
+exports.requestAccountDeletion = onCall(accountDeletion.requestAccountDeletion);
+exports.getAccountDeletionStatus = onCall(accountDeletion.getAccountDeletionStatus);
+exports.resumeAccountDeletionRequests = onSchedule(
+  { schedule: 'every 5 minutes', retryCount: 3 },
+  async () => accountDeletionService.resumePendingRequests()
+);
+
+const matchLifecycle = createMatchLifecycleCallables({
+  repository: createMatchLifecycleRepository({ firestore: admin.firestore() }),
+  logger: (entry) => console.info('Match lifecycle', entry),
+});
+
+exports.createMatch = onCall(matchLifecycle.createMatch);
+exports.acceptMatch = onCall(matchLifecycle.acceptMatch);
+exports.cancelMatch = onCall(matchLifecycle.cancelMatch);
+exports.completeMatch = onCall(matchLifecycle.completeMatch);
+exports.closeRequest = onCall(matchLifecycle.closeRequest);
+exports.deleteRequests = onCall(matchLifecycle.deleteRequests);
+exports.updateVacancyCapacity = onCall(matchLifecycle.updateVacancyCapacity);
+exports.initializeVacancyCapacity = onCall(matchLifecycle.initializeVacancyCapacity);
+
+exports.stopTracking = onCall(
+  createStopTrackingHandler({
+    createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupDriverTracking = onCall(
+  createCleanupDriverTrackingHandler({
+    createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.startTracking = onCall(
+  createTrackingAuthorizationHandler({
+    getUserProfile: async (uid) => {
+      const userSnapshot = await admin.firestore().collection('users').doc(uid).get();
+      return userSnapshot.exists ? userSnapshot.data() : null;
+    },
+    getMatch: async (matchId) => {
+      const matchSnapshot = await admin.firestore().collection('matches').doc(matchId).get();
+      return matchSnapshot.exists ? matchSnapshot.data() : null;
+    },
+  })
+);
+
+exports.provisionUserProfile = provisionUserProfile;
+
+exports.ensureUserProfile = onCall(
+  createEnsureUserProfileHandler({
+    firestore: admin.firestore(),
+    logger: (entry) => console.info('User profile provisioning', entry),
+  })
+);
+
+const driverApproval = createDriverApprovalCallables({
+  repository: createDriverApprovalRepository({ firestore: admin.firestore() }),
+  logger: (entry) => console.info('Driver approval', entry),
+});
+
+exports.requestDriverApproval = onCall(driverApproval.requestDriverApproval);
+exports.reviewDriverRequest = onCall(driverApproval.reviewDriverRequest);
+
+exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
+  { document: 'matches/{matchId}', retry: true },
+  createMatchFinalizationCleanup({
+    repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupDeletedMatchTracking = onDocumentDeleted(
+  { document: 'matches/{matchId}', retry: true },
+  createMatchDeletionGpsCleanup({
+    repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+const cleanupDriverTracking = async (driverId) => {
+  const repository = createFirestoreGpsCleanupRepository({ firestore: admin.firestore() });
+  return createDriverTrackingCleanup({
+    repository,
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })(driverId);
+};
+
+exports.cleanupRevokedDriverTracking = onDocumentUpdated(
+  { document: 'users/{userId}', retry: true },
+  createDriverApprovalGpsCleanup({
+    cleanupDriverTracking,
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
+exports.cleanupStaleTracking = onSchedule(
+  { schedule: 'every 5 minutes', retryCount: 3 },
+  createStaleTrackingCleanup({
+    repository: createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
+    logger: (entry) => console.info('GPS cleanup', entry),
+  })
+);
+
 /**
  * ========================================
- * TRIGGER: New Request Created (Parent)
+ * TRIGGER: New Pending Match Created
  * ========================================
  *
- * Cuando un padre crea una solicitud de transporte:
- * 1. Busca conductores en la misma zona
- * 2. Filtra por pushToken válido
- * 3. Envía push notification a cada conductor matched
- *
- * ANÁLISIS BIG TECH:
- * - Graceful degradation: Si falla, user no se entera
- * - Batch processing: Envía todas las notificaciones en un batch
- * - Error logging: Log a Firestore para debugging
+ * Notifies only the driver assigned by the trusted match lifecycle operation.
  */
-exports.notifyDriversNewRequest = onDocumentCreated('requests/{requestId}', async (event) => {
+exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (event) => {
   const startTime = Date.now();
   const snap = event.data;
-  const requestId = event.params.requestId;
-  const request = snap.data();
+  const matchId = event.params.matchId;
+  const match = snap?.data();
+  if (!match || match.status !== 'pending') return null;
 
-  console.log(
-    `🚨 NEW REQUEST: ${requestId} | Parent: ${request.parentName} | Zone: ${request.zone}`
-  );
-
+  console.log('🚨 NEW MATCH RECEIVED');
   try {
-    // 1. Find drivers in the same zone with pushToken
-    const driversSnapshot = await admin
-      .firestore()
-      .collection('users')
-      .where('role', '==', 'driver')
-      .where('zone', '==', request.zone)
-      .get();
-
-    console.log(`   Found ${driversSnapshot.size} drivers in ${request.zone}`);
-
-    if (driversSnapshot.empty) {
-      console.log('   ⚠️ No drivers found in zone');
+    if (typeof match.driverId !== 'string' || !match.driverId) {
+      console.warn('   Pending match has no assigned driver; notification skipped');
+      return null;
+    }
+    const driverSnapshot = await admin.firestore().collection('users').doc(match.driverId).get();
+    if (!driverSnapshot.exists || driverSnapshot.get('role') !== 'driver') {
+      console.warn('   Assigned driver profile is unavailable; notification skipped');
+      return null;
+    }
+    const driver = driverSnapshot.data();
+    if (!driver.pushToken) {
+      console.log('   Assigned driver has no push token');
       return null;
     }
 
-    // 2. Build notification payload for each driver
-    const notifications = [];
-    driversSnapshot.forEach((doc) => {
-      const driver = doc.data();
-      if (driver.pushToken) {
-        notifications.push({
-          to: driver.pushToken,
-          sound: 'default',
-          title: '🚌 Nueva solicitud en tu zona',
-          body: `${request.parentName} busca transporte para ${request.childrenCount} niño(s) en ${request.zone}`,
-          data: {
-            type: 'new_request',
-            requestId: requestId,
-            zone: request.zone,
-            schedule: request.schedule,
-            school: request.school,
-          },
-          priority: 'high',
-          channelId: 'urgent',
-        });
-      }
-    });
+    const notifications = [
+      {
+        to: driver.pushToken,
+        sound: 'default',
+        title: '🚌 Nueva solicitud asignada',
+        body: `${match.parentName} busca transporte para ${match.childrenCount} niño(s) en ${match.zone}`,
+        data: {
+          type: 'new_request',
+          requestId: match.requestId,
+          matchId,
+          zone: match.zone,
+          schedule: match.schedule,
+          school: match.school,
+        },
+        priority: 'high',
+        channelId: 'urgent',
+      },
+    ];
 
-    console.log(`   Prepared ${notifications.length} notifications`);
-
-    if (notifications.length === 0) {
-      console.log('   ⚠️ No drivers with push tokens');
-      return null;
-    }
-
-    // 3. Send notifications via Expo Push API
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
+    const response = await sendExpoPush({
+      payload: notifications,
       headers: {
         Accept: 'application/json',
         'Accept-Encoding': 'gzip, deflate',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(notifications),
     });
 
     const result = await response.json();
@@ -109,10 +259,10 @@ exports.notifyDriversNewRequest = onDocumentCreated('requests/{requestId}', asyn
     console.log(`   ✅ Notifications sent in ${duration}ms`);
     console.log(`   Response:`, JSON.stringify(result));
 
-    // 4. Log success to Firestore for analytics
     await admin.firestore().collection('notification_logs').add({
-      type: 'new_request',
-      requestId: requestId,
+      type: 'new_match',
+      matchId,
+      driverId: match.driverId,
       driversNotified: notifications.length,
       success: true,
       duration: duration,
@@ -121,19 +271,18 @@ exports.notifyDriversNewRequest = onDocumentCreated('requests/{requestId}', asyn
 
     return null;
   } catch (error) {
+    if (error.code === BLOCKED_CODE) throw error;
     console.error('   ❌ ERROR in notifyDriversNewRequest:', error);
 
-    // Log error to Firestore
     await admin.firestore().collection('notification_errors').add({
-      type: 'new_request',
-      requestId: requestId,
+      type: 'new_match',
+      matchId,
+      driverId: match.driverId,
       error: error.message,
       stack: error.stack,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Don't throw - graceful degradation
-    // App continues working even if notifications fail
     return null;
   }
 });
@@ -154,9 +303,7 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
   const vacancyId = event.params.vacancyId;
   const vacancy = snap.data();
 
-  console.log(
-    `🚐 NEW VACANCY: ${vacancyId} | Driver: ${vacancy.driverName} | Zone: ${vacancy.zone}`
-  );
+  console.log('🚐 NEW VACANCY RECEIVED');
 
   try {
     // 1. Find active parent requests in the same zone
@@ -224,14 +371,13 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     }
 
     // 3. Send notifications via Expo Push API
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
+    const response = await sendExpoPush({
+      payload: notifications,
       headers: {
         Accept: 'application/json',
         'Accept-Encoding': 'gzip, deflate',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(notifications),
     });
 
     const result = await response.json();
@@ -244,6 +390,7 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     await admin.firestore().collection('notification_logs').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
+      driverId: vacancy.driverId,
       parentsNotified: notifications.length,
       success: true,
       duration: duration,
@@ -252,12 +399,14 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
 
     return null;
   } catch (error) {
+    if (error.code === BLOCKED_CODE) throw error;
     console.error('   ❌ ERROR in notifyParentsNewVacancy:', error);
 
     // Log error
     await admin.firestore().collection('notification_errors').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
+      driverId: vacancy.driverId,
       error: error.message,
       stack: error.stack,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -280,16 +429,32 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
  * - Templates HTML para emails
  * - Link de onboarding
  */
-exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (event) => {
-  const snap = event.data;
-  const user = snap.data();
-
-  console.log(`👋 NEW USER: ${user.email} | Role: ${user.role}`);
+exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) => {
+  console.log('👋 NEW USER PROFILE');
 
   // TODO v1.1: Implementar email service
   // Por ahora solo log
   console.log('   Welcome email feature coming in v1.1');
 
+  return null;
+});
+
+const {
+  onboardPassengerCallable,
+  updatePassengerAuthorizationStatusCallable,
+} = require('./src/passengerAuthorizationCallables');
+const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
+
+exports.onboardPassenger = onboardPassengerCallable;
+exports.updatePassengerAuthorizationStatus = updatePassengerAuthorizationStatusCallable;
+exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
+  const manager = createPassengerAuthorizationManager({
+    firestore: admin.firestore(),
+  });
+  const result = await manager.retryPendingRevocationCleanups({
+    workerId: 'cloud_scheduler_worker',
+  });
+  console.log('🔄 Retry pending revocation cleanups completed:', result);
   return null;
 });
 
@@ -319,22 +484,21 @@ exports.testNotification = onRequest(async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
+    const response = await sendExpoPush({
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      payload: {
         to: pushToken,
         sound: 'default',
         title: 'Test Notification',
         body: message || 'This is a test notification from Firebase Functions',
         data: { type: 'test' },
-      }),
+      },
     });
 
     const result = await response.json();
     res.status(200).json({ success: true, result });
   } catch (error) {
     console.error('Error sending test notification:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message, code: error.code });
   }
 });

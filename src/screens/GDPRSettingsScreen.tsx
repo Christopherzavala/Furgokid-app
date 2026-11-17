@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,14 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { deleteUserAccount, exportUserData, getUserDataSummary } from '../services/gdprService';
+import {
+  AccountDeletionState,
+  exportUserData,
+  getAccountDeletionStatus,
+  getUserDataSummary,
+  isAccountDeletionAuthenticationError,
+  requestAccountDeletion,
+} from '../services/gdprService';
 import toastService from '../services/toastService';
 import logger from '../utils/logger';
 
@@ -30,10 +37,13 @@ import logger from '../utils/logger';
  */
 
 const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { user, logout } = useAuth();
+  const { user, signOutLocally } = useAuth();
   const [loading, setLoading] = useState(false);
   const [dataSummary, setDataSummary] = useState<any>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [deletionState, setDeletionState] = useState<AccountDeletionState | null>(null);
+  const deletionStatus = deletionState?.status;
+  const terminalHandledRef = useRef(false);
 
   /**
    * Load data summary
@@ -45,9 +55,13 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     try {
       const summary = await getUserDataSummary(user.uid);
       setDataSummary(summary);
-    } catch (error) {
+    } catch {
       toastService.error('Error', 'No se pudo cargar el resumen de datos');
-      logger.error('Failed to load data summary', { error });
+      logger.privacySafeError('Failed to load data summary', {
+        operation: 'gdpr_summary',
+        stage: 'screen',
+        code: 'GDPR_SUMMARY_DISPLAY_FAILED',
+      });
     } finally {
       setSummaryLoading(false);
     }
@@ -95,10 +109,17 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                 'Tus datos han sido exportados exitosamente.'
               );
 
-              logger.info('User data exported', { userId: user.uid });
-            } catch (error) {
+              logger.privacySafeInfo('User data exported', {
+                operation: 'gdpr_export',
+                stage: 'shared',
+              });
+            } catch {
               toastService.error('Error', 'No se pudo exportar los datos');
-              logger.error('Failed to export user data', { error });
+              logger.privacySafeError('Failed to export user data', {
+                operation: 'gdpr_export',
+                stage: 'screen',
+                code: 'GDPR_EXPORT_DISPLAY_FAILED',
+              });
             } finally {
               setLoading(false);
             }
@@ -107,6 +128,61 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       ]
     );
   };
+
+  const handleDeletionTerminal = useCallback(
+    async (title: string, message: string) => {
+      if (terminalHandledRef.current) return;
+      terminalHandledRef.current = true;
+
+      const result = await signOutLocally();
+
+      if (result?.success) {
+        toastService.success(title, message);
+      } else {
+        logger.error('Failed to close the deleted account session', result);
+      }
+    },
+    [signOutLocally]
+  );
+
+  useEffect(() => {
+    if (!deletionStatus || !['pending', 'processing'].includes(deletionStatus)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const pollStatus = async () => {
+      try {
+        const state = await getAccountDeletionStatus();
+        if (!cancelled) setDeletionState(state);
+      } catch (error) {
+        if (isAccountDeletionAuthenticationError(error)) {
+          // The Auth identity is deleted before the final receipt is written.
+          // The remaining backend work is resumable, so close locally now.
+          await handleDeletionTerminal(
+            'Sesión cerrada',
+            'Tu cuenta ya no está disponible. La eliminación continuará en segundo plano.'
+          );
+          return;
+        }
+        logger.warn('Failed to poll account deletion status', { error });
+      }
+    };
+
+    const timer = setInterval(pollStatus, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [deletionStatus, handleDeletionTerminal]);
+
+  useEffect(() => {
+    if (deletionStatus !== 'completed') return;
+    void handleDeletionTerminal(
+      'Cuenta eliminada',
+      'Tu cuenta y todos tus datos han sido eliminados permanentemente.'
+    );
+  }, [deletionStatus, handleDeletionTerminal]);
 
   /**
    * Delete user account permanently
@@ -152,35 +228,38 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
             setLoading(true);
             try {
-              await deleteUserAccount(user.uid);
+              const state = await requestAccountDeletion();
+              setDeletionState(state);
 
-              Alert.alert(
-                'Cuenta Eliminada',
-                'Tu cuenta y todos tus datos han sido eliminados permanentemente.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: async () => {
-                      await logout();
-                      // Navigate to welcome screen
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: 'Welcome' }],
-                      });
-                    },
-                  },
-                ]
-              );
+              if (state.status === 'failed') {
+                Alert.alert(
+                  'No se pudo completar la eliminación',
+                  'La solicitud quedó registrada y el equipo de soporte puede revisarla. Inténtalo de nuevo más tarde.'
+                );
+              } else if (state.status !== 'completed') {
+                Alert.alert(
+                  'Solicitud Registrada',
+                  'Tu solicitud fue aceptada y el borrado continuará en segundo plano. Puedes salir de la aplicación; el proceso no se detendrá.'
+                );
+              }
 
-              logger.warn('User account deleted by user request', {
+              logger.warn('Account deletion requested by user', {
                 userId: user.uid,
+                status: state.status,
               });
             } catch (error) {
-              Alert.alert(
-                'Error',
-                'No se pudo eliminar la cuenta completamente. Por favor contacta soporte.'
-              );
-              logger.error('Failed to delete user account', { error });
+              if (isAccountDeletionAuthenticationError(error)) {
+                await handleDeletionTerminal(
+                  'Sesión cerrada',
+                  'Tu cuenta ya no está disponible. No se pudo confirmar el inicio de la eliminación; la sesión se ha cerrado.'
+                );
+              } else {
+                Alert.alert(
+                  'Error',
+                  'No se pudo registrar la solicitud de eliminación. Por favor contacta soporte.'
+                );
+                logger.error('Failed to request account deletion', { error });
+              }
             } finally {
               setLoading(false);
             }

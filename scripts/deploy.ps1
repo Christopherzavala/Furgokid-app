@@ -1,5 +1,17 @@
-# 🚀 Deploy Automatizado - FurgoKid Backend
-# Este script deploya todo el backend en un solo comando
+# 🚀 Deploy Automatizado - FurgoKid Backend (PRODUCTION)
+#
+# Fail-closed: exige FIREBASE_PROJECT_ID explicito (furgokid), pasa --project
+# en cada llamada y exige la confirmacion exacta 'yes' para produccion.
+
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ProjectId
+)
+
+$ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "firebase-project-guard.ps1")
 
 Write-Host "🔥 FurgoKid Backend Deployment Script" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
@@ -32,65 +44,62 @@ if ($LASTEXITCODE -ne 0) {
     firebase login
 }
 
-# Verificar proyecto activo
+# Fail-closed project validation: explicit id, exact production match.
 Write-Host ""
-Write-Host "📋 Verificando proyecto..." -ForegroundColor Yellow
-$activeProject = firebase use
-Write-Host "   Proyecto activo: $activeProject" -ForegroundColor Cyan
+Write-Host "📋 Validando proyecto..." -ForegroundColor Yellow
+$ProjectId = Resolve-FirebaseProjectId -Environment 'production' -ProjectId $ProjectId
+$ProjectId = Assert-FirebaseProjectMatch -Environment 'production' -ProjectId $ProjectId
+Write-Host "   Proyecto validado: $ProjectId (PRODUCTION)" -ForegroundColor Cyan
 
-# Confirmar deployment
+# Confirmar deployment (confirmacion inequivoca: solo 'yes' exacto)
 Write-Host ""
-Write-Host "⚠️  ADVERTENCIA: Este script deployará:" -ForegroundColor Yellow
-Write-Host "   1. Firebase Cloud Functions (4 functions)" -ForegroundColor White
+Write-Host "⚠️  ADVERTENCIA: Este script deployará a PRODUCCIÓN ($ProjectId):" -ForegroundColor Yellow
+Write-Host "   1. Firebase Cloud Functions" -ForegroundColor White
 Write-Host "   2. Firestore Security Rules" -ForegroundColor White
 Write-Host "   3. Firestore Indexes" -ForegroundColor White
 Write-Host ""
-$confirmation = Read-Host "¿Continuar con el deployment? (s/N)"
-
-if ($confirmation -ne "s" -and $confirmation -ne "S") {
-    Write-Host "❌ Deployment cancelado por el usuario" -ForegroundColor Red
-    exit 0
+Write-Host "   Escribe exactamente 'yes' para continuar." -ForegroundColor Yellow
+try {
+    Request-DeploymentConfirmation -Prompt "¿Continuar con el deployment a PRODUCCIÓN? (yes/no)"
+} catch {
+    Write-Host "❌ $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
 }
 
 # PASO 1: Instalar dependencies
 Write-Host ""
 Write-Host "📦 Paso 1/5: Instalando dependencies..." -ForegroundColor Cyan
-Set-Location functions
-
-if (!(Test-Path "node_modules")) {
-    Write-Host "   Instalando por primera vez..." -ForegroundColor Yellow
-    npm install
-} else {
-    Write-Host "   Dependencies ya instaladas. Actualizando..." -ForegroundColor Yellow
-    npm install
+Push-Location functions
+try {
+    npm ci
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Error instalando dependencies" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "   ✅ Dependencies instaladas" -ForegroundColor Green
+} finally {
+    Pop-Location
 }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Error instalando dependencies" -ForegroundColor Red
-    Set-Location ..
-    exit 1
-}
-
-Write-Host "   ✅ Dependencies instaladas" -ForegroundColor Green
-Set-Location ..
-
-# PASO 2: Lint code
+# PASO 2: Lint code (fail-closed en produccion: un error de lint aborta)
 Write-Host ""
 Write-Host "🔍 Paso 2/5: Verificando código (ESLint)..." -ForegroundColor Cyan
-Set-Location functions
-npm run lint
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠️  Advertencia: ESLint encontró problemas" -ForegroundColor Yellow
-    Write-Host "   Continuando de todas formas..." -ForegroundColor Yellow
+Push-Location functions
+try {
+    npm run lint
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ ESLint encontró problemas. Deploy a producción abortado." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "   ✅ Lint pasó" -ForegroundColor Green
+} finally {
+    Pop-Location
 }
-
-Set-Location ..
 
 # PASO 3: Deploy Functions
 Write-Host ""
 Write-Host "☁️  Paso 3/5: Deploying Cloud Functions..." -ForegroundColor Cyan
-firebase deploy --only functions
+firebase deploy --project $ProjectId --only functions
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Error deploying Functions" -ForegroundColor Red
@@ -102,7 +111,7 @@ Write-Host "   ✅ Functions deployed successfully" -ForegroundColor Green
 # PASO 4: Deploy Firestore Rules
 Write-Host ""
 Write-Host "🔒 Paso 4/5: Deploying Firestore Rules..." -ForegroundColor Cyan
-firebase deploy --only firestore:rules
+firebase deploy --project $ProjectId --only firestore:rules
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Error deploying Firestore Rules" -ForegroundColor Red
@@ -114,7 +123,7 @@ Write-Host "   ✅ Firestore Rules deployed" -ForegroundColor Green
 # PASO 5: Deploy Firestore Indexes
 Write-Host ""
 Write-Host "📊 Paso 5/5: Deploying Firestore Indexes..." -ForegroundColor Cyan
-firebase deploy --only firestore:indexes
+firebase deploy --project $ProjectId --only firestore:indexes
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "⚠️  Advertencia: Error deploying indexes (puede ser normal si no hay indexes)" -ForegroundColor Yellow
@@ -124,7 +133,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "✅ Verificando deployment..." -ForegroundColor Cyan
 Write-Host ""
-firebase functions:list
+firebase functions:list --project $ProjectId
 
 # Resumen
 Write-Host ""
@@ -133,12 +142,15 @@ Write-Host "🎉 DEPLOYMENT COMPLETADO" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📊 Siguiente paso: Verificar en Firebase Console" -ForegroundColor Yellow
-Write-Host "   https://console.firebase.google.com/project/furgokid/functions" -ForegroundColor Cyan
+Write-Host "   https://console.firebase.google.com/project/$ProjectId/functions" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "🧪 Testing: Crear una request en la app y verificar logs" -ForegroundColor Yellow
-Write-Host "   firebase functions:log --only notifyDriversNewRequest" -ForegroundColor Cyan
+Write-Host "   firebase functions:log --project $ProjectId --only notifyDriversNewRequest" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📝 Monitoreo:" -ForegroundColor Yellow
 Write-Host "   - Firestore → notification_logs (success)" -ForegroundColor Cyan
 Write-Host "   - Firestore → notification_errors (errors)" -ForegroundColor Cyan
 Write-Host ""
+
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+Add-Content -Path "docs/logs/deploy-history.txt" -Value "$timestamp - PRODUCTION DEPLOY SUCCESS (project: $ProjectId)"

@@ -126,7 +126,8 @@ class Logger {
     level: LogLevel,
     message: string,
     context?: Record<string, any>,
-    error?: Error
+    error?: Error,
+    privacySafe = false
   ): LogEntry {
     return {
       timestamp: new Date().toISOString(),
@@ -134,8 +135,8 @@ class Logger {
       message,
       context,
       error,
-      correlationId: this.correlationId || undefined,
-      userId: this.userId || undefined,
+      correlationId: privacySafe ? undefined : this.correlationId || undefined,
+      userId: privacySafe ? undefined : this.userId || undefined,
       environment: __DEV__ ? 'development' : 'production',
     };
   }
@@ -237,13 +238,18 @@ class Logger {
     level: LogLevel,
     message: string,
     context?: Record<string, any>,
-    error?: Error
+    error?: Error,
+    privacySafe = false
   ): void {
     if (!this.shouldLog(level)) return;
 
-    const entry = this.createLogEntry(level, message, context, error);
+    const entry = this.createLogEntry(level, message, context, error, privacySafe);
 
     this.logToConsole(entry);
+    // Sentry and remote logging can attach globally configured user context.
+    // Sensitive-flow diagnostics therefore remain local even when those sinks are enabled.
+    if (privacySafe) return;
+
     this.logToSentry(entry);
 
     // Fire and forget for remote logging
@@ -266,6 +272,23 @@ class Logger {
    */
   info(message: string, context?: Record<string, any>): void {
     this.log(LogLevel.INFO, message, context);
+  }
+
+  /** Log locally without attaching global IDs or forwarding to remote sinks. */
+  privacySafeDebug(message: string, context?: Record<string, any>): void {
+    this.log(LogLevel.DEBUG, message, context, undefined, true);
+  }
+
+  privacySafeInfo(message: string, context?: Record<string, any>): void {
+    this.log(LogLevel.INFO, message, context, undefined, true);
+  }
+
+  privacySafeWarn(message: string, context?: Record<string, any>): void {
+    this.log(LogLevel.WARN, message, context, undefined, true);
+  }
+
+  privacySafeError(message: string, context?: Record<string, any>): void {
+    this.log(LogLevel.ERROR, message, context, undefined, true);
   }
 
   /**

@@ -6,14 +6,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AdBannerComponent from '../components/AdBannerComponent';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import { getActiveParentMatches } from '../services/matchTrackingService';
 import toastService from '../services/toastService';
 
 const ParentHomeScreen = ({ navigation }) => {
   const { user, userProfile, signOut } = useAuth();
   const [children] = useState([]); // Empty for now to show EmptyState
+  const [activeMatches, setActiveMatches] = useState([]);
 
   useEffect(() => {
-    // In the future, fetch children from Firestore here
+    let active = true;
+    getActiveParentMatches()
+      .then((matches) => {
+        if (active) setActiveMatches(matches);
+      })
+      .catch(() => {
+        if (active) setActiveMatches([]);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -100,8 +112,47 @@ const ParentHomeScreen = ({ navigation }) => {
           />
         )}
 
+        {activeMatches.length > 0 && (
+          <View style={styles.trackingSection}>
+            <Text style={styles.sectionTitle}>Seguimiento en vivo</Text>
+            {activeMatches.map((match) => (
+              <TouchableOpacity
+                key={match.id}
+                style={styles.trackingMatch}
+                onPress={() => navigation.navigate('TrackingMap', { matchId: match.id })}
+                accessible={true}
+                accessibilityLabel={`Ver ubicación del emparejamiento ${match.id}`}
+                accessibilityRole="button"
+              >
+                <Ionicons name="navigate-circle-outline" size={28} color="#FF6B35" />
+                <View style={styles.trackingMatchText}>
+                  <Text style={styles.trackingMatchTitle}>
+                    {match.school || match.zone || 'Emparejamiento activo'}
+                  </Text>
+                  <Text style={styles.trackingMatchSubtitle}>Ver ubicación del conductor</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color="#888" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* QUICK ACTIONS */}
         <View style={styles.actionsContainer}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('PassengerAuthorizations')}
+            accessible={true}
+            accessibilityLabel="Administrar pasajeros y autorizaciones"
+            accessibilityRole="button"
+            accessibilityHint="Abrir la gestión de pasajeros y consultar su estado en el servidor"
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="people-outline" size={24} color="#EF6C00" />
+            </View>
+            <Text style={styles.actionText}>Pasajeros</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('ParentRequest')}
@@ -203,6 +254,33 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  trackingSection: {
+    marginTop: 24,
+  },
+  trackingMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  trackingMatchText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  trackingMatchTitle: {
+    color: '#333',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  trackingMatchSubtitle: {
+    color: '#777',
+    fontSize: 12,
+    marginTop: 2,
   },
   actionsContainer: {
     flexDirection: 'row',

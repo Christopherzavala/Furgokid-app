@@ -1,8 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  connectAuthEmulator,
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth,
+} from 'firebase/auth';
+import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
+import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 
 // Detecta si estamos en Expo Go (desarrollo)
 // En Expo Go no funcionan módulos nativos compilados
@@ -25,17 +31,18 @@ if (__DEV__) {
   if (missing.length) console.warn('[Firebase] Env vars faltantes:', missing);
 }
 
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const existingApps = getApps();
+const isNewApp = existingApps.length === 0;
+const app = isNewApp ? initializeApp(firebaseConfig) : existingApps[0];
 
 // Inicializar Auth según el entorno
 let auth;
 
-if (getApps().length > 0) {
+if (!isNewApp) {
   // Ya fue inicializado anteriormente
   auth = getAuth(app);
 } else if (isExpoGo) {
   // En Expo Go: Sin persistencia compilada (causa error)
-  // La sesión se mantendrá en memoria durante la sesión actual
   console.log('[Firebase] Expo Go detectado - Auth sin persistencia compilada');
   auth = getAuth(app);
 } else {
@@ -49,3 +56,17 @@ if (getApps().length > 0) {
 
 export { auth };
 export const db = getFirestore(app);
+export const functions = getFunctions(app);
+
+// Soporte de validación local contra Firebase Emulator Suite (solo pruebas).
+// Se activa únicamente con EXPO_PUBLIC_USE_FIREBASE_EMULATORS=true en .env (gitignoreado).
+// No modifica el modelo de autorización: los callables y Rules siguen siendo la única vía de acceso.
+if (process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATORS === 'true') {
+  const emulatorHost = process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST || '10.0.2.2';
+  connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, emulatorHost, 8080);
+  connectFunctionsEmulator(functions, emulatorHost, 5001);
+  console.log(
+    `[Firebase] Emuladores locales conectados: auth:9099, firestore:8080, functions:5001 @ ${emulatorHost}`
+  );
+}

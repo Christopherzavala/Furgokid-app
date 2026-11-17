@@ -11,7 +11,11 @@ jest.mock('react-native-gesture-handler', () => ({
 
 jest.mock('@react-navigation/native', () => ({
   NavigationContainer: ({ children }: { children: React.ReactNode }) => children,
-  createNavigationContainerRef: () => ({ current: null }),
+  createNavigationContainerRef: () => ({
+    current: null,
+    isReady: jest.fn(() => true),
+    reset: jest.fn(),
+  }),
 }));
 
 jest.mock('@react-navigation/stack', () => ({

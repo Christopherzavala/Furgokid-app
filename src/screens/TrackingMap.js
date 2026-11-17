@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { db } from '../config/firebase';
 import analyticsService from '../services/analyticsService';
 import notificationService from '../utils/notificationService';
@@ -21,23 +21,20 @@ const { width, height } = Dimensions.get('window');
 const TrackingMap = ({ route, navigation }) => {
   const [region, setRegion] = useState(null);
   const [driverLocation, setDriverLocation] = useState(null);
-  const [trackingPoints, setTrackingPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [followMode, setFollowMode] = useState(true);
-  const [activeRouteId, setActiveRouteId] = useState(null);
+  const [activeMatchId, setActiveMatchId] = useState(null);
   const [driverName, setDriverName] = useState('Conductor');
 
   const mapRef = useRef(null);
   const lastAnimateTsRef = useRef(0);
   const lastPointRef = useRef(null);
-  const lastPolylineTsRef = useRef(0);
 
   // "Faltan 5 minutos" (aproximado): se toma como referencia la ubicación actual del apoderado
   const pickupPointRef = useRef(null);
   const arrivalNotifiedRef = useRef(false);
 
   const MIN_MOVE_METERS = 8;
-  const POLYLINE_MIN_INTERVAL_MS = 1500;
   const ARRIVAL_THRESHOLD_SECONDS = 5 * 60;
   const DEFAULT_SPEED_MPS = 8.33; // ~30 km/h
 
@@ -57,7 +54,7 @@ const TrackingMap = ({ route, navigation }) => {
 
   useEffect(() => {
     setupInitialMap();
-    const unsubscribe = subscribeToGlobalTracking();
+    const unsubscribe = subscribeToMatchTracking();
     return () => {
       try {
         if (typeof unsubscribe === 'function') unsubscribe();
@@ -65,7 +62,7 @@ const TrackingMap = ({ route, navigation }) => {
         // no-op
       }
     };
-    // subscribeToGlobalTracking is stable for mount-time subscription
+    // subscribeToMatchTracking is stable for mount-time subscription
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -118,10 +115,15 @@ const TrackingMap = ({ route, navigation }) => {
   };
 
   /**
-   * Suscripción simplificada al documento global de tracking
+   * Suscripción al único punto actual del emparejamiento autorizado.
    */
-  const subscribeToGlobalTracking = () => {
-    const docRef = doc(db, 'tracking', 'current');
+  const subscribeToMatchTracking = () => {
+    const matchId = route?.params?.matchId;
+    if (typeof matchId !== 'string' || !matchId) {
+      setLoading(false);
+      return undefined;
+    }
+    const docRef = doc(db, 'matches', matchId, 'tracking', 'current');
 
     const subscribeStartedAt = Date.now();
     const firstSnapshotLoggedRef = { current: false };
@@ -174,17 +176,7 @@ const TrackingMap = ({ route, navigation }) => {
           if (!isSamePoint && movedMeters >= MIN_MOVE_METERS) {
             setDriverLocation(point);
             setDriverName('Furgo en Ruta');
-            setActiveRouteId('test-session');
-
-            // Actualizar histórico para la polilínea
-            const nowForPolyline = Date.now();
-            if (nowForPolyline - lastPolylineTsRef.current > POLYLINE_MIN_INTERVAL_MS) {
-              lastPolylineTsRef.current = nowForPolyline;
-              setTrackingPoints((prev) => {
-                const newPoints = [...prev, point].slice(-50);
-                return newPoints;
-              });
-            }
+            setActiveMatchId(matchId);
           }
 
           // Alerta "faltan 5 minutos" (una sola vez)
@@ -232,6 +224,12 @@ const TrackingMap = ({ route, navigation }) => {
               1000
             );
           }
+        } else {
+          // The backend deleted the canonical current point. Do not keep a
+          // stale marker in memory after the Firestore document disappears.
+          lastPointRef.current = null;
+          setDriverLocation(null);
+          setActiveMatchId(null);
         }
         setLoading(false);
       },
@@ -289,19 +287,6 @@ const TrackingMap = ({ route, navigation }) => {
             </View>
           </Marker>
         )}
-
-        {/* Polilínea de la ruta recorrida */}
-        {trackingPoints.length > 1 && (
-          <Polyline
-            coordinates={trackingPoints.map((p) => ({
-              latitude: p.latitude,
-              longitude: p.longitude,
-            }))}
-            strokeColor="#FF6B35"
-            strokeWidth={4}
-            lineDashPattern={[1]}
-          />
-        )}
       </MapView>
 
       {/* CONTROLES FLOTANTES */}
@@ -310,8 +295,8 @@ const TrackingMap = ({ route, navigation }) => {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <View style={styles.statusBadge}>
-          <View style={[styles.dot, activeRouteId ? styles.dotActive : styles.dotInactive]} />
-          <Text style={styles.statusText}>{activeRouteId ? 'EN VIVO' : 'SIN RUTA ACTIVA'}</Text>
+          <View style={[styles.dot, activeMatchId ? styles.dotActive : styles.dotInactive]} />
+          <Text style={styles.statusText}>{activeMatchId ? 'EN VIVO' : 'SIN RUTA ACTIVA'}</Text>
         </View>
       </View>
 
@@ -344,7 +329,7 @@ const TrackingMap = ({ route, navigation }) => {
             </View>
           )}
         </View>
-        {!activeRouteId && (
+        {!activeMatchId && (
           <Text style={styles.waitingText}>
             Esperando a que el conductor inicie el recorrido...
           </Text>

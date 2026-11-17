@@ -1,17 +1,37 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AdBannerComponent from '../components/AdBannerComponent';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
-import { startBackgroundLocation, stopBackgroundLocation } from '../services/backgroundLocation';
+import { startBackgroundLocationTracking, stopLocationTracking } from '../services/locationService';
+import { getActiveDriverMatches } from '../services/matchTrackingService';
 import toastService from '../services/toastService';
 
 const DriverScreen = ({ navigation }) => {
   const { user, userProfile, signOut } = useAuth();
   const [isRouteActive, setIsRouteActive] = useState(false);
+  const [activeMatches, setActiveMatches] = useState([]);
+  const [selectedMatchId, setSelectedMatchId] = useState(null);
+  const [activeTrackingMatchId, setActiveTrackingMatchId] = useState(null);
   const [students] = useState([]); // Empty for now
+
+  useEffect(() => {
+    let active = true;
+    getActiveDriverMatches()
+      .then((matches) => {
+        if (!active) return;
+        setActiveMatches(matches);
+        setSelectedMatchId((current) => current || (matches.length === 1 ? matches[0].id : null));
+      })
+      .catch(() => {
+        if (active) setActiveMatches([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const toggleRoute = async () => {
     try {
@@ -22,15 +42,32 @@ const DriverScreen = ({ navigation }) => {
             text: 'Terminar',
             style: 'destructive',
             onPress: async () => {
-              await stopBackgroundLocation();
-              setIsRouteActive(false);
+              try {
+                const stopped = await stopLocationTracking(activeTrackingMatchId);
+                if (!stopped) throw new Error('No se pudo limpiar la ubicación.');
+                setIsRouteActive(false);
+                setActiveTrackingMatchId(null);
+              } catch (error) {
+                toastService.error(
+                  'Error GPS',
+                  'No se pudo limpiar la ubicación: ' + error.message
+                );
+              }
             },
           },
         ]);
       } else {
-        await startBackgroundLocation();
+        if (!selectedMatchId) {
+          throw new Error('Selecciona un emparejamiento activo antes de iniciar el GPS.');
+        }
+        const started = await startBackgroundLocationTracking(selectedMatchId);
+        if (!started) throw new Error('No se pudo iniciar el seguimiento GPS.');
+        setActiveTrackingMatchId(selectedMatchId);
         setIsRouteActive(true);
-        toastService.success('Ruta iniciada', 'Tu ubicación ahora es visible para los padres.');
+        toastService.success(
+          'Ruta iniciada',
+          'Tu ubicación ahora es visible para el padre asignado.'
+        );
       }
     } catch (error) {
       console.error('Error toggling route:', error);
@@ -123,6 +160,29 @@ const DriverScreen = ({ navigation }) => {
             {isRouteActive ? 'TERMINAR RUTA' : 'INICIAR RUTA'}
           </Text>
         </TouchableOpacity>
+
+        {activeMatches.length > 1 && (
+          <View style={styles.matchSelector}>
+            <Text style={styles.sectionTitle}>Emparejamiento activo</Text>
+            {activeMatches.map((match) => (
+              <TouchableOpacity
+                key={match.id}
+                style={[
+                  styles.matchOption,
+                  selectedMatchId === match.id && styles.matchOptionSelected,
+                ]}
+                onPress={() => {
+                  if (!isRouteActive) setSelectedMatchId(match.id);
+                }}
+                disabled={isRouteActive}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: selectedMatchId === match.id }}
+              >
+                <Text style={styles.matchOptionText}>{match.school || match.zone || match.id}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {isRouteActive && (
           <View style={styles.statusIndicator}>

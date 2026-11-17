@@ -126,7 +126,7 @@ export default function RegisterScreen({ navigation }) {
         accessibilityHint="Crea una contraseña de al menos 6 caracteres"
       />
 
-      <Text style={styles.label}>Soy un:</Text>
+      <Text style={styles.label}>Tipo de cuenta (el conductor requiere aprobación):</Text>
       <View style={styles.roleContainer}>
         <TouchableOpacity
           style={[styles.roleButton, role === 'parent' && styles.activeRole]}

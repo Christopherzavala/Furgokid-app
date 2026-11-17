@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
@@ -18,13 +18,14 @@ import EmailVerificationScreen from './src/screens/EmailVerificationScreen';
 import GDPRSettingsScreen from './src/screens/GDPRSettingsScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import ParentalConsentScreen from './src/screens/ParentalConsentScreen';
 import ParentHomeScreen from './src/screens/ParentHomeScreen';
 import ParentProfileScreen from './src/screens/ParentProfileScreen';
+import PassengerAuthorizationScreen from './src/screens/PassengerAuthorizationScreen';
 import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import TrackingMap from './src/screens/TrackingMap';
 import analyticsService from './src/services/analyticsService';
 import consentService from './src/services/consentService';
 // import crashlyticsService from './src/services/crashlyticsService';
@@ -76,6 +77,18 @@ function Navigation() {
     }
   }, [loading, user, userProfile, isEmailVerified]);
 
+  useEffect(() => {
+    // The guest stack is mounted before this effect runs, so Login is a valid
+    // target. Resetting here also clears any route left by the authenticated
+    // stack without racing the user-state transition.
+    if (!loading && !user && navigationRef.isReady()) {
+      navigationRef.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    }
+  }, [loading, user]);
+
   if (loading || checkingOnboarding) return <LoadingView />;
 
   // Show onboarding for first-time users (not logged in)
@@ -90,12 +103,15 @@ function Navigation() {
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      key={user ? 'authenticated' : 'guest'}
+      initialRouteName={user ? undefined : 'Login'}
+      screenOptions={{ headerShown: false }}
+    >
       {!user ? (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="ParentalConsent" component={ParentalConsentScreen} />
         </>
       ) : !isEmailVerified ? (
         // User logged in but email not verified - block access
@@ -114,7 +130,9 @@ function Navigation() {
         <>
           <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
           <Stack.Screen name="ParentProfile" component={ParentProfileScreen} />
+          <Stack.Screen name="PassengerAuthorizations" component={PassengerAuthorizationScreen} />
           <Stack.Screen name="ParentRequest" component={ParentRequestScreen} />
+          <Stack.Screen name="TrackingMap" component={TrackingMap} />
           <Stack.Screen name="Search" component={SearchScreen} />
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
           <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
@@ -143,9 +161,7 @@ export default function App() {
     };
   }, []);
 
-  const consentVisible = useMemo(() => {
-    return consentService.needsConsentPrompt();
-  }, [consentRefreshToken]);
+  const consentVisible = consentService.needsConsentPrompt();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

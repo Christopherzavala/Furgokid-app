@@ -1,12 +1,297 @@
-name: DEPRECATED - use ci-cd.yml
+name: CI - Reproducible Firebase Emulator Validation
 
 on:
+  push:
+    branches: [main, develop, 'fix/**', 'feature/**']
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-emulator-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  JAVA_VERSION: '21'
+  FIREBASE_CLI_VERSION: '15.28.1'
+  # Every suite runs against demo-* project IDs only. The Firebase Emulator
+  # Suite fails all non-emulated traffic for demo projects, so a production
+  # connection is impossible by construction.
+  DEMO_PROJECT_ID: demo-furgokid
+  FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+  FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
+
 jobs:
-  deprecated:
+  quality:
+    name: Quality, type-check, lint and client tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - run: |
-          echo "This workflow is deprecated."
-          echo "Use .github/workflows/ci-cd.yml instead."
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install root dependencies from lockfile
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Functions dependencies from lockfile
+        run: npm ci --prefix functions
+
+      - name: Validate App Identifiers
+        run: npm run validate:ids
+
+      - name: Validate No Sensitive Literals
+        run: npm run validate:secrets
+
+      - name: TypeScript Check
+        run: npm run type-check
+
+      - name: Lint (client)
+        run: npm run lint
+
+      - name: Lint (Functions)
+        run: npm --prefix functions run lint
+
+      # Line endings are normalized by .gitattributes (LF everywhere except
+      # *.bat), so this check is deterministic on any platform.
+      - name: Prettier Check (client and Functions)
+        run: |
+          npx prettier --check "src/**/*.{ts,tsx,js,jsx,json}"
+          npx prettier --check "functions/src/**/*.js" "functions/test/**/*.js"
+
+      - name: Client tests (with coverage thresholds)
+        run: npm run test:coverage
+
+  rules:
+    name: Firestore Rules (Firestore Emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The Firestore emulator shipped with firebase-tools 15.x requires Java 21+.
+      - name: Set up Java
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install root dependencies from lockfile
+        run: npm ci --legacy-peer-deps
+
+      - name: Install pinned Firebase CLI
+        run: |
+          npm install -g "firebase-tools@${FIREBASE_CLI_VERSION}"
+          installed="$(firebase --version)"
+          echo "Firebase CLI: ${installed}"
+          test "${installed}" = "${FIREBASE_CLI_VERSION}"
+
+      # test:rules starts and stops the Firestore Emulator via
+      # `firebase emulators:exec` and only uses the demo project configured in
+      # the script. A non-zero Jest exit code fails the step.
+      - name: Firestore Rules tests (Firestore Emulator)
+        run: npm run test:rules
+
+  functions-emulators:
+    name: Functions integration (Auth + Firestore + Functions Emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI_DISABLE_EXTERNAL_NOTIFICATIONS: 'true'
+      CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: functions-emulator-guard-ready.txt
+      CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: functions-emulator-attempts.txt
+      GCLOUD_PROJECT: demo-furgokid
+      GOOGLE_CLOUD_PROJECT: demo-furgokid
+      ACCOUNT_DELETION_EMULATOR: 'true'
+      ACCOUNT_DELETION_EMULATOR_PROJECT_ID: demo-furgokid
+      GPS_CLEANUP_EMULATOR: 'true'
+      GPS_CLEANUP_EMULATOR_PROJECT_ID: demo-furgokid
+      GPS_FINALIZATION_EMULATOR: 'true'
+      GPS_FINALIZATION_EMULATOR_PROJECT_ID: demo-furgokid
+      MATCH_LIFECYCLE_EMULATOR: 'true'
+      MATCH_LIFECYCLE_EMULATOR_PROJECT_ID: demo-furgokid
+      SECURITY_PROVISIONING_EMULATOR: 'true'
+      SECURITY_PROVISIONING_EMULATOR_PROJECT_ID: demo-furgokid
+      GPS_STOP_TRACKING_EMULATOR: 'true'
+      GPS_STOP_TRACKING_EMULATOR_PROJECT_ID: demo-furgokid
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # Auth, Firestore and Functions emulators all require Java 21+.
+      - name: Set up Java
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Functions dependencies from lockfile
+        run: npm ci --prefix functions
+
+      - name: Install pinned Firebase CLI
+        run: |
+          npm install -g "firebase-tools@${FIREBASE_CLI_VERSION}"
+          installed="$(firebase --version)"
+          echo "Firebase CLI: ${installed}"
+          test "${installed}" = "${FIREBASE_CLI_VERSION}"
+
+      # Every suite gate must be enabled and every project ID must be the demo
+      # project. The suites fail fast when a gate is enabled with a non-demo
+      # project, so a misconfiguration can never reach a real Firebase project.
+      - name: Verify demo-only emulator configuration
+        run: |
+          set -euo pipefail
+          for variable in \
+            ACCOUNT_DELETION_EMULATOR_PROJECT_ID \
+            GPS_CLEANUP_EMULATOR_PROJECT_ID \
+            GPS_FINALIZATION_EMULATOR_PROJECT_ID \
+            MATCH_LIFECYCLE_EMULATOR_PROJECT_ID \
+            SECURITY_PROVISIONING_EMULATOR_PROJECT_ID \
+            GPS_STOP_TRACKING_EMULATOR_PROJECT_ID
+          do
+            value="${!variable}"
+            case "${value}" in
+              demo-*) echo "${variable}=${value}" ;;
+              *) echo "${variable} must use a demo- project ID (got: ${value})"; exit 1 ;;
+            esac
+          done
+
+      # `firebase emulators:exec` starts the Auth, Firestore and Functions
+      # emulators, runs Jest in-band, and shuts every emulator down when the
+      # command exits (including on failure). The external notification guard
+      # makes any Expo Push attempt fail loudly inside the emulated runtime.
+      - name: Run all emulator suites under one emulated project
+        run: |
+          set -euo pipefail
+
+          : > "${CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE}"
+          : > "${CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE}"
+
+          report="${RUNNER_TEMP}/functions-emulator-results.json"
+
+          firebase emulators:exec \
+            --project demo-furgokid \
+            --only auth,firestore,functions \
+            "npm --prefix functions test -- --runInBand --runTestsByPath \
+              test/accountDeletionService.emulator.test.js \
+              test/firestoreGpsCleanup.emulator.test.js \
+              test/matchFinalizationCleanup.emulator.test.js \
+              test/matchLifecycle.emulator.test.js \
+              test/securityProvisioning.emulator.test.js \
+              test/stopTracking.emulator.test.js \
+              --coverage=false --json --outputFile=${report}"
+
+      # A skipped suite (for example a forgotten gate) would otherwise look
+      # green: the JSON report rejects pending, failed, or missing suites.
+      - name: Validate emulator test report
+        run: |
+          node - "${RUNNER_TEMP}/functions-emulator-results.json" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const expected = new Set([
+            'accountDeletionService.emulator.test.js',
+            'firestoreGpsCleanup.emulator.test.js',
+            'matchFinalizationCleanup.emulator.test.js',
+            'matchLifecycle.emulator.test.js',
+            'securityProvisioning.emulator.test.js',
+            'stopTracking.emulator.test.js',
+          ]);
+
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const fail = (message) => {
+            console.error(`Emulator report validation failed: ${message}`);
+            process.exit(1);
+          };
+
+          if (report.success !== true || report.wasInterrupted !== false) {
+            fail('Jest did not report a successful, uninterrupted run.');
+          }
+          if (!Array.isArray(report.testResults) || report.testResults.length !== expected.size) {
+            fail(`Expected exactly ${expected.size} Emulator suites.`);
+          }
+          if (
+            report.numTotalTestSuites !== expected.size ||
+            report.numPassedTestSuites !== expected.size ||
+            report.numFailedTestSuites !== 0 ||
+            report.numPendingTestSuites !== 0 ||
+            report.numRuntimeErrorTestSuites !== 0 ||
+            report.numTotalTests <= 0 ||
+            report.numPassedTests !== report.numTotalTests ||
+            report.numFailedTests !== 0 ||
+            report.numPendingTests !== 0
+          ) {
+            fail('Aggregate results include a failed, skipped, pending, or non-passing test/suite.');
+          }
+
+          const seen = new Set();
+          for (const suite of report.testResults) {
+            const filename = path.basename(suite.name);
+            if (!expected.has(filename)) {
+              fail(`Unexpected suite was reported: ${suite.name}`);
+            }
+            if (seen.has(filename)) {
+              fail(`Suite was reported more than once: ${filename}`);
+            }
+            seen.add(filename);
+            if (
+              suite.status !== 'passed' ||
+              !Array.isArray(suite.assertionResults) ||
+              suite.assertionResults.length === 0 ||
+              suite.assertionResults.some((test) => test.status !== 'passed')
+            ) {
+              fail(`Suite is failed, skipped, pending, todo, or empty: ${suite.name}`);
+            }
+          }
+          for (const filename of expected) {
+            if (!seen.has(filename)) {
+              fail(`Required suite is missing: ${filename}`);
+            }
+          }
+
+          console.log(`Validated all ${seen.size} Emulator suites with zero skipped tests.`);
+          NODE
+
+      # The guard must have been initialized by both the Jest process and the
+      # Functions Emulator runtime, and no Expo Push attempt may have occurred.
+      - name: Validate external notification guard
+        run: |
+          ready="$(cat "${CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE}")"
+          attempts="$(cat "${CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE}")"
+          case "${ready}" in
+            *CI_EXTERNAL_NOTIFICATION_GUARD_ACTIVE*) ;;
+            *) echo "A runtime did not initialize the CI notification guard."; exit 1 ;;
+          esac
+          if [ -n "${attempts}" ]; then
+            echo "Unexpected blocked Expo Push attempt during emulator run: ${attempts}"
+            exit 1
+          fi
+          echo "External notification guard verified: no external calls were attempted."

@@ -1,168 +1,119 @@
-# 🔄 Rollback Script - Emergency Recovery
-
+# Safe, single-function Firebase rollback helper.
+# This script is intentionally not a deployment or source restore mechanism.
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('staging', 'production')]
+    [string]$Environment,
+
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[A-Za-z][A-Za-z0-9_-]{0,62}$')]
     [string]$FunctionName,
-    
-    [switch]$All,
-    [switch]$Force
+
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ProjectId
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'firebase-project-guard.ps1')
 
-Write-Host ""
-Write-Host "🔄 ROLLBACK - Furgokid Backend" -ForegroundColor Red
-Write-Host "===========================================" -ForegroundColor Red
-Write-Host ""
-
-if (-not $Force) {
-    Write-Host "⚠️  WARNING: Esto eliminará las Functions actuales" -ForegroundColor Yellow
-    $confirm = Read-Host "¿Estás seguro? (yes/no)"
-    if ($confirm -ne "yes") {
-        Write-Host "❌ Rollback cancelado" -ForegroundColor Yellow
-        exit 0
-    }
+function Invoke-RollbackFirebase {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    $output = & firebase @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Firebase CLI failed ($LASTEXITCODE): $($Arguments -join ' ')`n$($output -join "`n")" }
+    return ,$output
 }
 
-# Verificar ambiente
-Write-Host "📋 Verificando ambiente..." -ForegroundColor Yellow
-$currentProject = firebase use | Out-String
-
-Write-Host "   Proyecto actual: $currentProject" -ForegroundColor Cyan
-
-if ($currentProject -match "production|furgokid") {
-    Write-Host "⚠️  ESTÁS EN PRODUCTION" -ForegroundColor Red
-    if (-not $Force) {
-        $confirm = Read-Host "¿Seguro que quieres hacer rollback en PRODUCTION? (yes/no)"
-        if ($confirm -ne "yes") {
-            exit 0
-        }
-    }
+function Invoke-RollbackGcloud {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    $output = & gcloud @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "gcloud failed ($LASTEXITCODE): $($Arguments -join ' ')`n$($output -join "`n")" }
+    return ,$output
 }
 
-# Crear backup antes de rollback
-Write-Host ""
-Write-Host "💾 Creando backup del estado actual..." -ForegroundColor Yellow
-
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupDir = "backups/rollback-$timestamp"
-New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-New-Item -ItemType Directory -Force -Path "docs/logs" -ErrorAction SilentlyContinue | Out-Null
-
-# List current functions
-Write-Host "📋 Functions actuales:" -ForegroundColor Yellow
-firebase functions:list | Tee-Object -FilePath "$backupDir/functions-list.txt"
-
-# Export Firestore data (safety backup)
-Write-Host ""
-Write-Host "💾 Exportando Firestore (safety backup)..." -ForegroundColor Yellow
-firebase firestore:export "gs://furgokid.appspot.com/backups/rollback-$timestamp"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠️  Warning: Firestore export failed (continuando...)" -ForegroundColor Yellow
+function Get-RollbackFunctionNames {
+    param([Parameter(Mandatory = $true)][string]$ValidatedProjectId)
+    $raw = Invoke-RollbackFirebase -Arguments @('functions:list', '--json', '--project', $ValidatedProjectId)
+    try { $items = ($raw -join "`n") | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw 'Firebase function inventory was not valid JSON; refusing to continue.' }
+    return @($items | ForEach-Object { [string]$_.id } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
-# Delete functions
-if ($All) {
-    Write-Host ""
-    Write-Host "🗑️  Eliminando TODAS las Cloud Functions..." -ForegroundColor Red
-    
-    $functions = @(
-        "notifyDriversNewRequest",
-        "notifyParentsNewVacancy", 
-        "sendWelcomeEmail",
-        "testNotification"
+function Test-RollbackBucketPermissions {
+    param([Parameter(Mandatory = $true)][string]$BucketName)
+    $token = (& gcloud auth print-access-token 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw 'Unable to obtain an access token for bucket permission preflight.' }
+    $bucketPath = [Uri]::EscapeDataString($BucketName)
+    $permissions = @('storage.objects.create', 'storage.objects.get', 'storage.objects.list')
+    $query = ($permissions | ForEach-Object { 'permissions=' + [Uri]::EscapeDataString($_) }) -join '&'
+    $response = Invoke-RestMethod -Method Get -Uri "https://storage.googleapis.com/storage/v1/b/$bucketPath/iam/testPermissions?$query" -Headers @{ Authorization = "Bearer $token" } -ErrorAction Stop
+    $held = @($response.permissions)
+    $missing = @($permissions | Where-Object { $held -notcontains $_ })
+    if ($missing.Count -gt 0) { throw "Bucket '$BucketName' is missing required export/verification permissions: $($missing -join ', ')." }
+}
+
+function Get-RollbackExportObjectNames {
+    param([Parameter(Mandatory = $true)][string]$ExportPrefix)
+    $raw = Invoke-RollbackGcloud -Arguments @('storage', 'ls', '--recursive', "$ExportPrefix/**")
+    return @($raw | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -match '^gs://' })
+}
+
+function Save-RollbackEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$Directory,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][object]$Value
     )
-    
-    foreach ($fn in $functions) {
-        Write-Host "   Eliminando $fn..." -ForegroundColor Yellow
-        firebase functions:delete $fn --force
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "   ✅ $fn eliminada" -ForegroundColor Green
-        } else {
-            Write-Host "   ⚠️  Error eliminando $fn (puede no existir)" -ForegroundColor Yellow
-        }
-    }
-    
-} elseif ($FunctionName) {
-    Write-Host ""
-    Write-Host "🗑️  Eliminando Function: $FunctionName..." -ForegroundColor Yellow
-    
-    firebase functions:delete $FunctionName --force
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "   ✅ $FunctionName eliminada" -ForegroundColor Green
-    } else {
-        Write-Host "   ❌ Error eliminando $FunctionName" -ForegroundColor Red
-        exit 1
-    }
-    
-} else {
-    Write-Host "❌ Especifica -FunctionName o -All" -ForegroundColor Red
-    Write-Host "   Ejemplo: .\scripts\rollback.ps1 -FunctionName notifyDriversNewRequest" -ForegroundColor Cyan
-    Write-Host "   Ejemplo: .\scripts\rollback.ps1 -All" -ForegroundColor Cyan
-    exit 1
+    New-Item -ItemType Directory -Path $Directory -Force | Out-Null
+    $Value | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Directory $Name) -Encoding UTF8
 }
 
-# Deploy previous version (if exists)
-if (Test-Path "backups/functions-backup/index.js") {
-    Write-Host ""
-    $deployBackup = Read-Host "📦 ¿Deployar versión anterior de backup? (y/N)"
-    
-    if ($deployBackup -eq "y") {
-        Write-Host "🚀 Deployando versión de backup..." -ForegroundColor Yellow
-        
-        # Backup current broken version
-        Copy-Item -Path "functions/" -Destination "$backupDir/broken-version" -Recurse -Force
-        
-        # Restore previous version
-        Copy-Item -Path "backups/functions-backup/*" -Destination "functions/" -Recurse -Force
-        
-        # Deploy
-        Push-Location functions
-        npm ci --production
-        Pop-Location
-        
-        firebase deploy --only functions
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Versión anterior deployada" -ForegroundColor Green
-        } else {
-            Write-Host "❌ Error deployando backup" -ForegroundColor Red
-            Write-Host "   Restaurando versión rota para debug..." -ForegroundColor Yellow
-            Copy-Item -Path "$backupDir/broken-version/*" -Destination "functions/" -Recurse -Force
-        }
+function Invoke-FurgokidRollback {
+    param(
+        [Parameter(Mandatory = $true)][string]$TargetEnvironment,
+        [Parameter(Mandatory = $true)][string]$TargetFunction,
+        [Parameter(Mandatory = $true)][string]$TargetProjectId
+    )
+
+    $validatedProjectId = Assert-FirebaseProjectMatch -Environment $TargetEnvironment -ProjectId $TargetProjectId
+    $functions = Get-RollbackFunctionNames -ValidatedProjectId $validatedProjectId
+    if ($functions -notcontains $TargetFunction) { throw "Function '$TargetFunction' is not present in project '$validatedProjectId'; refusing to delete." }
+
+    $bucket = Get-FirebaseStorageBucket -ProjectId $validatedProjectId -Environment $TargetEnvironment
+    Test-RollbackBucketPermissions -BucketName $bucket.Name
+
+    $timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $exportPrefix = "gs://$($bucket.Name)/furgokid-rollback-exports/$timestamp"
+    $evidenceRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Furgokid/rollback-evidence'
+    $evidenceDir = Join-Path $evidenceRoot "$TargetEnvironment-$timestamp"
+
+    Write-Host "Target: $TargetFunction`nEnvironment: $TargetEnvironment`nProject: $validatedProjectId`nBucket: $($bucket.Name)`nExport: $exportPrefix" -ForegroundColor Yellow
+    Request-DeploymentConfirmation -Prompt 'Type exactly yes to create and verify the Firestore export (no deletion yet).'
+
+    Save-RollbackEvidence -Directory $evidenceDir -Name 'functions-before.json' -Value @($functions)
+    $null = Invoke-RollbackFirebase -Arguments @('firestore:export', '--project', $validatedProjectId, $exportPrefix)
+    $objectNames = Get-RollbackExportObjectNames -ExportPrefix $exportPrefix
+    if (-not (Test-FirestoreExportMetadata -ObjectNames $objectNames -ExportPrefix $exportPrefix)) {
+        throw "Firestore export verification failed: overall_export_metadata not found under '$exportPrefix'. Function was not deleted."
+    }
+    Save-RollbackEvidence -Directory $evidenceDir -Name 'export-objects.json' -Value @($objectNames)
+
+    Request-DeploymentConfirmation -Prompt "Export verified. Type exactly yes to delete only '$TargetFunction' from '$validatedProjectId'."
+    $null = Invoke-RollbackFirebase -Arguments @('functions:delete', $TargetFunction, '--project', $validatedProjectId, '--force')
+
+    $remaining = Get-RollbackFunctionNames -ValidatedProjectId $validatedProjectId
+    if ($remaining -contains $TargetFunction) { throw "Post-delete verification failed: '$TargetFunction' is still listed." }
+    [pscustomobject]@{
+        Environment = $TargetEnvironment
+        ProjectId = $validatedProjectId
+        FunctionName = $TargetFunction
+        ExportPrefix = $exportPrefix
+        Result = 'VERIFIED_DELETED'
+        EvidenceDirectory = $evidenceDir
     }
 }
 
-# Verify rollback
-Write-Host ""
-Write-Host "🔍 Verificando estado post-rollback..." -ForegroundColor Yellow
-firebase functions:list
-
-# Log rollback
-if ($All) {
-    $rollbackTarget = "ALL"
-} else {
-    $rollbackTarget = $FunctionName
+# Dot-sourcing exposes functions for Pester without running any operation.
+if ($MyInvocation.InvocationName -ne '.') {
+    Invoke-FurgokidRollback -TargetEnvironment $Environment -TargetFunction $FunctionName -TargetProjectId $ProjectId
 }
-$logEntry = "$timestamp - ROLLBACK: $rollbackTarget - User: $env:USERNAME"
-Add-Content -Path "docs/logs/rollback-history.txt" -Value $logEntry
-
-Write-Host ""
-Write-Host "===========================================" -ForegroundColor Green
-Write-Host "✅ Rollback completado" -ForegroundColor Green
-Write-Host "===========================================" -ForegroundColor Green
-Write-Host ""
-
-Write-Host "📋 Próximos pasos:" -ForegroundColor Yellow
-Write-Host "   1. Investigar causa del fallo" -ForegroundColor Cyan
-Write-Host "   2. Revisar logs: firebase functions:log" -ForegroundColor Cyan
-Write-Host "   3. Fixear código en functions/" -ForegroundColor Cyan
-Write-Host "   4. Deploy a staging primero: .\scripts\deploy-staging.ps1" -ForegroundColor Cyan
-Write-Host "   5. Smoke tests: npm run smoke:test" -ForegroundColor Cyan
-Write-Host "   6. Deploy a production cuando esté OK" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "📝 Backup guardado en: $backupDir" -ForegroundColor Gray
-Write-Host "📝 Firestore backup en: gs://furgokid.appspot.com/backups/rollback-$timestamp" -ForegroundColor Gray
-Write-Host ""

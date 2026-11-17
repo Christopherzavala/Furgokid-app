@@ -20,8 +20,8 @@ try {
     Write-Host "✓ Firebase CLI encontrado" -ForegroundColor Green
     Write-Host $firebaseVersion -ForegroundColor Gray
 } catch {
-    Write-Host "Firebase CLI no encontrado. Instalando..." -ForegroundColor Yellow
-    npm install -g firebase-tools
+    Write-Host "Firebase CLI no encontrado. Este diagnóstico no instala herramientas." -ForegroundColor Yellow
+    exit 1
 }
 
 Write-Host ""
@@ -30,18 +30,7 @@ Write-Host ""
 # PASO 2: Login a Firebase
 # ============================================================================
 
-Write-Host "[2/5] Iniciando sesión en Firebase..." -ForegroundColor Blue
-Write-Host "Se abrirá tu navegador para autenticación." -ForegroundColor Yellow
-Write-Host ""
-
-firebase login
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Login exitoso" -ForegroundColor Green
-} else {
-    Write-Host "✗ Error en login" -ForegroundColor Red
-    exit 1
-}
+Write-Host "[2/5] Autenticación no realizada por el diagnóstico." -ForegroundColor Blue
 
 Write-Host ""
 
@@ -52,8 +41,7 @@ Write-Host ""
 Write-Host "[3/5] Verificando configuración de proyecto..." -ForegroundColor Blue
 
 if (-not (Test-Path ".firebaserc")) {
-    Write-Host "Proyecto no inicializado. Configurando..." -ForegroundColor Yellow
-    firebase init
+    Write-Host "Proyecto no inicializado. Ejecuta el flujo de inicialización por separado y revisa sus cambios." -ForegroundColor Yellow
 } else {
     Write-Host "✓ Proyecto ya configurado" -ForegroundColor Green
     Get-Content .firebaserc
@@ -62,40 +50,20 @@ if (-not (Test-Path ".firebaserc")) {
 Write-Host ""
 
 # ============================================================================
-# PASO 4: Deploy Firestore Indexes
+# PASO 4: Informar el procedimiento seguro de deploy
 # ============================================================================
 
-Write-Host "[4/5] Desplegando Firestore indexes..." -ForegroundColor Blue
-Write-Host "Esto puede tardar 2-5 minutos..." -ForegroundColor Yellow
-Write-Host ""
-
-firebase deploy --only firestore:indexes
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Indexes desplegados exitosamente" -ForegroundColor Green
-} else {
-    Write-Host "✗ Error desplegando indexes" -ForegroundColor Red
-    Write-Host "Tip: Verifica que firestore.indexes.json existe y es válido" -ForegroundColor Yellow
-}
+Write-Host "[4/5] No se despliegan recursos desde este script de setup." -ForegroundColor Blue
+Write-Host "Para staging usa: .\scripts\deploy-staging.ps1 -ProjectId furgokid-staging" -ForegroundColor Yellow
+Write-Host "Para producción usa: .\scripts\deploy.ps1 -ProjectId furgokid" -ForegroundColor Yellow
 
 Write-Host ""
 
 # ============================================================================
-# PASO 5: Deploy Firestore Rules
+# PASO 5: Confirmar que las reglas se despliegan por el flujo protegido
 # ============================================================================
 
-Write-Host "[5/5] Desplegando Firestore security rules..." -ForegroundColor Blue
-Write-Host "Aplicando reglas restrictivas de seguridad..." -ForegroundColor Yellow
-Write-Host ""
-
-firebase deploy --only firestore:rules
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Security rules desplegadas exitosamente" -ForegroundColor Green
-} else {
-    Write-Host "✗ Error desplegando rules" -ForegroundColor Red
-    Write-Host "Tip: Verifica que firestore.rules existe y es válido" -ForegroundColor Yellow
-}
+Write-Host "[5/5] Las reglas se despliegan solo mediante los scripts protegidos indicados arriba." -ForegroundColor Blue
 
 Write-Host ""
 Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
@@ -107,9 +75,9 @@ Write-Host ""
 # RESUMEN Y PRÓXIMOS PASOS
 # ============================================================================
 
-Write-Host "📊 Resumen del deployment:" -ForegroundColor Blue
+Write-Host "📊 Resumen del setup (sin deployment):" -ForegroundColor Blue
 Write-Host ""
-firebase firestore:indexes
+Write-Host "No se ejecutó ningún deploy ni consulta remota desde este resumen." -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "📋 Próximos pasos pendientes:" -ForegroundColor Yellow

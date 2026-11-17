@@ -69,7 +69,7 @@ export async function registerForPushNotificationsAsync() {
       projectId: Constants.expoConfig?.extra?.eas?.projectId,
     });
 
-    console.log('✅ Token de notificaciones:', token.data);
+    console.log('✅ Token de notificaciones obtenido');
     return token.data;
   } catch (error) {
     console.error('❌ Error al registrar notificaciones:', error);

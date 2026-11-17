@@ -112,15 +112,14 @@ const ParentalConsentScreen: React.FC<ParentalConsentScreenProps> = ({ navigatio
 
       await secureStorage.setObject('parental_consent', consent);
 
-      logger.info('Parental consent recorded', {
-        parentEmail,
-        childAge: consent.childAge,
-        consentDate: consent.consentDate,
-      });
+      logger.privacySafeInfo('Parental consent recorded', { stage: 'local_persist' });
 
       return consent;
     } catch (error) {
-      logger.error('Failed to save parental consent', { error });
+      logger.privacySafeError('Failed to save parental consent', {
+        stage: 'local_persist',
+        code: 'PARENTAL_CONSENT_LOCAL_PERSIST_FAILED',
+      });
       throw error;
     }
   };

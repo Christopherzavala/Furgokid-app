@@ -2,11 +2,16 @@
 # Automatiza el setup inicial del proyecto
 
 param(
-    [switch]$SkipInstall,
+    [switch]$InstallDependencies,
     [switch]$ConfigureOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($InstallDependencies) {
+    $installConfirmation = Read-Host "Esto instalará dependencias locales con npm ci. Escribe exactamente yes para continuar"
+    if ($installConfirmation -cne 'yes') { throw 'Instalación cancelada; no se modificó el entorno.' }
+}
 
 Write-Host ""
 Write-Host "=====================================" -ForegroundColor Cyan
@@ -42,15 +47,7 @@ try {
     $firebaseVersion = firebase --version
     Write-Host "   ✅ Firebase CLI: $firebaseVersion" -ForegroundColor Green
 } catch {
-    Write-Host "   ⚠️  Firebase CLI no instalado" -ForegroundColor Yellow
-    Write-Host "   Instalando..." -ForegroundColor Cyan
-    npm install -g firebase-tools
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "   ✅ Firebase CLI instalado" -ForegroundColor Green
-    } else {
-        Write-Host "   ❌ Error instalando Firebase CLI" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "   ⚠️  Firebase CLI no instalado; diagnóstico sin instalar herramientas" -ForegroundColor Yellow
 }
 
 # 3. Verificar EAS CLI
@@ -61,15 +58,7 @@ try {
     $easVersion = eas --version
     Write-Host "   ✅ EAS CLI: $easVersion" -ForegroundColor Green
 } catch {
-    Write-Host "   ⚠️  EAS CLI no instalado" -ForegroundColor Yellow
-    Write-Host "   Instalando..." -ForegroundColor Cyan
-    npm install -g eas-cli
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "   ✅ EAS CLI instalado" -ForegroundColor Green
-    } else {
-        Write-Host "   ❌ Error instalando EAS CLI" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "   ⚠️  EAS CLI no instalado; diagnóstico sin instalar herramientas" -ForegroundColor Yellow
 }
 
 if ($ConfigureOnly) {
@@ -79,11 +68,11 @@ if ($ConfigureOnly) {
 }
 
 # 4. Instalar dependencias del proyecto
-if (-not $SkipInstall) {
+if ($InstallDependencies) {
     Write-Host ""
     Write-Host "4️⃣  Instalando dependencias del proyecto..." -ForegroundColor Yellow
     
-    npm install
+    npm ci
     if ($LASTEXITCODE -ne 0) {
         Write-Host "   ❌ Error instalando dependencias" -ForegroundColor Red
         exit 1
@@ -95,7 +84,7 @@ if (-not $SkipInstall) {
         Write-Host ""
         Write-Host "5️⃣  Instalando dependencias de Functions..." -ForegroundColor Yellow
         Push-Location functions
-        npm install
+        npm ci
         if ($LASTEXITCODE -ne 0) {
             Write-Host "   ❌ Error instalando dependencias de Functions" -ForegroundColor Red
             Pop-Location
@@ -106,22 +95,7 @@ if (-not $SkipInstall) {
     }
 } else {
     Write-Host ""
-    Write-Host "⏭️  Saltando instalación de dependencias (--SkipInstall)" -ForegroundColor Yellow
-}
-
-# 6. Configurar Husky
-Write-Host ""
-Write-Host "6️⃣  Configurando Husky..." -ForegroundColor Yellow
-
-if (Test-Path ".husky") {
-    Write-Host "   ✅ Husky ya configurado" -ForegroundColor Green
-} else {
-    npm run prepare
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "   ✅ Husky configurado" -ForegroundColor Green
-    } else {
-        Write-Host "   ⚠️  Error configurando Husky (no crítico)" -ForegroundColor Yellow
-    }
+    Write-Host "⏭️  Dependencias sin cambios. Usa -InstallDependencies para iniciar una instalación local confirmada." -ForegroundColor Yellow
 }
 
 # 7. Verificar archivos críticos
@@ -154,52 +128,11 @@ if ($missingFiles.Count -gt 0) {
     Write-Host "   El proyecto puede no funcionar correctamente" -ForegroundColor Yellow
 }
 
-# 8. Verificar serviceAccountKey.json
+# 8. Mostrar configuración local sin consultar el proyecto remoto
 Write-Host ""
-Write-Host "8️⃣  Verificando serviceAccountKey.json..." -ForegroundColor Yellow
-
-if (Test-Path "serviceAccountKey.json") {
-    Write-Host "   ✅ serviceAccountKey.json encontrado" -ForegroundColor Green
-} else {
-    Write-Host "   ⚠️  serviceAccountKey.json NO encontrado" -ForegroundColor Yellow
-    Write-Host "   Necesario para:" -ForegroundColor Cyan
-    Write-Host "   - Scripts de monitoring (monitor-health.js)" -ForegroundColor Cyan
-    Write-Host "   - Testing local de Functions" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "   Descarga desde Firebase Console:" -ForegroundColor Cyan
-    Write-Host "   https://console.firebase.google.com/project/furgokid/settings/serviceaccounts/adminsdk" -ForegroundColor Cyan
-}
-
-# 9. Verificar configuración de Firebase
-Write-Host ""
-Write-Host "9️⃣  Verificando configuración de Firebase..." -ForegroundColor Yellow
-
-try {
-    $firebaseProject = firebase use | Out-String
-    Write-Host "   ✅ Proyecto Firebase: $firebaseProject" -ForegroundColor Green
-} catch {
-    Write-Host "   ⚠️  No estás autenticado en Firebase" -ForegroundColor Yellow
-    Write-Host "   Ejecuta: firebase login" -ForegroundColor Cyan
-}
-
-# 10. Crear directorios necesarios
-Write-Host ""
-Write-Host "🔟  Creando directorios necesarios..." -ForegroundColor Yellow
-
-$directories = @(
-    "docs/logs",
-    "backups",
-    "assets/screenshots"
-)
-
-foreach ($dir in $directories) {
-    if (-not (Test-Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        Write-Host "   ✅ Creado: $dir" -ForegroundColor Green
-    } else {
-        Write-Host "   ✅ Existe: $dir" -ForegroundColor Green
-    }
-}
+Write-Host "8️⃣  Verificando configuración local de Firebase..." -ForegroundColor Yellow
+if (Test-Path '.firebaserc') { Write-Host '   ✅ .firebaserc presente; no se seleccionó ni consultó un proyecto.' -ForegroundColor Green }
+else { Write-Host '   ⚠️  .firebaserc no existe; este diagnóstico no lo crea.' -ForegroundColor Yellow }
 
 # RESUMEN
 Write-Host ""
@@ -226,8 +159,8 @@ Write-Host "   npm run emulators" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "4. 🚀 Deploy backend (cuando esté listo):" -ForegroundColor Cyan
-Write-Host "   cd functions && npm ci && cd .." -ForegroundColor Gray
-Write-Host "   firebase deploy --only functions" -ForegroundColor Gray
+Write-Host "   .\scripts\deploy-staging.ps1 -ProjectId furgokid-staging" -ForegroundColor Gray
+Write-Host "   Para producción: .\scripts\deploy.ps1 -ProjectId furgokid" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "5. 🔍 Validar deploy:" -ForegroundColor Cyan
@@ -240,11 +173,6 @@ Write-Host "   docs/QUICK_START.md" -ForegroundColor Gray
 Write-Host ""
 
 # Advertencias importantes
-if (-not (Test-Path "serviceAccountKey.json")) {
-    Write-Host "⚠️  IMPORTANTE: Descarga serviceAccountKey.json antes de usar scripts de monitoring" -ForegroundColor Yellow
-    Write-Host ""
-}
-
 if ($missingFiles.Count -gt 0) {
     Write-Host "⚠️  IMPORTANTE: Faltan archivos críticos. Revisa arriba." -ForegroundColor Yellow
     Write-Host ""

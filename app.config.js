@@ -11,19 +11,6 @@ import 'dotenv/config';
  * Ir a: Firebase Console → Project Settings → General → Web API Key → Application restrictions
  */
 
-const admobAndroidAppId = process.env.ADMOB_ANDROID_APP_ID;
-const admobIosAppId = process.env.ADMOB_IOS_APP_ID;
-const enableAdmobPlugin = Boolean(admobAndroidAppId && admobIosAppId);
-
-// Ad unit IDs (should be provided via EAS Secrets / CI envs for production)
-const admobBannerAdUnitIdAndroid = process.env.BANNER_AD_UNIT_ID || '';
-const admobInterstitialAdUnitIdAndroid = process.env.INTERSTITIAL_AD_UNIT_ID || '';
-const admobRewardedAdUnitIdAndroid = process.env.REWARDED_AD_UNIT_ID || '';
-
-const admobBannerAdUnitIdIos = process.env.BANNER_AD_UNIT_IOS || '';
-const admobInterstitialAdUnitIdIos = process.env.INTERSTITIAL_AD_UNIT_IOS || '';
-const admobRewardedAdUnitIdIos = process.env.REWARDED_AD_UNIT_IOS || '';
-
 export default {
   expo: {
     name: 'FurgoKid',
@@ -75,17 +62,6 @@ export default {
         },
       ],
       'expo-font',
-      ...(enableAdmobPlugin
-        ? [
-            [
-              'react-native-google-mobile-ads',
-              {
-                androidAppId: admobAndroidAppId,
-                iosAppId: admobIosAppId,
-              },
-            ],
-          ]
-        : []),
     ],
     extra: {
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -94,16 +70,6 @@ export default {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      admobAndroidAppId: admobAndroidAppId || '',
-      admobIosAppId: admobIosAppId || '',
-      admobBannerAdUnitIdAndroid,
-      admobInterstitialAdUnitIdAndroid,
-      admobRewardedAdUnitIdAndroid,
-      admobBannerAdUnitIdIos,
-      admobInterstitialAdUnitIdIos,
-      admobRewardedAdUnitIdIos,
-      adsMode: process.env.EXPO_PUBLIC_ADS_MODE || 'test',
-      adsForceTest: process.env.EXPO_PUBLIC_ADS_FORCE_TEST || '1',
       googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
       // Public web pages (GitHub Pages)
       privacyPolicyUrl: 'https://christopherzavala.github.io/Furgokid-app/docs/privacy-policy.html',

@@ -177,7 +177,6 @@ Write-Host "`n🚀 5. HIGH PRIORITY FEATURES" -ForegroundColor Yellow
 $features = @(
     @{File="src/utils/retryUtils.ts"; Name="Error Retry Logic"},
     @{File="src/components/LoadingSkeleton.tsx"; Name="Loading Skeletons"},
-    @{File="src/components/OptimizedImage.tsx"; Name="Image Optimization"},
     @{File="src/components/Onboarding.tsx"; Name="User Onboarding"},
     @{File="src/utils/offlineCache.ts"; Name="Offline Support"}
 )
@@ -188,13 +187,6 @@ foreach ($feature in $features) {
     } else {
         $errors += "❌ $($feature.Name) NO implementado"
     }
-}
-
-# Check react-native-fast-image
-if ($packageJson.dependencies.'react-native-fast-image') {
-    $success += "✅ react-native-fast-image instalado"
-} else {
-    $warnings += "⚠️ react-native-fast-image NO instalado"
 }
 
 # ============================================================================

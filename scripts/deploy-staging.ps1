@@ -1,13 +1,20 @@
 # Deploy to Staging Environment
-# 
-# Este script deploys backend a Firebase staging project
+#
+# Este script deploya backend a Firebase staging project.
+# Fail-closed: exige FIREBASE_PROJECT_ID explicito y lo pasa con --project en
+# cada llamada (nunca confia en el alias activo de `firebase use`).
 
 param(
     [switch]$SkipTests,
-    [switch]$Force
+    [switch]$Force, # Only bypasses the lint gate; it never bypasses project validation or confirmations.
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ProjectId
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "firebase-project-guard.ps1")
 
 Write-Host ""
 Write-Host "===========================================" -ForegroundColor Cyan
@@ -15,16 +22,11 @@ Write-Host "   🎭 Staging Deployment - Furgokid" -ForegroundColor Cyan
 Write-Host "===========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Verificar que estamos en staging
-Write-Host "📋 Verificando ambiente..." -ForegroundColor Yellow
-$currentProject = firebase use | Out-String
-if ($currentProject -notmatch "staging") {
-    Write-Host "❌ No estás en ambiente staging" -ForegroundColor Red
-    Write-Host "   Ejecuta: firebase use staging" -ForegroundColor Yellow
-    exit 1
-}
-
-Write-Host "✅ Ambiente correcto: staging" -ForegroundColor Green
+# Fail-closed project validation: explicit id, exact environment match.
+Write-Host "📋 Validando proyecto..." -ForegroundColor Yellow
+$ProjectId = Resolve-FirebaseProjectId -Environment 'staging' -ProjectId $ProjectId
+$ProjectId = Assert-FirebaseProjectMatch -Environment 'staging' -ProjectId $ProjectId
+Write-Host "✅ Proyecto validado: $ProjectId (staging)" -ForegroundColor Green
 
 # Verificar archivos críticos
 Write-Host ""
@@ -50,7 +52,7 @@ Write-Host "✅ Todos los archivos presentes" -ForegroundColor Green
 if (-not $SkipTests) {
     Write-Host ""
     Write-Host "🧪 Ejecutando tests..." -ForegroundColor Yellow
-    
+
     Push-Location functions
     try {
         npm test
@@ -76,7 +78,7 @@ try {
     npm run lint
     if ($LASTEXITCODE -ne 0) {
         Write-Host "❌ Lint errors detectados" -ForegroundColor Red
-        
+
         if (-not $Force) {
             Write-Host "   Usa -Force para deployar de todas formas" -ForegroundColor Yellow
             Pop-Location
@@ -112,7 +114,7 @@ try {
 Write-Host ""
 Write-Host "🔒 Deployando Firestore rules..." -ForegroundColor Yellow
 
-firebase deploy --only firestore:rules
+firebase deploy --project $ProjectId --only firestore:rules
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Deploy de rules falló" -ForegroundColor Red
     exit 1
@@ -124,14 +126,14 @@ Write-Host "✅ Rules deployadas" -ForegroundColor Green
 Write-Host ""
 Write-Host "🚀 Deployando Cloud Functions..." -ForegroundColor Yellow
 
-firebase deploy --only functions
+firebase deploy --project $ProjectId --only functions
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Deploy de Functions falló" -ForegroundColor Red
     Write-Host ""
     Write-Host "💡 Troubleshooting:" -ForegroundColor Yellow
-    Write-Host "   1. Verificar logs: firebase functions:log" -ForegroundColor Cyan
+    Write-Host "   1. Verificar logs: firebase functions:log --project $ProjectId" -ForegroundColor Cyan
     Write-Host "   2. Verificar billing: https://console.firebase.google.com" -ForegroundColor Cyan
-    Write-Host "   3. Intentar deploy individual: firebase deploy --only functions:nombreFuncion" -ForegroundColor Cyan
+    Write-Host "   3. Intentar deploy individual: firebase deploy --project $ProjectId --only functions:nombreFuncion" -ForegroundColor Cyan
     exit 1
 }
 
@@ -140,12 +142,12 @@ Write-Host "✅ Functions deployadas" -ForegroundColor Green
 # List deployed functions
 Write-Host ""
 Write-Host "📋 Functions deployadas:" -ForegroundColor Yellow
-firebase functions:list
+firebase functions:list --project $ProjectId
 
 # Get Functions URLs
 Write-Host ""
 Write-Host "🔗 Endpoints disponibles:" -ForegroundColor Yellow
-Write-Host "   https://us-central1-furgokid-staging.cloudfunctions.net/testNotification" -ForegroundColor Cyan
+Write-Host "   https://us-central1-$ProjectId.cloudfunctions.net/testNotification" -ForegroundColor Cyan
 Write-Host "   (otros endpoints son triggers internos)" -ForegroundColor Gray
 
 # Success message
@@ -165,16 +167,12 @@ Write-Host "2. 📱 Build app staging:" -ForegroundColor Cyan
 Write-Host "   eas build --platform android --profile staging" -ForegroundColor Gray
 Write-Host ""
 Write-Host "3. 🔍 Monitorear logs:" -ForegroundColor Cyan
-Write-Host "   firebase functions:log --only nombreFuncion" -ForegroundColor Gray
-Write-Host ""
-Write-Host "4. 🚀 Si todo OK, deploy a production:" -ForegroundColor Cyan
-Write-Host "   firebase use production" -ForegroundColor Gray
-Write-Host "   .\scripts\deploy.ps1" -ForegroundColor Gray
+Write-Host "   firebase functions:log --project $ProjectId --only nombreFuncion" -ForegroundColor Gray
 Write-Host ""
 
 # Log deployment info
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$logEntry = "$timestamp - STAGING DEPLOY SUCCESS"
+$logEntry = "$timestamp - STAGING DEPLOY SUCCESS (project: $ProjectId)"
 Add-Content -Path "docs/logs/deploy-history.txt" -Value $logEntry
 
 Write-Host "📝 Deploy logged to docs/logs/deploy-history.txt" -ForegroundColor Gray

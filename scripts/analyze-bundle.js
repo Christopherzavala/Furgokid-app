@@ -20,7 +20,6 @@ const PACKAGE_SIZES = {
   'react-native-google-mobile-ads': 2.1,
   '@sentry/react-native': 1.5,
   'react-native-reanimated': 3.8,
-  'react-native-fast-image': 0.5,
   '@react-native-firebase/perf': 0.8,
   'react-native-vector-icons': 1.2,
 };

@@ -56,7 +56,7 @@ class NotificationService {
       const tokenData = await Notifications.getExpoPushTokenAsync();
       this.token = tokenData.data;
 
-      console.log('✅ Push token obtained:', this.token);
+      console.log('✅ Push token obtained');
 
       // Save token to Firestore user profile
       if (userId) {

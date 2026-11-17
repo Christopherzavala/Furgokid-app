@@ -13,17 +13,10 @@
  * - Maximum fine: €20M or 4% of annual revenue (whichever is higher)
  */
 
-import { getAuth } from 'firebase/auth';
-import {
-  collection,
-  doc,
-  getDocs,
-  getFirestore,
-  query,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
-import { deleteObject, getStorage, listAll, ref } from 'firebase/storage';
+import { collection, doc, getDoc, getDocs, getFirestore, query, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../config/firebase';
+import { isAuthenticationUnavailableError } from '../utils/authError';
 import logger from '../utils/logger';
 import secureStorage from '../utils/secureStorage';
 
@@ -42,7 +35,7 @@ interface UserData {
  * GDPR Article 20: Right to Data Portability
  */
 export const exportUserData = async (userId: string): Promise<UserData> => {
-  logger.info('Exporting user data', { userId });
+  logger.privacySafeInfo('Exporting user data', { operation: 'gdpr_export', stage: 'start' });
 
   try {
     const db = getFirestore();
@@ -57,9 +50,10 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
     };
 
     // 1. Get user profile
-    const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-    if (!userDoc.empty) {
-      userData.profile = userDoc.docs[0].data();
+    const userDocRef = doc(db, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      userData.profile = userDocSnap.data();
     }
 
     // 2. Get user routes (if driver)
@@ -106,8 +100,9 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
     const preferences = await secureStorage.getObject('user_preferences');
     userData.preferences = preferences || null;
 
-    logger.info('User data exported successfully', {
-      userId,
+    logger.privacySafeInfo('User data exported successfully', {
+      operation: 'gdpr_export',
+      stage: 'complete',
       profileExists: !!userData.profile,
       routesCount: userData.routes.length,
       requestsCount: userData.requests.length,
@@ -117,120 +112,130 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
 
     return userData;
   } catch (error) {
-    logger.error('Failed to export user data', { userId, error });
+    logger.privacySafeError('Failed to export user data', {
+      operation: 'gdpr_export',
+      stage: 'process',
+      code: 'GDPR_EXPORT_FAILED',
+    });
     throw new Error('No se pudo exportar los datos del usuario');
   }
 };
 
+export type AccountDeletionStatus = 'none' | 'pending' | 'processing' | 'failed' | 'completed';
+
+export interface AccountDeletionState {
+  status: AccountDeletionStatus;
+  phase: string | null;
+  errorCode: string | null;
+  updatedAt: string | null;
+}
+
+export class AccountDeletionOperationError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'AccountDeletionOperationError';
+    this.code =
+      typeof (cause as { code?: unknown } | null)?.code === 'string'
+        ? (cause as { code: string }).code
+        : undefined;
+    const rawStatus =
+      (cause as { status?: unknown } | null)?.status ??
+      (cause as { statusCode?: unknown } | null)?.statusCode ??
+      (cause as { response?: { status?: unknown } } | null)?.response?.status;
+    this.status = typeof rawStatus === 'number' ? rawStatus : undefined;
+  }
+}
+
+/** Whether an identity can no longer authorize backend requests. */
+export const isAccountDeletionAuthenticationError = isAuthenticationUnavailableError;
+
+type CallableData = Record<string, never>;
+
+const requestAccountDeletionCallable = httpsCallable<CallableData, AccountDeletionState>(
+  functions,
+  'requestAccountDeletion'
+);
+const getAccountDeletionStatusCallable = httpsCallable<CallableData, AccountDeletionState>(
+  functions,
+  'getAccountDeletionStatus'
+);
+
+const LOCAL_DELETION_KEYS = Object.freeze([
+  'parental_consent',
+  'user_preferences',
+  'premium_status',
+  'consent_data',
+  'analytics_user_properties',
+]);
+
+const clearLocalAccountData = async (): Promise<void> => {
+  await Promise.all(
+    LOCAL_DELETION_KEYS.map(async (key) => {
+      try {
+        await secureStorage.removeItem(key);
+      } catch (error) {
+        if (key === 'parental_consent') {
+          logger.privacySafeWarn('Failed to clear local account data', {
+            operation: 'local_account_data_cleanup',
+            stage: 'delete_local_consent',
+            code: 'LOCAL_PARENTAL_CONSENT_DELETE_FAILED',
+          });
+        } else {
+          logger.warn('Failed to clear local account data', { key, error });
+        }
+      }
+    })
+  );
+};
+
 /**
- * Delete all user data from Firestore and Storage
- * GDPR Article 17: Right to Erasure ("Right to be Forgotten")
+ * Request account erasure through the authenticated backend callable.
  *
- * This is irreversible and complies with legal requirements.
+ * The callable derives the user ID exclusively from `request.auth.uid`; the
+ * client cannot select a different account and cannot delete Firebase data
+ * directly.
  */
-export const deleteUserAccount = async (userId: string): Promise<void> => {
-  logger.warn('Deleting user account - IRREVERSIBLE', { userId });
-
+export const requestAccountDeletion = async (): Promise<AccountDeletionState> => {
   try {
-    const db = getFirestore();
-    const storage = getStorage();
-    const batch = writeBatch(db);
-    let deletedDocs = 0;
-
-    // 1. Delete user profile
-    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
-    const userDocs = await getDocs(userQuery);
-    userDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'users', docSnapshot.id));
-      deletedDocs++;
-    });
-
-    // 2. Delete routes (if driver)
-    const routesQuery = query(collection(db, 'routes'), where('driverId', '==', userId));
-    const routesDocs = await getDocs(routesQuery);
-    routesDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'routes', docSnapshot.id));
-      deletedDocs++;
-    });
-
-    // 3. Delete requests (if parent)
-    const requestsQuery = query(collection(db, 'requests'), where('parentId', '==', userId));
-    const requestsDocs = await getDocs(requestsQuery);
-    requestsDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'requests', docSnapshot.id));
-      deletedDocs++;
-    });
-
-    // 4. Delete tracking history
-    const trackingQuery = query(collection(db, 'trackingPoints'), where('userId', '==', userId));
-    const trackingDocs = await getDocs(trackingQuery);
-    trackingDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'trackingPoints', docSnapshot.id));
-      deletedDocs++;
-    });
-
-    // 5. Delete vacancies (if driver)
-    const vacanciesQuery = query(collection(db, 'vacancies'), where('driverId', '==', userId));
-    const vacanciesDocs = await getDocs(vacanciesQuery);
-    vacanciesDocs.forEach((docSnapshot) => {
-      batch.delete(doc(db, 'vacancies', docSnapshot.id));
-      deletedDocs++;
-    });
-
-    // Commit Firestore batch delete
-    await batch.commit();
-
-    // 6. Delete user files from Storage
-    try {
-      const userStorageRef = ref(storage, `users/${userId}`);
-      const filesList = await listAll(userStorageRef);
-
-      const deletePromises = filesList.items.map((itemRef) =>
-        deleteObject(itemRef).catch((err) => {
-          logger.warn('Failed to delete storage file', { file: itemRef.fullPath, error: err });
-        })
-      );
-
-      await Promise.all(deletePromises);
-      logger.info('User storage files deleted', { userId, filesCount: filesList.items.length });
-    } catch (storageError) {
-      // Storage deletion is non-critical, continue even if it fails
-      logger.warn('Storage deletion partially failed', { userId, error: storageError });
-    }
-
-    // 7. Delete local encrypted data
-    await secureStorage.removeItem('parental_consent');
-    await secureStorage.removeItem('user_preferences');
-    await secureStorage.removeItem('premium_status');
-    await secureStorage.removeItem('consent_data');
-    await secureStorage.removeItem('analytics_user_properties');
-
-    // 8. Delete Firebase Auth account
-    const auth = getAuth();
-    const currentUser = auth.currentUser;
-
-    if (currentUser && currentUser.uid === userId) {
-      await currentUser.delete();
-      logger.info('Firebase Auth account deleted', { userId });
-    }
-
-    logger.warn('User account completely deleted', {
-      userId,
-      firestoreDocsDeleted: deletedDocs,
-      timestamp: new Date().toISOString(),
-    });
+    const result = await requestAccountDeletionCallable({});
+    if (result.data.status !== 'failed') await clearLocalAccountData();
+    logger.warn('Account deletion requested', { status: result.data.status });
+    return result.data;
   } catch (error) {
-    logger.error('Failed to delete user account', { userId, error });
-    throw new Error('No se pudo eliminar la cuenta completamente');
+    logger.error('Failed to request account deletion', { error });
+    throw new AccountDeletionOperationError(
+      'No se pudo solicitar la eliminación de la cuenta',
+      error
+    );
   }
 };
+
+/** Read the deletion state without changing it. */
+export const getAccountDeletionStatus = async (): Promise<AccountDeletionState> => {
+  try {
+    const result = await getAccountDeletionStatusCallable({});
+    return result.data;
+  } catch (error) {
+    logger.error('Failed to get account deletion status', { error });
+    throw new AccountDeletionOperationError('No se pudo consultar el estado de eliminación', error);
+  }
+};
+
+/** Backwards-compatible name for callers that previously deleted directly. */
+export const deleteUserAccount = requestAccountDeletion;
 
 /**
  * Get summary of what data we have on a user
  * GDPR Article 15: Right of Access
  */
 export const getUserDataSummary = async (userId: string) => {
-  logger.info('Getting user data summary', { userId });
+  logger.privacySafeInfo('Getting user data summary', {
+    operation: 'gdpr_summary',
+    stage: 'start',
+  });
 
   try {
     const db = getFirestore();
@@ -246,11 +251,12 @@ export const getUserDataSummary = async (userId: string) => {
       lastUpdated: null as string | null,
     };
 
-    // Count documents in each collection
-    const userDocs = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-    summary.hasProfile = !userDocs.empty;
-    if (!userDocs.empty) {
-      const userData = userDocs.docs[0].data();
+    // Get user profile
+    const userDocRef = doc(db, 'users', userId);
+    const userDocSnap = await getDoc(userDocRef);
+    summary.hasProfile = userDocSnap.exists();
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
       summary.lastUpdated = userData.updatedAt || userData.createdAt || null;
     }
 
@@ -282,7 +288,11 @@ export const getUserDataSummary = async (userId: string) => {
 
     return summary;
   } catch (error) {
-    logger.error('Failed to get user data summary', { userId, error });
+    logger.privacySafeError('Failed to get user data summary', {
+      operation: 'gdpr_summary',
+      stage: 'process',
+      code: 'GDPR_SUMMARY_FAILED',
+    });
     throw error;
   }
 };
@@ -326,7 +336,11 @@ export const verifyParentalConsent = async (): Promise<boolean> => {
     });
 
     if (!isValid) {
-      logger.warn('Parental consent is incomplete', { consent });
+      logger.privacySafeWarn('Parental consent is incomplete', {
+        operation: 'parental_consent_verification',
+        stage: 'validate',
+        code: 'PARENTAL_CONSENT_INCOMPLETE',
+      });
       return false;
     }
 
@@ -336,21 +350,29 @@ export const verifyParentalConsent = async (): Promise<boolean> => {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     if (consentDate < oneYearAgo) {
-      logger.warn('Parental consent is older than 1 year', {
-        consentDate: consent.consentDate,
+      logger.privacySafeWarn('Parental consent is older than 1 year', {
+        operation: 'parental_consent_verification',
+        stage: 'validate',
+        code: 'PARENTAL_CONSENT_REVIEW_DUE',
       });
       // Still valid, but we should prompt for re-verification
     }
 
     return true;
   } catch (error) {
-    logger.error('Failed to verify parental consent', { error });
+    logger.privacySafeError('Failed to verify parental consent', {
+      operation: 'parental_consent_verification',
+      stage: 'process',
+      code: 'PARENTAL_CONSENT_VERIFICATION_FAILED',
+    });
     return false;
   }
 };
 
 export default {
   exportUserData,
+  requestAccountDeletion,
+  getAccountDeletionStatus,
   deleteUserAccount,
   getUserDataSummary,
   isParentalConsentRequired,

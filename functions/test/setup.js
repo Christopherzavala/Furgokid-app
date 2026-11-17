@@ -11,5 +11,7 @@ global.console = {
 };
 
 // Mock environment variables
-process.env.GCLOUD_PROJECT = 'furgokid-test';
+process.env.GCLOUD_PROJECT = 'demo-furgokid';
+process.env.GOOGLE_CLOUD_PROJECT = 'demo-furgokid';
 process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
