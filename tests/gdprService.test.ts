@@ -73,6 +73,10 @@ jest.mock('../src/utils/logger', () => ({
     warn: jest.fn(),
     error: jest.fn(),
     debug: jest.fn(),
+    privacySafeDebug: jest.fn(),
+    privacySafeInfo: jest.fn(),
+    privacySafeWarn: jest.fn(),
+    privacySafeError: jest.fn(),
   },
 }));
 
@@ -93,6 +97,7 @@ jest.mock('../src/utils/secureStorage', () => {
 
 // Get reference to the mock for test manipulation
 const mockSecureStorage = jest.requireMock('../src/utils/secureStorage').default;
+const mockLogger = jest.requireMock('../src/utils/logger').default;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -132,6 +137,7 @@ import {
   getUserDataSummary,
   isAccountDeletionAuthenticationError,
   requestAccountDeletion,
+  verifyParentalConsent,
 } from '../src/services/gdprService';
 
 // ---------------------------------------------------------------------------
@@ -337,6 +343,57 @@ describe('account deletion', () => {
     );
   });
 
+  it('sanitizes parental consent cleanup failures and continues clearing remaining keys', async () => {
+    const pii = [
+      'PII_TEST_PARENT_NAME_B4',
+      'pii-test-parent-b4@example.invalid',
+      'PII_TEST_CHILD_NAME_B4',
+      'PII_TEST_CONSENT_PAYLOAD_B4',
+      'PII_TEST_ERROR_STACK_B4',
+      'PII_TEST_ERROR_CAUSE_B4',
+      'PII_TEST_STORAGE_ID_B4',
+    ];
+    const failure = new Error(pii[1]);
+    failure.stack = pii[4];
+    Object.assign(failure, {
+      cause: new Error(pii[5]),
+      parentName: pii[0],
+      childName: pii[2],
+      consentPayload: pii[3],
+      storageId: pii[6],
+    });
+    mockSecureStorage.removeItem.mockImplementation(async (key: string) => {
+      if (key === 'parental_consent') throw failure;
+    });
+
+    const state = await requestAccountDeletion();
+
+    expect(state.status).toBe('pending');
+    expect(mockSecureStorage.removeItem.mock.calls.map((call) => call[0])).toEqual([
+      'parental_consent',
+      'user_preferences',
+      'premium_status',
+      'consent_data',
+      'analytics_user_properties',
+    ]);
+    expect(mockLogger.privacySafeWarn).toHaveBeenCalledWith('Failed to clear local account data', {
+      operation: 'local_account_data_cleanup',
+      stage: 'delete_local_consent',
+      code: 'LOCAL_PARENTAL_CONSENT_DELETE_FAILED',
+    });
+    const diagnostics = JSON.stringify([
+      mockLogger.info.mock.calls,
+      mockLogger.warn.mock.calls,
+      mockLogger.error.mock.calls,
+      mockLogger.debug.mock.calls,
+      mockLogger.privacySafeDebug.mock.calls,
+      mockLogger.privacySafeInfo.mock.calls,
+      mockLogger.privacySafeWarn.mock.calls,
+      mockLogger.privacySafeError.mock.calls,
+    ]);
+    for (const value of pii) expect(diagnostics).not.toContain(value);
+  });
+
   it('does not delete Firestore, Storage, or Auth directly', async () => {
     await requestAccountDeletion();
 
@@ -491,6 +548,154 @@ describe('getUserDataSummary', () => {
       mockGetDoc.mockRejectedValue(originalError);
 
       await expect(getUserDataSummary(USER_ID)).rejects.toThrow('Firestore unavailable');
+    });
+  });
+});
+
+const B3_PII = [
+  'PII_TEST_PARENT_NAME_B3',
+  'pii-test-parent-b3@example.invalid',
+  'PII_TEST_CHILD_NAME_B3',
+  'PII_TEST_BIRTHDATE_B3_2014-05-17',
+  'PII_TEST_AGE_B3_12',
+  'PII_TEST_CONSENT_PAYLOAD_B3',
+  'PII_TEST_ERROR_MESSAGE_B3',
+  'PII_TEST_ERROR_STACK_B3',
+  'PII_TEST_ERROR_CAUSE_B3',
+];
+
+const makeB3Consent = () => ({
+  parentName: B3_PII[0],
+  parentEmail: B3_PII[1],
+  childName: B3_PII[2],
+  childDateOfBirth: B3_PII[3],
+  childAge: B3_PII[4],
+  evidence: B3_PII[5],
+  consentDate: '2026-11-07T12:00:00.000Z',
+  agreedToTerms: true,
+  agreedToPrivacy: true,
+});
+
+const makeB3Error = () => {
+  const error = new Error(B3_PII[6]);
+  error.stack = B3_PII[7];
+  Object.assign(error, { cause: new Error(B3_PII[8]), metadata: B3_PII[5] });
+  return error;
+};
+
+const serializedGdprDiagnostics = () =>
+  JSON.stringify(
+    {
+      standard: [
+        mockLogger.info.mock.calls,
+        mockLogger.warn.mock.calls,
+        mockLogger.error.mock.calls,
+      ],
+      privacySafe: [
+        mockLogger.privacySafeInfo.mock.calls,
+        mockLogger.privacySafeWarn.mock.calls,
+        mockLogger.privacySafeError.mock.calls,
+      ],
+    },
+    (_key, value) => {
+      if (value instanceof Error) {
+        return {
+          message: value.message,
+          stack: value.stack,
+          cause: value.cause,
+          metadata: (value as Error & { metadata?: unknown }).metadata,
+        };
+      }
+      return value;
+    }
+  );
+
+const expectNoB3PiiInServiceLogs = () => {
+  const logs = serializedGdprDiagnostics();
+  for (const value of B3_PII) expect(logs).not.toContain(value);
+};
+
+describe('parental consent privacy in GDPR service diagnostics', () => {
+  it('keeps full consent in the export result but out of logs', async () => {
+    const consent = makeB3Consent();
+    mockGetDoc.mockResolvedValue(makeDocSnap(false));
+    mockSecureStorage.getObject.mockResolvedValueOnce(consent).mockResolvedValueOnce(null);
+
+    const result = await exportUserData(B3_PII[1]);
+
+    expect(result.consent).toEqual(consent);
+    expectNoB3PiiInServiceLogs();
+    expect(mockLogger.privacySafeInfo).toHaveBeenCalledWith('Exporting user data', {
+      operation: 'gdpr_export',
+      stage: 'start',
+    });
+  });
+
+  it('sanitizes export errors while preserving the public localized failure', async () => {
+    mockGetDoc.mockResolvedValue(makeDocSnap(false));
+    mockSecureStorage.getObject.mockRejectedValue(makeB3Error());
+
+    await expect(exportUserData(B3_PII[1])).rejects.toThrow(
+      'No se pudo exportar los datos del usuario'
+    );
+    expectNoB3PiiInServiceLogs();
+    expect(mockLogger.privacySafeError).toHaveBeenCalledWith('Failed to export user data', {
+      operation: 'gdpr_export',
+      stage: 'process',
+      code: 'GDPR_EXPORT_FAILED',
+    });
+  });
+
+  it('returns only consent presence in the summary and never logs consent values', async () => {
+    mockGetDoc.mockResolvedValue(makeDocSnap(false));
+    mockSecureStorage.getObject.mockResolvedValueOnce(makeB3Consent()).mockResolvedValueOnce(null);
+
+    const summary = await getUserDataSummary(B3_PII[1]);
+
+    expect(summary.hasConsent).toBe(true);
+    expect(summary).not.toHaveProperty('consent');
+    expectNoB3PiiInServiceLogs();
+  });
+
+  it('propagates summary failures without logging their message or nested data', async () => {
+    mockGetDoc.mockRejectedValue(makeB3Error());
+
+    await expect(getUserDataSummary(B3_PII[1])).rejects.toThrow(B3_PII[6]);
+    expectNoB3PiiInServiceLogs();
+    expect(mockLogger.privacySafeError).toHaveBeenCalledWith('Failed to get user data summary', {
+      operation: 'gdpr_summary',
+      stage: 'process',
+      code: 'GDPR_SUMMARY_FAILED',
+    });
+  });
+
+  it('verifies complete consent and redacts incomplete consent details', async () => {
+    mockSecureStorage.getObject.mockResolvedValueOnce(makeB3Consent());
+    await expect(verifyParentalConsent()).resolves.toBe(true);
+
+    jest.clearAllMocks();
+    mockSecureStorage.getObject.mockResolvedValueOnce({
+      parentName: B3_PII[0],
+      childName: B3_PII[2],
+    });
+    await expect(verifyParentalConsent()).resolves.toBe(false);
+    expectNoB3PiiInServiceLogs();
+    expect(mockLogger.privacySafeWarn).toHaveBeenCalledWith('Parental consent is incomplete', {
+      operation: 'parental_consent_verification',
+      stage: 'validate',
+      code: 'PARENTAL_CONSENT_INCOMPLETE',
+    });
+  });
+
+  it('converts verification errors to false without logging raw errors', async () => {
+    mockSecureStorage.getObject.mockRejectedValue(makeB3Error());
+
+    await expect(verifyParentalConsent()).resolves.toBe(false);
+    expectNoB3PiiInServiceLogs();
+    expect(mockLogger.privacySafeError).toHaveBeenCalledWith('Failed to verify parental consent', {
+      operation: 'parental_consent_verification',
+      stage: 'process',
+      code: 'PARENTAL_CONSENT_VERIFICATION_FAILED',
     });
   });
 });

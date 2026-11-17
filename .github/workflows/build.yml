@@ -26,21 +26,22 @@ on:
           - android
           - ios
           - all
-      ref:
-        description: 'Git ref to build (branch, tag or full commit SHA)'
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: eas-build-${{ github.event.inputs.ref }}
+  group: eas-build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: EAS build
+    # EAS credentials are available only through the protected Environment.
+    # That Environment must restrict deployments to the protected main branch.
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: eas-build
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -50,7 +51,6 @@ jobs:
         env:
           BUILD_PROFILE: ${{ inputs.profile }}
           BUILD_PLATFORM: ${{ inputs.platform }}
-          BUILD_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
 
@@ -75,22 +75,10 @@ jobs:
               ;;
           esac
 
-          if [ -z "${BUILD_REF}" ]; then
-            echo "ref is required (branch, tag or full commit SHA)."
-            exit 1
-          fi
-
-          if ! printf '%s' "${BUILD_REF}" | grep -Eq '^[A-Za-z0-9._/-]+$'; then
-            echo "ref contains characters outside [A-Za-z0-9._/-]: ${BUILD_REF}"
-            exit 1
-          fi
-
-          echo "Inputs validated: profile=${BUILD_PROFILE} platform=${BUILD_PLATFORM} ref=${BUILD_REF}"
+          echo "Inputs validated: profile=${BUILD_PROFILE} platform=${BUILD_PLATFORM} ref=${GITHUB_REF}"
 
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -105,15 +93,15 @@ jobs:
       - name: Set up Expo and EAS CLI
         uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
         with:
-          eas-version: latest
-          token: ${{ secrets.EAS_TOKEN }}
+          # Exact CLI version, reviewed against the npm package metadata on 2026-11-04.
+          eas-version: 27.2.0
 
-      # The token is scoped to this step only; inputs are passed through the
-      # environment instead of shell interpolation.
+      # Expo authentication is scoped to the single step that consumes it.
       - name: Run EAS build
         env:
           EAS_BUILD_PROFILE: ${{ inputs.profile }}
           EAS_BUILD_PLATFORM: ${{ inputs.platform }}
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
         run: |
           set -euo pipefail
           eas build \

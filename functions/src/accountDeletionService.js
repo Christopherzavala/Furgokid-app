@@ -601,8 +601,21 @@ const createAccountDeletionService = ({
       }
       await renewLease(uid, ownerToken);
       try {
-        await file.delete({ ignoreNotFound: true });
+        const generation = file.metadata?.generation;
+        const deleteOptions = { ignoreNotFound: true };
+        if (generation) {
+          deleteOptions.ifGenerationMatch = generation;
+        }
+        await file.delete(deleteOptions);
       } catch (error) {
+        if (
+          error?.code === 412 ||
+          error?.status === 412 ||
+          String(error?.message).includes('412')
+        ) {
+          continue;
+        }
+        if (error instanceof AccountDeletionError) throw error;
         throw new AccountDeletionError('storage-delete-failed', true);
       }
     }

@@ -172,6 +172,24 @@ describe('Firestore Rules', () => {
       );
     });
 
+    runOrSkip('prevents route owner from transferring ownership by changing driverId', async () => {
+      await seedUser(testEnv, 'driver-user', { role: 'driver', approved: true });
+      await seedDocument(testEnv, 'routes/route-transfer', {
+        driverId: 'driver-user',
+        origin: 'A',
+        destination: 'B',
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('driver-user')
+          .firestore()
+          .collection('routes')
+          .doc('route-transfer')
+          .update({ driverId: 'other-driver' })
+      );
+    });
+
     runOrSkip('prevents a parent from creating a route', async () => {
       await seedUser(testEnv, 'parent-user', { role: 'parent' });
 
@@ -1060,6 +1078,132 @@ describe('Firestore Rules', () => {
           .doc('shared-chat')
           .update({ updatedAt: new Date() })
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // /passengers and /passengerAuthorizations – access & isolation
+  // -------------------------------------------------------------------------
+
+  describe('/passengers and /passengerAuthorizations', () => {
+    const parentUid = 'passenger-parent-owner';
+    const otherParentUid = 'passenger-parent-other';
+    const passengerId = 'p_minor_test_1';
+    const authId = `auth_${passengerId}`;
+
+    beforeEach(async () => {
+      await seedUser(testEnv, parentUid, { role: 'parent', approved: false });
+      await seedUser(testEnv, otherParentUid, { role: 'parent', approved: false });
+      await seedDocument(testEnv, `passengers/${passengerId}`, {
+        passengerId,
+        parentId: parentUid,
+        passengerAlias: 'Pasajero Test',
+        status: 'active',
+      });
+      await seedDocument(testEnv, `passengerAuthorizations/${authId}`, {
+        authorizationId: authId,
+        passengerId,
+        guardianId: parentUid,
+        status: 'active',
+        responsibilityDeclared: true,
+      });
+    });
+
+    runOrSkip('allows authorized parent guardian to read their passenger document', async () => {
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext(parentUid)
+          .firestore()
+          .collection('passengers')
+          .doc(passengerId)
+          .get()
+      );
+    });
+
+    runOrSkip('denies read of passenger document to other adults', async () => {
+      await assertFails(
+        testEnv
+          .authenticatedContext(otherParentUid)
+          .firestore()
+          .collection('passengers')
+          .doc(passengerId)
+          .get()
+      );
+    });
+
+    runOrSkip('denies read of passenger document to unauthenticated users', async () => {
+      await assertFails(
+        testEnv.unauthenticatedContext().firestore().collection('passengers').doc(passengerId).get()
+      );
+    });
+
+    runOrSkip(
+      'allows authorized guardian to read their passengerAuthorization document',
+      async () => {
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext(parentUid)
+            .firestore()
+            .collection('passengerAuthorizations')
+            .doc(authId)
+            .get()
+        );
+      }
+    );
+
+    runOrSkip('denies read of passengerAuthorization document to third parties', async () => {
+      await assertFails(
+        testEnv
+          .authenticatedContext(otherParentUid)
+          .firestore()
+          .collection('passengerAuthorizations')
+          .doc(authId)
+          .get()
+      );
+    });
+
+    runOrSkip('denies direct client writes on passengers collection', async () => {
+      const db = testEnv.authenticatedContext(parentUid).firestore();
+      await assertFails(
+        db
+          .collection('passengers')
+          .doc('p_client_new')
+          .set({ parentId: parentUid, passengerAlias: 'Hack' })
+      );
+      await assertFails(
+        db.collection('passengers').doc(passengerId).update({ passengerAlias: 'Modified' })
+      );
+      await assertFails(db.collection('passengers').doc(passengerId).delete());
+    });
+
+    runOrSkip('denies direct client writes on passengerAuthorizations collection', async () => {
+      const db = testEnv.authenticatedContext(parentUid).firestore();
+      await assertFails(
+        db
+          .collection('passengerAuthorizations')
+          .doc('auth_client_new')
+          .set({ guardianId: parentUid, status: 'active' })
+      );
+      await assertFails(
+        db.collection('passengerAuthorizations').doc(authId).update({ status: 'active' })
+      );
+      await assertFails(db.collection('passengerAuthorizations').doc(authId).delete());
+    });
+
+    runOrSkip('denies client updates and deletes of authorizationEvents evidence', async () => {
+      const eventId = 'event-append-only';
+      await seedDocument(testEnv, `authorizationEvents/${eventId}`, {
+        eventId,
+        authorizationId: authId,
+        passengerId,
+        actorId: parentUid,
+        action: 'CREATED',
+      });
+      const db = testEnv.authenticatedContext(parentUid).firestore();
+      await assertFails(
+        db.collection('authorizationEvents').doc(eventId).update({ action: 'REWRITTEN' })
+      );
+      await assertFails(db.collection('authorizationEvents').doc(eventId).delete());
     });
   });
 });

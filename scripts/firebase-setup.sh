@@ -26,8 +26,8 @@ echo -e "${BLUE}[1/5] Verificando Firebase CLI...${NC}"
 
 if ! command -v firebase &> /dev/null
 then
-    echo -e "${YELLOW}Firebase CLI no encontrado. Instalando...${NC}"
-    npm install -g firebase-tools
+    echo -e "${YELLOW}Firebase CLI no encontrado. Este diagnóstico no instala herramientas.${NC}"
+    exit 1
 else
     echo -e "${GREEN}✓ Firebase CLI encontrado${NC}"
     firebase --version
@@ -39,18 +39,7 @@ echo ""
 # PASO 2: Login a Firebase
 # ============================================================================
 
-echo -e "${BLUE}[2/5] Iniciando sesión en Firebase...${NC}"
-echo -e "${YELLOW}Se abrirá tu navegador para autenticación.${NC}"
-echo ""
-
-firebase login
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Login exitoso${NC}"
-else
-    echo -e "${RED}✗ Error en login${NC}"
-    exit 1
-fi
+echo -e "${BLUE}[2/5] Este diagnóstico no realiza autenticación.${NC}"
 
 echo ""
 
@@ -61,8 +50,7 @@ echo ""
 echo -e "${BLUE}[3/5] Verificando configuración de proyecto...${NC}"
 
 if [ ! -f ".firebaserc" ]; then
-    echo -e "${YELLOW}Proyecto no inicializado. Configurando...${NC}"
-    firebase init
+    echo -e "${YELLOW}Proyecto no inicializado. Ejecuta el flujo de inicialización por separado y revisa sus cambios.${NC}"
 else
     echo -e "${GREEN}✓ Proyecto ya configurado${NC}"
     cat .firebaserc
@@ -71,40 +59,19 @@ fi
 echo ""
 
 # ============================================================================
-# PASO 4: Deploy Firestore Indexes
+# PASO 4: Informar el procedimiento seguro de deploy
 # ============================================================================
 
-echo -e "${BLUE}[4/5] Desplegando Firestore indexes...${NC}"
-echo -e "${YELLOW}Esto puede tardar 2-5 minutos...${NC}"
-echo ""
-
-firebase deploy --only firestore:indexes
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Indexes desplegados exitosamente${NC}"
-else
-    echo -e "${RED}✗ Error desplegando indexes${NC}"
-    echo -e "${YELLOW}Tip: Verifica que firestore.indexes.json existe y es válido${NC}"
-fi
+echo -e "${BLUE}[4/5] Este script de setup no despliega recursos.${NC}"
+echo -e "${YELLOW}Use el flujo de deployment protegido del repositorio para el entorno elegido.${NC}"
 
 echo ""
 
 # ============================================================================
-# PASO 5: Deploy Firestore Rules
+# PASO 5: Confirmar que las reglas se despliegan por el flujo protegido
 # ============================================================================
 
-echo -e "${BLUE}[5/5] Desplegando Firestore security rules...${NC}"
-echo -e "${YELLOW}Aplicando reglas restrictivas de seguridad...${NC}"
-echo ""
-
-firebase deploy --only firestore:rules
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Security rules desplegadas exitosamente${NC}"
-else
-    echo -e "${RED}✗ Error desplegando rules${NC}"
-    echo -e "${YELLOW}Tip: Verifica que firestore.rules existe y es válido${NC}"
-fi
+echo -e "${BLUE}[5/5] Las reglas solo se despliegan con los scripts protegidos indicados arriba.${NC}"
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
@@ -116,9 +83,9 @@ echo ""
 # RESUMEN Y PRÓXIMOS PASOS
 # ============================================================================
 
-echo -e "${BLUE}📊 Resumen del deployment:${NC}"
+echo -e "${BLUE}📊 Resumen del setup (sin deployment):${NC}"
 echo ""
-firebase firestore:indexes
+echo -e "${NC}No se ejecutó ningún deploy ni consulta remota desde este resumen."
 echo ""
 
 echo -e "${YELLOW}📋 Próximos pasos pendientes:${NC}"

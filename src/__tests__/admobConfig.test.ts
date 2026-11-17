@@ -1,103 +1,53 @@
-/// <reference types="jest" />
-/**
- * Tests para AdMobConfig
- */
+import {
+  AD_CONFIG,
+  AD_UNITS,
+  getAdUnitId,
+  recordInterstitialShown,
+  shouldShowInterstitial,
+} from '../config/AdMobConfig';
+import admobService from '../services/admobService';
+import adInterstitialManager from '../components/AdInterstitialManager';
+import { AdBanner } from '../components/AdBanner';
+import AdBannerComponent from '../components/AdBannerComponent';
+import { useAdMob } from '../hooks/useAdMob';
 
-jest.mock('expo-constants', () => ({
-  __esModule: true,
-  default: {
-    expoConfig: {
-      extra: {
-        adsMode: 'test',
-        adsForceTest: '1',
-      },
-    },
-  },
-}));
-
-import { AD_CONFIG, AD_UNITS, getAdUnitId, shouldShowInterstitial } from '../config/AdMobConfig';
-
-describe('AdMobConfig', () => {
-  describe('AD_UNITS', () => {
-    it('should have banner home unit defined', () => {
-      expect(AD_UNITS.BANNER_HOME).toBeDefined();
-      expect(typeof AD_UNITS.BANNER_HOME).toBe('string');
-      if (AD_UNITS.BANNER_HOME) expect(AD_UNITS.BANNER_HOME).toContain('ca-app-pub-');
-    });
-
-    it('should have interstitial unit defined', () => {
-      expect(AD_UNITS.INTERSTITIAL_NAV).toBeDefined();
-      expect(typeof AD_UNITS.INTERSTITIAL_NAV).toBe('string');
-      if (AD_UNITS.INTERSTITIAL_NAV) expect(AD_UNITS.INTERSTITIAL_NAV).toContain('ca-app-pub-');
-    });
-
-    it('should have rewarded unit defined', () => {
-      expect(AD_UNITS.REWARDED_FEATURE).toBeDefined();
-      expect(typeof AD_UNITS.REWARDED_FEATURE).toBe('string');
-      if (AD_UNITS.REWARDED_FEATURE) expect(AD_UNITS.REWARDED_FEATURE).toContain('ca-app-pub-');
-    });
+describe('AdMob disabled configuration', () => {
+  it('has no enabled audience, app ID, or ad unit IDs', () => {
+    expect(AD_CONFIG.ENABLED).toBe(false);
+    expect(AD_CONFIG.SHOW_ADS_TO_DRIVERS).toBe(false);
+    expect(AD_CONFIG.SHOW_ADS_TO_PARENTS).toBe(false);
+    expect(AD_CONFIG.APP_ID).toBe('');
+    expect(Object.values(AD_UNITS).every((unitId) => unitId === null)).toBe(true);
   });
 
-  describe('AD_CONFIG', () => {
-    it('should have interstitial interval defined', () => {
-      expect(AD_CONFIG.INTERSTITIAL_INTERVAL).toBeDefined();
-      expect(AD_CONFIG.INTERSTITIAL_INTERVAL).toBeGreaterThan(0);
-    });
-
-    it('should have minimum session time defined', () => {
-      expect(AD_CONFIG.MINIMUM_SESSION_TIME).toBeDefined();
-      expect(AD_CONFIG.MINIMUM_SESSION_TIME).toBeGreaterThan(0);
-    });
-
-    it('should have daily interstitial cap defined', () => {
-      expect(AD_CONFIG.DAILY_INTERSTITIAL_CAP).toBeDefined();
-      expect(AD_CONFIG.DAILY_INTERSTITIAL_CAP).toBeGreaterThan(0);
-    });
-
-    it('should have app ID defined', () => {
-      expect(AD_CONFIG.APP_ID).toBeDefined();
-      expect(typeof AD_CONFIG.APP_ID).toBe('string');
-      if (AD_CONFIG.APP_ID) expect(AD_CONFIG.APP_ID).toContain('ca-app-pub-');
-    });
+  it('cannot return an ad unit or approve an interstitial request', () => {
+    expect(getAdUnitId('BANNER_HOME', 'parent')).toBeNull();
+    expect(getAdUnitId('INTERSTITIAL_NAV', 'driver')).toBeNull();
+    expect(shouldShowInterstitial()).toBe(false);
+    expect(recordInterstitialShown()).toBeUndefined();
   });
 
-  describe('getAdUnitId', () => {
-    it('should return null for invalid ad type', () => {
-      // @ts-expect-error Testing invalid input
-      expect(getAdUnitId(null)).toBe(null);
-    });
-
-    it('should return null for undefined ad type', () => {
-      // @ts-expect-error Testing invalid input
-      expect(getAdUnitId(undefined)).toBe(null);
-    });
-
-    it('should return test ID for BANNER_HOME in test mode', () => {
-      const unitId = getAdUnitId('BANNER_HOME', 'parent');
-      expect(unitId).toBeDefined();
-      expect(unitId).toBe('ca-app-pub-3940256099942544/6300978111');
-    });
-
-    it('should return test ID for INTERSTITIAL_NAV', () => {
-      const unitId = getAdUnitId('INTERSTITIAL_NAV', 'parent');
-      expect(unitId).toBeDefined();
-      expect(unitId).toBe('ca-app-pub-3940256099942544/1033173712');
-    });
-
-    it('should return null for unknown ad type', () => {
-      const unitId = getAdUnitId('UNKNOWN_TYPE', 'parent');
-      expect(unitId).toBe(null);
-    });
+  it('does not initialize, load, or present any ad format', async () => {
+    await expect(admobService.initialize()).resolves.toBeUndefined();
+    await expect(admobService.loadInterstitialAd()).resolves.toBe(false);
+    await expect(admobService.showInterstitialAd()).resolves.toBe(false);
+    await expect(admobService.loadRewardedAd()).resolves.toBe(false);
+    await expect(admobService.showRewardedAd()).resolves.toBe(false);
+    await expect(adInterstitialManager.canShow('INTERSTITIAL_NAV', 'parent')).resolves.toBe(false);
+    await expect(
+      adInterstitialManager.loadInterstitial('INTERSTITIAL_NAV', 'parent')
+    ).resolves.toBe(false);
+    await expect(adInterstitialManager.show()).resolves.toBe(false);
+    expect(adInterstitialManager.isReady()).toBe(false);
   });
 
-  describe('shouldShowInterstitial', () => {
-    it('should be a function', () => {
-      expect(typeof shouldShowInterstitial).toBe('function');
-    });
-
-    it('should return boolean', () => {
-      const result = shouldShowInterstitial();
-      expect(typeof result).toBe('boolean');
+  it('keeps banner components and the AdMob hook inactive', () => {
+    expect(AdBanner({ unitId: 'test-unit', screenName: 'home' })).toBeNull();
+    expect(AdBannerComponent()).toBeNull();
+    expect(useAdMob()).toEqual({
+      adLoaded: false,
+      showInterstitial: expect.any(Function),
+      showRewarded: expect.any(Function),
     });
   });
 });

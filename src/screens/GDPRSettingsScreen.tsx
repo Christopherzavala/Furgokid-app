@@ -55,9 +55,13 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     try {
       const summary = await getUserDataSummary(user.uid);
       setDataSummary(summary);
-    } catch (error) {
+    } catch {
       toastService.error('Error', 'No se pudo cargar el resumen de datos');
-      logger.error('Failed to load data summary', { error });
+      logger.privacySafeError('Failed to load data summary', {
+        operation: 'gdpr_summary',
+        stage: 'screen',
+        code: 'GDPR_SUMMARY_DISPLAY_FAILED',
+      });
     } finally {
       setSummaryLoading(false);
     }
@@ -105,10 +109,17 @@ const GDPRSettingsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                 'Tus datos han sido exportados exitosamente.'
               );
 
-              logger.info('User data exported', { userId: user.uid });
-            } catch (error) {
+              logger.privacySafeInfo('User data exported', {
+                operation: 'gdpr_export',
+                stage: 'shared',
+              });
+            } catch {
               toastService.error('Error', 'No se pudo exportar los datos');
-              logger.error('Failed to export user data', { error });
+              logger.privacySafeError('Failed to export user data', {
+                operation: 'gdpr_export',
+                stage: 'screen',
+                code: 'GDPR_EXPORT_DISPLAY_FAILED',
+              });
             } finally {
               setLoading(false);
             }

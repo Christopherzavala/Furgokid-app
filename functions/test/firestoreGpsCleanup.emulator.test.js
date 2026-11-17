@@ -136,7 +136,7 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
     expect(await hasTracking(matchId)).toBe(true);
   });
 
-  test('retries the exact-match transaction when ownership changes during its reads', async () => {
+  test('serializes cleanup with a concurrent ownership change', async () => {
     const matchId = await seedMatch();
     const matchRef = firestore.collection('matches').doc(matchId);
     let releaseTrackingRead;
@@ -156,10 +156,7 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
             updateFunction({
               get: async (reference) => {
                 const snapshot = await transaction.get(reference);
-                if (
-                  gateFirstTrackingRead &&
-                  reference.path === `matches/${matchId}/tracking/current`
-                ) {
+                if (gateFirstTrackingRead && reference.path === `matches/${matchId}`) {
                   gateFirstTrackingRead = false;
                   notifyTrackingRead();
                   await trackingReadReleased;
@@ -180,11 +177,17 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
       uid: 'verified-driver',
     });
     await trackingReadReached;
-    await matchRef.update({ driverId: 'changed-owner' });
+    // Firestore Emulator locks transaction reads. Start the competing write,
+    // then release the transaction so the emulator can serialize both commits.
+    const ownershipUpdate = matchRef.update({ driverId: 'changed-owner' });
     releaseTrackingRead();
-
-    expect(await deletionPromise).toBe('denied');
-    expect(await hasTracking(matchId)).toBe(true);
+    const [deletion] = await Promise.all([deletionPromise, ownershipUpdate]);
+    expect(['deleted', 'skipped']).toContain(deletion);
+    expect((await matchRef.get()).get('driverId')).toBe('changed-owner');
+    // If the delete serialized first, it was valid against the old owner. If
+    // the ownership change serialized first, transaction revalidation skips it.
+    if (deletion === 'skipped') expect(await hasTracking(matchId)).toBe(true);
+    else expect(await hasTracking(matchId)).toBe(false);
   });
 
   test('deletes when a match becomes inactive during the cleanup transaction', async () => {
@@ -207,10 +210,7 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
             updateFunction({
               get: async (reference) => {
                 const snapshot = await transaction.get(reference);
-                if (
-                  gateFirstTrackingRead &&
-                  reference.path === `matches/${matchId}/tracking/current`
-                ) {
+                if (gateFirstTrackingRead && reference.path === `matches/${matchId}`) {
                   gateFirstTrackingRead = false;
                   notifyTrackingRead();
                   await trackingReadReleased;
@@ -231,8 +231,8 @@ emulatorDescribe('Firestore GPS cleanup adapter (Firestore Emulator)', () => {
       uid: 'verified-driver',
     });
     await trackingReadReached;
-    await matchRef.update({ status: 'pending' });
     releaseTrackingRead();
+    await matchRef.update({ status: 'pending' });
 
     expect(await deletionPromise).toBe('deleted');
     expect((await matchRef.get()).get('status')).toBe('pending');

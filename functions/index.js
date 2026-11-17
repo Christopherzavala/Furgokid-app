@@ -205,8 +205,8 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
   const startTime = Date.now();
   const snap = event.data;
   const matchId = event.params.matchId;
-  const match = snap.data();
-  if (match.status !== 'pending') return null;
+  const match = snap?.data();
+  if (!match || match.status !== 'pending') return null;
 
   console.log('🚨 NEW MATCH RECEIVED');
   try {
@@ -436,6 +436,25 @@ exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) =>
   // Por ahora solo log
   console.log('   Welcome email feature coming in v1.1');
 
+  return null;
+});
+
+const {
+  onboardPassengerCallable,
+  updatePassengerAuthorizationStatusCallable,
+} = require('./src/passengerAuthorizationCallables');
+const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
+
+exports.onboardPassenger = onboardPassengerCallable;
+exports.updatePassengerAuthorizationStatus = updatePassengerAuthorizationStatusCallable;
+exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
+  const manager = createPassengerAuthorizationManager({
+    firestore: admin.firestore(),
+  });
+  const result = await manager.retryPendingRevocationCleanups({
+    workerId: 'cloud_scheduler_worker',
+  });
+  console.log('🔄 Retry pending revocation cleanups completed:', result);
   return null;
 });
 

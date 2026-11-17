@@ -18,9 +18,9 @@ import EmailVerificationScreen from './src/screens/EmailVerificationScreen';
 import GDPRSettingsScreen from './src/screens/GDPRSettingsScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import ParentalConsentScreen from './src/screens/ParentalConsentScreen';
 import ParentHomeScreen from './src/screens/ParentHomeScreen';
 import ParentProfileScreen from './src/screens/ParentProfileScreen';
+import PassengerAuthorizationScreen from './src/screens/PassengerAuthorizationScreen';
 import ParentRequestScreen from './src/screens/ParentRequestScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
@@ -112,7 +112,6 @@ function Navigation() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="ParentalConsent" component={ParentalConsentScreen} />
         </>
       ) : !isEmailVerified ? (
         // User logged in but email not verified - block access
@@ -131,6 +130,7 @@ function Navigation() {
         <>
           <Stack.Screen name="ParentHome" component={ParentHomeScreen} />
           <Stack.Screen name="ParentProfile" component={ParentProfileScreen} />
+          <Stack.Screen name="PassengerAuthorizations" component={PassengerAuthorizationScreen} />
           <Stack.Screen name="ParentRequest" component={ParentRequestScreen} />
           <Stack.Screen name="TrackingMap" component={TrackingMap} />
           <Stack.Screen name="Search" component={SearchScreen} />

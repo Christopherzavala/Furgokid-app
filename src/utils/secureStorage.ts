@@ -2,15 +2,18 @@
  * Secure Storage Service
  *
  * Encrypted storage wrapper using expo-secure-store for sensitive data.
- * Falls back to AsyncStorage with warning for non-sensitive data.
+ * Falls back to AsyncStorage ONLY for non-sensitive whitelisted data.
  *
- * Big Tech Standard: All sensitive data (tokens, credentials, PII) must be encrypted at rest.
+ * Senior Engineering / Privacy-by-Design Rule (Fail-Closed):
+ * All sensitive data (tokens, credentials, PII, child authorizations, parental consent)
+ * MUST be stored encrypted in SecureStore. If SecureStore is unavailable, sensitive writes and
+ * reads FAIL CLOSED (throwing or returning null/error) without falling back to unencrypted AsyncStorage.
  *
  * @example
  * ```typescript
  * import secureStorage from '@/utils/secureStorage';
  *
- * // Store sensitive data
+ * // Store sensitive data (Fail-Closed if SecureStore unavailable)
  * await secureStorage.setItem('auth_token', userToken);
  *
  * // Retrieve sensitive data
@@ -43,11 +46,16 @@ const ASYNC_STORAGE_WHITELIST = [
   'notifications_enabled',
 ];
 
+const PII_STORAGE_KEYS = new Set(['parental_consent', 'passenger_authorization']);
+
 class SecureStorage {
   /**
    * Check if SecureStore is available on the device
    */
-  private async isSecureStoreAvailable(): Promise<boolean> {
+  private async isSecureStoreAvailable(
+    key = '',
+    operation: 'read' | 'set' | 'remove' = 'set'
+  ): Promise<boolean> {
     try {
       // Test if SecureStore works by attempting to set/get/delete a test value
       const testKey = '__secure_store_test__';
@@ -56,18 +64,39 @@ class SecureStorage {
       await SecureStore.deleteItemAsync(testKey);
       return true;
     } catch (error) {
-      logger.warn('SecureStore not available, falling back to AsyncStorage', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      if (this.isSensitiveKey(key)) {
+        logger.privacySafeWarn(
+          'SecureStore not available, sensitive operation blocked (fail-closed)',
+          {
+            operation: `secure_storage_${operation}`,
+            stage: 'availability_check',
+            code: 'SECURE_STORE_UNAVAILABLE',
+          }
+        );
+      } else {
+        logger.warn(
+          'SecureStore not available, falling back to AsyncStorage for non-sensitive data',
+          {
+            error: error instanceof Error ? error.message : 'Unknown error',
+          }
+        );
+      }
       return false;
     }
   }
 
   /**
-   * Check if key should use AsyncStorage (non-sensitive data)
+   * Check if key is non-sensitive whitelisted data (can use AsyncStorage)
    */
   private shouldUseAsyncStorage(key: string): boolean {
     return ASYNC_STORAGE_WHITELIST.some((whitelistedKey) => key.includes(whitelistedKey));
+  }
+
+  /**
+   * Check if key is sensitive (MUST use SecureStore, fail-closed)
+   */
+  public isSensitiveKey(key: string): boolean {
+    return !this.shouldUseAsyncStorage(key);
   }
 
   private hashKey(key: string): string {
@@ -97,8 +126,47 @@ class SecureStorage {
     return /^[a-zA-Z0-9._-]+$/.test(key);
   }
 
+  private isPiiKey(key: string): boolean {
+    return (
+      PII_STORAGE_KEYS.has(key) ||
+      key.includes('passenger_authorization') ||
+      key.includes('parental_consent')
+    );
+  }
+
+  private logDebugForKey(key: string, message: string, context: Record<string, unknown>): void {
+    const log = this.isPiiKey(key) ? logger.privacySafeDebug : logger.debug;
+    log.call(logger, message, context);
+  }
+
+  private logWarnForKey(key: string, message: string, context: Record<string, unknown>): void {
+    const log = this.isPiiKey(key) ? logger.privacySafeWarn : logger.warn;
+    log.call(logger, message, context);
+  }
+
+  private logErrorForKey(
+    key: string,
+    message: string,
+    operation: 'read' | 'set' | 'remove',
+    stage: string,
+    code: string,
+    context: Record<string, unknown>,
+    error: unknown
+  ): void {
+    if (this.isPiiKey(key)) {
+      logger.privacySafeError(message, {
+        operation: `secure_storage_${operation}`,
+        stage,
+        code,
+      });
+    } else {
+      logger.error(message, context, error as Error);
+    }
+  }
+
   /**
    * Set item in secure storage
+   * FAIL-CLOSED: Sensitive data is NEVER written to AsyncStorage when SecureStore is unavailable.
    *
    * @param key - Storage key
    * @param value - Value to store (will be JSON stringified if object)
@@ -114,39 +182,56 @@ class SecureStorage {
         if (legacy) {
           await AsyncStorage.removeItem(legacy).catch(() => undefined);
         }
-        logger.debug('Stored in AsyncStorage (non-sensitive)', { key, storageKey: primary });
+        this.logDebugForKey(key, 'Stored in AsyncStorage (non-sensitive)', {
+          key,
+          storageKey: primary,
+        });
         return;
       }
 
-      // Sensitive data goes to SecureStore
-      const isAvailable = await this.isSecureStoreAvailable();
+      // Sensitive data MUST go to SecureStore (Fail-Closed)
+      const isAvailable = await this.isSecureStoreAvailable(key, 'set');
 
       if (isAvailable) {
         await SecureStore.setItemAsync(primary, value, options);
         if (legacy && this.isValidSecureStoreKey(legacy)) {
           await SecureStore.deleteItemAsync(legacy).catch(() => undefined);
         }
-        logger.debug('Stored in SecureStore (encrypted)', { key, storageKey: primary });
+        this.logDebugForKey(key, 'Stored in SecureStore (encrypted)', { key, storageKey: primary });
       } else {
-        // Fallback to AsyncStorage with warning
-        await AsyncStorage.setItem(primary, value);
-        if (legacy) {
-          await AsyncStorage.removeItem(legacy).catch(() => undefined);
-        }
-        logger.warn('SecureStore unavailable, using AsyncStorage for sensitive data', {
+        // FAIL-CLOSED: Refuse to write sensitive data to unencrypted AsyncStorage
+        this.logWarnForKey(
           key,
-          storageKey: primary,
-          security_risk: 'high',
-        });
+          'SecureStore unavailable, sensitive data write blocked (fail-closed)',
+          {
+            key,
+            storageKey: primary,
+            security_risk: 'prevented',
+          }
+        );
+        const error = new Error(
+          'SECURE_STORAGE_UNAVAILABLE: SecureStore is unavailable for sensitive encrypted data.'
+        );
+        (error as any).code = 'SECURE_STORAGE_UNAVAILABLE';
+        throw error;
       }
     } catch (error) {
-      logger.error('Failed to store item in secure storage', { key }, error as Error);
+      this.logErrorForKey(
+        key,
+        'Failed to store item in secure storage',
+        'set',
+        'write',
+        'SECURE_STORAGE_WRITE_FAILED',
+        { key },
+        error
+      );
       throw error;
     }
   }
 
   /**
    * Get item from secure storage
+   * FAIL-CLOSED: Sensitive data is NEVER retrieved from AsyncStorage when SecureStore is unavailable.
    *
    * @param key - Storage key
    * @returns Stored value or null if not found
@@ -159,7 +244,11 @@ class SecureStorage {
       if (this.shouldUseAsyncStorage(key)) {
         const value = await AsyncStorage.getItem(primary);
         if (value != null) {
-          logger.debug('Retrieved from AsyncStorage', { key, storageKey: primary, found: true });
+          this.logDebugForKey(key, 'Retrieved from AsyncStorage', {
+            key,
+            storageKey: primary,
+            found: true,
+          });
           return value;
         }
 
@@ -168,7 +257,7 @@ class SecureStorage {
           if (legacyValue != null) {
             await AsyncStorage.setItem(primary, legacyValue);
             await AsyncStorage.removeItem(legacy).catch(() => undefined);
-            logger.debug('Retrieved from AsyncStorage (legacy key migrated)', {
+            this.logDebugForKey(key, 'Retrieved from AsyncStorage (legacy key migrated)', {
               key,
               storageKey: primary,
               legacyKey: legacy,
@@ -177,52 +266,91 @@ class SecureStorage {
           }
         }
 
-        logger.debug('Retrieved from AsyncStorage', { key, storageKey: primary, found: false });
+        this.logDebugForKey(key, 'Retrieved from AsyncStorage', {
+          key,
+          storageKey: primary,
+          found: false,
+        });
         return null;
       }
 
-      // Sensitive data from SecureStore
-      const isAvailable = await this.isSecureStoreAvailable();
+      // Sensitive data MUST come from SecureStore (Fail-Closed)
+      const isAvailable = await this.isSecureStoreAvailable(key, 'read');
 
       if (isAvailable) {
         const value = await SecureStore.getItemAsync(primary);
         if (value != null) {
-          logger.debug('Retrieved from SecureStore', { key, storageKey: primary, found: true });
+          this.logDebugForKey(key, 'Retrieved from SecureStore', {
+            key,
+            storageKey: primary,
+            found: true,
+          });
           return value;
         }
 
-        // Backward-compatible fallback: older versions may have stored in AsyncStorage
+        // Backward-compatible safe migration: if value exists in historical AsyncStorage,
+        // copy to SecureStore FIRST, verify read-back, and ONLY THEN remove from AsyncStorage.
         const asyncValue = await AsyncStorage.getItem(primary);
         if (asyncValue != null) {
-          await SecureStore.setItemAsync(primary, asyncValue).catch(() => undefined);
-          await AsyncStorage.removeItem(primary).catch(() => undefined);
-          logger.warn('Migrated sensitive data from AsyncStorage to SecureStore', {
-            key,
-            storageKey: primary,
-          });
-          return asyncValue;
+          try {
+            await SecureStore.setItemAsync(primary, asyncValue);
+            const verifiedValue = await SecureStore.getItemAsync(primary);
+            if (verifiedValue === asyncValue) {
+              await AsyncStorage.removeItem(primary).catch(() => undefined);
+              this.logWarnForKey(
+                key,
+                'Safely migrated sensitive data from AsyncStorage to SecureStore',
+                {
+                  key,
+                  storageKey: primary,
+                }
+              );
+              return asyncValue;
+            }
+          } catch {
+            // Migration failed: do NOT delete from origin, do NOT return unencrypted fallback as secure
+            this.logWarnForKey(
+              key,
+              'Migration from AsyncStorage to SecureStore failed verification',
+              { key }
+            );
+          }
         }
 
         if (legacy) {
           const legacyAsyncValue = await AsyncStorage.getItem(legacy);
           if (legacyAsyncValue != null) {
-            await SecureStore.setItemAsync(primary, legacyAsyncValue).catch(() => undefined);
-            await AsyncStorage.removeItem(legacy).catch(() => undefined);
-            logger.warn('Migrated sensitive data from legacy AsyncStorage key to SecureStore', {
-              key,
-              storageKey: primary,
-              legacyKey: legacy,
-            });
-            return legacyAsyncValue;
+            try {
+              await SecureStore.setItemAsync(primary, legacyAsyncValue);
+              const verifiedValue = await SecureStore.getItemAsync(primary);
+              if (verifiedValue === legacyAsyncValue) {
+                await AsyncStorage.removeItem(legacy).catch(() => undefined);
+                this.logWarnForKey(
+                  key,
+                  'Safely migrated sensitive data from legacy AsyncStorage key to SecureStore',
+                  {
+                    key,
+                    storageKey: primary,
+                    legacyKey: legacy,
+                  }
+                );
+                return legacyAsyncValue;
+              }
+            } catch {
+              this.logWarnForKey(
+                key,
+                'Legacy migration from AsyncStorage to SecureStore failed verification',
+                { key }
+              );
+            }
           }
 
-          // Only attempt legacy SecureStore key if it is valid (avoids expo-secure-store key errors)
           if (this.isValidSecureStoreKey(legacy)) {
             const legacySecureValue = await SecureStore.getItemAsync(legacy);
             if (legacySecureValue != null) {
               await SecureStore.setItemAsync(primary, legacySecureValue).catch(() => undefined);
               await SecureStore.deleteItemAsync(legacy).catch(() => undefined);
-              logger.warn('Migrated sensitive data from legacy SecureStore key', {
+              this.logWarnForKey(key, 'Migrated sensitive data from legacy SecureStore key', {
                 key,
                 storageKey: primary,
                 legacyKey: legacy,
@@ -232,36 +360,30 @@ class SecureStorage {
           }
         }
 
-        logger.debug('Retrieved from SecureStore', { key, storageKey: primary, found: false });
+        this.logDebugForKey(key, 'Retrieved from SecureStore', {
+          key,
+          storageKey: primary,
+          found: false,
+        });
         return null;
       } else {
-        // Fallback to AsyncStorage
-        const value = await AsyncStorage.getItem(primary);
-        if (value) {
-          logger.warn('Retrieved sensitive data from AsyncStorage (security risk)', {
-            key,
-            storageKey: primary,
-          });
-        }
-        if (value != null) return value;
-
-        if (legacy) {
-          const legacyValue = await AsyncStorage.getItem(legacy);
-          if (legacyValue != null) {
-            await AsyncStorage.setItem(primary, legacyValue);
-            await AsyncStorage.removeItem(legacy).catch(() => undefined);
-            logger.warn('Retrieved sensitive data from legacy AsyncStorage key (security risk)', {
-              key,
-              storageKey: primary,
-              legacyKey: legacy,
-            });
-            return legacyValue;
-          }
-        }
+        // FAIL-CLOSED: SecureStore unavailable $\rightarrow$ refuse to return unencrypted data from AsyncStorage
+        this.logWarnForKey(key, 'SecureStore unavailable, sensitive read blocked (fail-closed)', {
+          key,
+          storageKey: primary,
+        });
         return null;
       }
     } catch (error) {
-      logger.error('Failed to retrieve item from secure storage', { key }, error as Error);
+      this.logErrorForKey(
+        key,
+        'Failed to retrieve item from secure storage',
+        'read',
+        'read',
+        'SECURE_STORAGE_READ_FAILED',
+        { key },
+        error
+      );
       return null;
     }
   }
@@ -281,12 +403,12 @@ class SecureStorage {
         if (legacy) {
           await AsyncStorage.removeItem(legacy).catch(() => undefined);
         }
-        logger.debug('Removed from AsyncStorage', { key, storageKey: primary });
+        this.logDebugForKey(key, 'Removed from AsyncStorage', { key, storageKey: primary });
         return;
       }
 
       // Sensitive data from SecureStore
-      const isAvailable = await this.isSecureStoreAvailable();
+      const isAvailable = await this.isSecureStoreAvailable(key, 'remove');
 
       if (isAvailable) {
         await SecureStore.deleteItemAsync(primary);
@@ -297,17 +419,29 @@ class SecureStorage {
         if (legacy) {
           await AsyncStorage.removeItem(legacy).catch(() => undefined);
         }
-        logger.debug('Removed from SecureStore', { key, storageKey: primary });
+        this.logDebugForKey(key, 'Removed from SecureStore', { key, storageKey: primary });
       } else {
-        // Fallback to AsyncStorage
-        await AsyncStorage.removeItem(primary);
+        // Fail-closed remove: if SecureStore unavailable, attempt cleanup on AsyncStorage without exposing data
+        await AsyncStorage.removeItem(primary).catch(() => undefined);
         if (legacy) {
           await AsyncStorage.removeItem(legacy).catch(() => undefined);
         }
-        logger.warn('Removed from AsyncStorage (fallback)', { key, storageKey: primary });
+        this.logWarnForKey(
+          key,
+          'SecureStore unavailable, removed fallback copy from AsyncStorage',
+          { key, storageKey: primary }
+        );
       }
     } catch (error) {
-      logger.error('Failed to remove item from secure storage', { key }, error as Error);
+      this.logErrorForKey(
+        key,
+        'Failed to remove item from secure storage',
+        'remove',
+        'delete',
+        'SECURE_STORAGE_REMOVE_FAILED',
+        { key },
+        error
+      );
       throw error;
     }
   }
@@ -334,7 +468,15 @@ class SecureStorage {
     try {
       return JSON.parse(value) as T;
     } catch (error) {
-      logger.error('Failed to parse JSON from secure storage', { key }, error as Error);
+      this.logErrorForKey(
+        key,
+        'Failed to parse JSON from secure storage',
+        'read',
+        'deserialize',
+        'SECURE_STORAGE_DESERIALIZE_FAILED',
+        { key },
+        error
+      );
       return null;
     }
   }
@@ -352,8 +494,6 @@ class SecureStorage {
         await AsyncStorage.multiRemove(whitelistedKeys);
       }
 
-      // SecureStore doesn't have a clear all method
-      // Apps should manually track and remove their keys
       logger.warn('Cleared secure storage', {
         asyncStorageKeysCleared: whitelistedKeys.length,
       });
@@ -377,13 +517,11 @@ class SecureStorage {
 
     for (const key of keys) {
       try {
-        // Skip whitelisted keys
         if (this.shouldUseAsyncStorage(key)) {
           logger.debug('Skipping whitelisted key', { key });
           continue;
         }
 
-        // Get value from AsyncStorage
         const value = await AsyncStorage.getItem(key);
         if (!value) {
           logger.debug('Key not found in AsyncStorage', { key });
@@ -393,11 +531,16 @@ class SecureStorage {
         // Store in SecureStore
         await this.setItem(key, value);
 
-        // Remove from AsyncStorage
-        await AsyncStorage.removeItem(key);
-
-        migrated++;
-        logger.debug('Migrated key successfully', { key });
+        // Verify and remove from AsyncStorage
+        const verified = await this.getItem(key);
+        if (verified === value) {
+          await AsyncStorage.removeItem(key);
+          migrated++;
+          logger.debug('Migrated key successfully', { key });
+        } else {
+          failed++;
+          logger.warn('Migration verification failed', { key });
+        }
       } catch (error) {
         failed++;
         logger.error('Failed to migrate key', { key }, error as Error);
@@ -412,34 +555,3 @@ class SecureStorage {
 const secureStorage = new SecureStorage();
 
 export default secureStorage;
-
-/**
- * Usage Examples:
- *
- * // Authentication tokens
- * await secureStorage.setItem('auth_token', userToken);
- * const token = await secureStorage.getItem('auth_token');
- *
- * // User credentials
- * await secureStorage.setObject('user_credentials', {
- *   email: 'user@example.com',
- *   refreshToken: 'xyz...'
- * });
- *
- * // Premium subscription data
- * await secureStorage.setObject('premium_status', {
- *   plan: 'premium',
- *   expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000
- * });
- *
- * // Migration from old AsyncStorage implementation
- * await secureStorage.migrateFromAsyncStorage([
- *   'premium_status',
- *   'user_consent',
- *   'analytics_user'
- * ]);
- *
- * // Logout - clear sensitive data
- * await secureStorage.removeItem('auth_token');
- * await secureStorage.removeItem('user_credentials');
- */

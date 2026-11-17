@@ -96,7 +96,12 @@ const createMatchLifecycleRepository = ({ firestore }) => {
 
       const driverId = vacancy.driverId;
       const driverProfile = driverId ? await transaction.get(users.doc(driverId)) : null;
-      if (!driverId || !driverProfile?.exists || driverProfile.get('role') !== 'driver') {
+      if (
+        !driverId ||
+        !driverProfile?.exists ||
+        driverProfile.get('role') !== 'driver' ||
+        driverProfile.get('approved') !== true
+      ) {
         fail('failed-precondition');
       }
 
@@ -117,6 +122,9 @@ const createMatchLifecycleRepository = ({ firestore }) => {
       let request;
       if (!requestSnapshot.exists) {
         if (!isNewRequest) fail('not-found');
+        if (requestData.specialNeeds !== undefined) {
+          fail('invalid-argument', 'specialNeeds is disallowed under child privacy minimization.');
+        }
         if (
           typeof requestData.school !== 'string' ||
           !requestData.school.trim() ||
@@ -128,9 +136,15 @@ const createMatchLifecycleRepository = ({ firestore }) => {
           requestData.childrenCount < 1 ||
           requestData.childrenCount > vacancy.totalSeats ||
           (requestData.ages !== undefined && typeof requestData.ages !== 'string') ||
-          (requestData.specialNeeds !== undefined && typeof requestData.specialNeeds !== 'string')
+          !Array.isArray(requestData.passengerIds) ||
+          requestData.passengerIds.length !== requestData.childrenCount ||
+          !requestData.passengerIds.every(validId) ||
+          new Set(requestData.passengerIds).size !== requestData.passengerIds.length
         ) {
-          fail('invalid-argument');
+          fail(
+            'invalid-argument',
+            'Valid, unique passengerIds matching childrenCount are mandatory.'
+          );
         }
         if (!isVacancyCompatible(requestData, vacancy)) fail('failed-precondition');
         if (vacancy.availableSeats < requestData.childrenCount) fail('resource-exhausted');
@@ -142,8 +156,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
           zone: requestData.zone.trim(),
           schedule: requestData.schedule.trim(),
           childrenCount: requestData.childrenCount,
+          passengerIds: requestData.passengerIds,
           ages: requestData.ages?.trim() || '',
-          specialNeeds: requestData.specialNeeds?.trim() || '',
           createdAt: fieldValue.serverTimestamp(),
           status: 'active',
           activeMatchId: null,
@@ -191,8 +205,8 @@ const createMatchLifecycleRepository = ({ firestore }) => {
         zone: request.zone,
         schedule: request.schedule,
         childrenCount: request.childrenCount,
+        passengerIds: Array.isArray(request.passengerIds) ? request.passengerIds : [],
         ages: request.ages || '',
-        specialNeeds: request.specialNeeds || '',
         status: 'pending',
         capacityReservationStatus: 'unreserved',
         reservedSeats: 0,

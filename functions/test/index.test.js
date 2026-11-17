@@ -91,6 +91,13 @@ describe('Cloud Functions Unit Tests', () => {
     }
   });
 
+  describe('Passenger Authorization Callables Exports', () => {
+    test('exports onboardPassenger and updatePassengerAuthorizationStatus', () => {
+      expect(typeof myFunctions.onboardPassenger).toBe('function');
+      expect(typeof myFunctions.updatePassengerAuthorizationStatus).toBe('function');
+    });
+  });
+
   describe('notifyDriversNewRequest', () => {
     beforeEach(() => {
       // Reset mocks

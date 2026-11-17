@@ -127,8 +127,8 @@ const requestData = {
   zone: 'Zona Norte',
   schedule: 'Mañana',
   childrenCount: 2,
+  passengerIds: ['passenger-1', 'passenger-2'],
   ages: '8',
-  specialNeeds: '',
   driverId: 'attacker-controlled-value',
 };
 
@@ -169,6 +169,26 @@ describe('match lifecycle repository', () => {
     });
   });
 
+  test('does not create a match when the vacancy driver is no longer approved', async () => {
+    const firestore = createFirestore();
+    seedBase(firestore);
+    firestore.seed('users/driver-1', { role: 'driver', approved: false });
+    const repository = createMatchLifecycleRepository({ firestore });
+
+    await expect(
+      repository.createOrAddMatch({
+        actorUid: 'parent-1',
+        requestId: 'request-revoked-driver',
+        vacancyId: 'vacancy-1',
+        requestData,
+      })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+    expect(firestore.read('requests/request-revoked-driver')).toBeUndefined();
+    const matchId = deterministicMatchId('request-revoked-driver', 'vacancy-1');
+    expect(firestore.read(`matches/${matchId}`)).toBeUndefined();
+  });
+
   test('acceptance reserves capacity and repeated acceptance is idempotent', async () => {
     const firestore = createFirestore();
     seedBase(firestore);
@@ -206,7 +226,7 @@ describe('match lifecycle repository', () => {
   test('rejects acceptMatch when driver profile has approved: false', async () => {
     const firestore = createFirestore();
     firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
-    firestore.seed('users/driver-1', { role: 'driver', approved: false });
+    firestore.seed('users/driver-1', { role: 'driver', approved: true });
     firestore.seed('vacancies/vacancy-1', {
       driverId: 'driver-1',
       driverName: 'Driver',
@@ -225,6 +245,7 @@ describe('match lifecycle repository', () => {
       vacancyId: 'vacancy-1',
       requestData,
     });
+    firestore.seed('users/driver-1', { role: 'driver', approved: false });
 
     await expect(repository.acceptMatch({ actorUid: 'driver-1', matchId })).rejects.toMatchObject({
       code: 'permission-denied',
@@ -239,7 +260,7 @@ describe('match lifecycle repository', () => {
   test('rejects acceptMatch when driver profile lacks approved field', async () => {
     const firestore = createFirestore();
     firestore.seed('users/parent-1', { role: 'parent', displayName: 'Parent', whatsapp: '111' });
-    firestore.seed('users/driver-1', { role: 'driver' });
+    firestore.seed('users/driver-1', { role: 'driver', approved: true });
     firestore.seed('vacancies/vacancy-1', {
       driverId: 'driver-1',
       driverName: 'Driver',
@@ -258,6 +279,7 @@ describe('match lifecycle repository', () => {
       vacancyId: 'vacancy-1',
       requestData,
     });
+    firestore.seed('users/driver-1', { role: 'driver' });
 
     await expect(repository.acceptMatch({ actorUid: 'driver-1', matchId })).rejects.toMatchObject({
       code: 'permission-denied',
@@ -541,8 +563,8 @@ describe('match lifecycle repository', () => {
       zone: 'Zona Norte',
       schedule: 'Mañana',
       childrenCount: 2,
+      passengerIds: ['passenger-1', 'passenger-2'],
       ages: '',
-      specialNeeds: '',
     });
     const repository = createMatchLifecycleRepository({ firestore });
     const results = await Promise.allSettled([
@@ -913,7 +935,7 @@ describe('match lifecycle repository', () => {
       actorUid: 'parent-1',
       requestId: 'request-1',
       vacancyId: 'vacancy-1',
-      requestData: { ...requestData, childrenCount: 1 },
+      requestData: { ...requestData, childrenCount: 1, passengerIds: ['passenger-1'] },
     });
     const vacancy = firestore.read('vacancies/vacancy-1');
     vacancy.status = 'inactive';

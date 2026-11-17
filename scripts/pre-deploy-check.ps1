@@ -2,8 +2,12 @@
 # Verifica que todo esté listo antes de deploy a production
 
 param(
-    [switch]$Fix,
-    [switch]$Staging
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('staging', 'production')]
+    [string]$Environment,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ProjectId
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +18,8 @@ Write-Host "   📋 Pre-Deploy Checklist" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
 
-$environment = if ($Staging) { "STAGING" } else { "PRODUCTION" }
+$environment = $Environment.ToUpperInvariant()
+$Staging = ($Environment -eq 'staging')
 Write-Host "🎯 Environment: $environment" -ForegroundColor $(if ($Staging) { 'Yellow' } else { 'Red' })
 Write-Host ""
 
@@ -28,7 +33,6 @@ function Test-DeployItem {
         [string]$Name,
         [scriptblock]$Test,
         [string]$FailMessage,
-        [scriptblock]$FixAction = $null,
         [bool]$Critical = $true
     )
     
@@ -46,10 +50,6 @@ function Test-DeployItem {
                 Write-Host " ❌" -ForegroundColor Red
                 $script:issues += $FailMessage
                 
-                if ($Fix -and $FixAction) {
-                    Write-Host "   🔧 Intentando fix..." -ForegroundColor Yellow
-                    & $FixAction
-                }
             } else {
                 Write-Host " ⚠️" -ForegroundColor Yellow
                 $script:warnings += $FailMessage
@@ -87,9 +87,7 @@ Test-DeployItem -Name "functions/package.json existe" -Test {
 
 Test-DeployItem -Name ".firebaserc existe" -Test {
     Test-Path ".firebaserc"
-} -FailMessage "Falta .firebaserc" -FixAction {
-    '{\"projects\": {\"default\": \"furgokid-app\"}}' | Out-File -FilePath ".firebaserc" -Encoding utf8
-}
+} -FailMessage "Falta .firebaserc"
 
 # ============================================
 # 2. DEPENDENCIAS
@@ -100,19 +98,11 @@ Write-Host ""
 
 Test-DeployItem -Name "node_modules instalado" -Test {
     Test-Path "node_modules"
-} -FailMessage "Falta node_modules - ejecuta: npm install" -FixAction {
-    if ($Fix) { npm install }
-}
+} -FailMessage "Falta node_modules - ejecuta el flujo de instalación local aprobado"
 
 Test-DeployItem -Name "functions/node_modules instalado" -Test {
     Test-Path "functions/node_modules"
-} -FailMessage "Falta functions/node_modules - ejecuta: cd functions && npm install" -FixAction {
-    if ($Fix) {
-        Push-Location functions
-        npm install
-        Pop-Location
-    }
-}
+} -FailMessage "Falta functions/node_modules - ejecuta el flujo de instalación local aprobado"
 
 # ============================================
 # 3. TESTS
@@ -145,9 +135,7 @@ Test-DeployItem -Name "ESLint pasa" -Test {
 Test-DeployItem -Name "Prettier format OK" -Test {
     npm run format:check --silent 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
-} -FailMessage "Format issues - ejecuta: npm run format" -FixAction {
-    if ($Fix) { npm run format }
-} -Critical $false
+} -FailMessage "Format issues - revisa el formato manualmente" -Critical $false
 
 # ============================================
 # 5. FIREBASE AUTH
@@ -157,18 +145,17 @@ Write-Host "🔐 FIREBASE AUTH" -ForegroundColor Yellow
 Write-Host ""
 
 Test-DeployItem -Name "Firebase autenticado" -Test {
-    firebase projects:list 2>&1 | Out-Null
+    firebase --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
-} -FailMessage "No autenticado - ejecuta: firebase login"
+} -FailMessage "Firebase CLI no está disponible localmente (este diagnóstico no inicia sesión)"
 
-Test-DeployItem -Name "Proyecto correcto" -Test {
-    $currentProject = firebase use | Out-String
-    if ($Staging) {
-        $currentProject -match "staging"
-    } else {
-        $currentProject -match "furgokid-app" -or $currentProject -match "production"
-    }
-} -FailMessage "Proyecto incorrecto - ejecuta: firebase use $(if ($Staging) { 'staging' } else { 'production' })"
+Test-DeployItem -Name "Proyecto correcto (FIREBASE_PROJECT_ID)" -Test {
+    . (Join-Path $PSScriptRoot "firebase-project-guard.ps1")
+    $expectedEnvironment = $Environment
+    $candidate = $ProjectId
+    $null = Assert-FirebaseProjectMatch -Environment $expectedEnvironment -ProjectId $candidate
+    $true
+} -FailMessage "El proyecto explícito '$ProjectId' no coincide con el entorno '$Environment'"
 
 # ============================================
 # 6. SEGURIDAD
@@ -220,19 +207,6 @@ if (-not $Staging) {
 }
 
 # ============================================
-# 8. BACKUP
-# ============================================
-Write-Host ""
-Write-Host "💾 BACKUP" -ForegroundColor Yellow
-Write-Host ""
-
-Test-DeployItem -Name "Directorio backups/ existe" -Test {
-    Test-Path "backups"
-} -FailMessage "Falta directorio backups/" -FixAction {
-    New-Item -ItemType Directory -Path "backups" -Force | Out-Null
-} -Critical $false
-
-# ============================================
 # RESUMEN
 # ============================================
 Write-Host ""
@@ -272,10 +246,10 @@ if ($issues.Count -eq 0) {
     
     if ($Staging) {
         Write-Host "Ejecuta:" -ForegroundColor Yellow
-        Write-Host "   npm run deploy:staging" -ForegroundColor Cyan
+        Write-Host "   .\scripts\deploy-staging.ps1 -ProjectId furgokid-staging" -ForegroundColor Cyan
     } else {
         Write-Host "Ejecuta:" -ForegroundColor Yellow
-        Write-Host "   firebase deploy --only functions" -ForegroundColor Cyan
+        Write-Host "   .\scripts\deploy.ps1 -ProjectId furgokid" -ForegroundColor Cyan
         Write-Host "   npm run smoke:test" -ForegroundColor Cyan
     }
     
@@ -286,13 +260,7 @@ if ($issues.Count -eq 0) {
     Write-Host "=====================================" -ForegroundColor Red
     Write-Host ""
     
-    if ($Fix) {
-        Write-Host "💡 Algunos issues fueron auto-fixeados. Revisa arriba." -ForegroundColor Yellow
-        Write-Host "   Re-ejecuta para validar: .\scripts\pre-deploy-check.ps1" -ForegroundColor Cyan
-    } else {
-        Write-Host "💡 Para auto-fix algunos issues:" -ForegroundColor Yellow
-        Write-Host "   .\scripts\pre-deploy-check.ps1 -Fix" -ForegroundColor Cyan
-    }
+    Write-Host "💡 Corrige los hallazgos en un cambio revisable y vuelve a ejecutar el diagnóstico." -ForegroundColor Yellow
     
     exit 1
 }

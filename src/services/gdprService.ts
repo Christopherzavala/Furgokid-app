@@ -35,7 +35,7 @@ interface UserData {
  * GDPR Article 20: Right to Data Portability
  */
 export const exportUserData = async (userId: string): Promise<UserData> => {
-  logger.info('Exporting user data', { userId });
+  logger.privacySafeInfo('Exporting user data', { operation: 'gdpr_export', stage: 'start' });
 
   try {
     const db = getFirestore();
@@ -100,8 +100,9 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
     const preferences = await secureStorage.getObject('user_preferences');
     userData.preferences = preferences || null;
 
-    logger.info('User data exported successfully', {
-      userId,
+    logger.privacySafeInfo('User data exported successfully', {
+      operation: 'gdpr_export',
+      stage: 'complete',
       profileExists: !!userData.profile,
       routesCount: userData.routes.length,
       requestsCount: userData.requests.length,
@@ -111,7 +112,11 @@ export const exportUserData = async (userId: string): Promise<UserData> => {
 
     return userData;
   } catch (error) {
-    logger.error('Failed to export user data', { userId, error });
+    logger.privacySafeError('Failed to export user data', {
+      operation: 'gdpr_export',
+      stage: 'process',
+      code: 'GDPR_EXPORT_FAILED',
+    });
     throw new Error('No se pudo exportar los datos del usuario');
   }
 };
@@ -172,7 +177,15 @@ const clearLocalAccountData = async (): Promise<void> => {
       try {
         await secureStorage.removeItem(key);
       } catch (error) {
-        logger.warn('Failed to clear local account data', { key, error });
+        if (key === 'parental_consent') {
+          logger.privacySafeWarn('Failed to clear local account data', {
+            operation: 'local_account_data_cleanup',
+            stage: 'delete_local_consent',
+            code: 'LOCAL_PARENTAL_CONSENT_DELETE_FAILED',
+          });
+        } else {
+          logger.warn('Failed to clear local account data', { key, error });
+        }
       }
     })
   );
@@ -219,7 +232,10 @@ export const deleteUserAccount = requestAccountDeletion;
  * GDPR Article 15: Right of Access
  */
 export const getUserDataSummary = async (userId: string) => {
-  logger.info('Getting user data summary', { userId });
+  logger.privacySafeInfo('Getting user data summary', {
+    operation: 'gdpr_summary',
+    stage: 'start',
+  });
 
   try {
     const db = getFirestore();
@@ -272,7 +288,11 @@ export const getUserDataSummary = async (userId: string) => {
 
     return summary;
   } catch (error) {
-    logger.error('Failed to get user data summary', { userId, error });
+    logger.privacySafeError('Failed to get user data summary', {
+      operation: 'gdpr_summary',
+      stage: 'process',
+      code: 'GDPR_SUMMARY_FAILED',
+    });
     throw error;
   }
 };
@@ -316,7 +336,11 @@ export const verifyParentalConsent = async (): Promise<boolean> => {
     });
 
     if (!isValid) {
-      logger.warn('Parental consent is incomplete', { consent });
+      logger.privacySafeWarn('Parental consent is incomplete', {
+        operation: 'parental_consent_verification',
+        stage: 'validate',
+        code: 'PARENTAL_CONSENT_INCOMPLETE',
+      });
       return false;
     }
 
@@ -326,15 +350,21 @@ export const verifyParentalConsent = async (): Promise<boolean> => {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     if (consentDate < oneYearAgo) {
-      logger.warn('Parental consent is older than 1 year', {
-        consentDate: consent.consentDate,
+      logger.privacySafeWarn('Parental consent is older than 1 year', {
+        operation: 'parental_consent_verification',
+        stage: 'validate',
+        code: 'PARENTAL_CONSENT_REVIEW_DUE',
       });
       // Still valid, but we should prompt for re-verification
     }
 
     return true;
   } catch (error) {
-    logger.error('Failed to verify parental consent', { error });
+    logger.privacySafeError('Failed to verify parental consent', {
+      operation: 'parental_consent_verification',
+      stage: 'process',
+      code: 'PARENTAL_CONSENT_VERIFICATION_FAILED',
+    });
     return false;
   }
 };

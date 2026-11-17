@@ -299,8 +299,6 @@ export const AuthProvider = ({ children }) => {
       try {
         await cleanupDriverTracking();
       } catch (err) {
-        // A deleted/disabled identity can no longer authorize the sweep.
-        // Close the local session instead of trapping the user in the app.
         if (!isAuthenticationUnavailableError(err)) throw err;
         console.warn('Identity is unavailable; completing logout locally.');
         await clearLocalTrackingState();

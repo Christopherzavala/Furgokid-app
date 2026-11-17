@@ -141,6 +141,20 @@ const ParentHomeScreen = ({ navigation }) => {
         <View style={styles.actionsContainer}>
           <TouchableOpacity
             style={styles.actionButton}
+            onPress={() => navigation.navigate('PassengerAuthorizations')}
+            accessible={true}
+            accessibilityLabel="Administrar pasajeros y autorizaciones"
+            accessibilityRole="button"
+            accessibilityHint="Abrir la gestión de pasajeros y consultar su estado en el servidor"
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="people-outline" size={24} color="#EF6C00" />
+            </View>
+            <Text style={styles.actionText}>Pasajeros</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
             onPress={() => navigation.navigate('ParentRequest')}
             accessible={true}
             accessibilityLabel="Publicar necesidad de transporte"

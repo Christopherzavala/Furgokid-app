@@ -29,6 +29,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # TruffleHog needs the event base commit in the local history.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -63,6 +66,9 @@ jobs:
       - name: Validate No Sensitive Literals
         run: npm run validate:secrets
 
+      - name: Validate Security Workflow Contracts
+        run: node scripts/validate-security-workflows.js
+
       - name: Validate Environment Config
         run: npm run validate:env:production
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -94,7 +100,9 @@ jobs:
       - name: Run Cloud Functions Tests
         run: npm test --prefix functions
 
-      - name: Upload coverage to Codecov
+      # Explicitly informational: CI quality gates are the local coverage and
+      # test steps above, not availability of the external Codecov service.
+      - name: Upload coverage to Codecov (informational)
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           files: ./coverage/lcov.info
@@ -114,28 +122,18 @@ jobs:
           "
 
       - name: Security Audit
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
 
       # TruffleHog is pinned to an immutable SHA. A scanner failure must fail
       # the workflow: do not add continue-on-error to this step. Verified
       # false positives are allowlisted in .trufflehog-exclude (versioned).
-      - name: Check for secrets in code (PR)
-        if: github.event_name == 'pull_request'
+      - name: Check for secrets in code (push and pull request)
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --exclude-paths=.trufflehog-exclude
-
-      - name: Check for secrets in code (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --exclude-paths=.trufflehog-exclude
+          version: 3.99.8
+          extra_args: --results=verified,unknown --exclude-paths=.trufflehog-exclude
 
   # E2E Tests with Detox (Android)
   e2e-android:

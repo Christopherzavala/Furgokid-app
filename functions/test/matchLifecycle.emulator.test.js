@@ -67,7 +67,10 @@ emulatorDescribe('match lifecycle (Firestore Emulator)', () => {
         schedule: 'Mañana',
         childrenCount: seats,
         ages: '',
-        specialNeeds: '',
+        passengerIds: Array.from(
+          { length: seats },
+          (_, index) => `${requestId}-passenger-${index + 1}`
+        ),
       },
     });
     matchIds.add(result.matchId);
