@@ -37,6 +37,7 @@ export interface PassengerAuthorizationRecord {
   responsibilityDeclared: boolean;
   privacyNoticeAccepted: boolean;
   acceptedAt?: string;
+  cleanupStatus?: string;
 }
 
 export type PassengerOperationErrorKind = 'known' | 'unknown';
@@ -299,6 +300,7 @@ export const createPassengerAuthorizationService = (
         typeof record.acceptedAt?.toDate === 'function'
           ? record.acceptedAt.toDate().toISOString()
           : undefined,
+      cleanupStatus: typeof record.cleanupStatus === 'string' ? record.cleanupStatus : 'none',
     };
   };
 
