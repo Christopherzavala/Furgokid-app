@@ -24,10 +24,6 @@ service cloud.firestore {
       return hasRole('admin');
     }
 
-    function isDriver() {
-      return hasRole('driver');
-    }
-
     function isParent() {
       return hasRole('parent');
     }
@@ -153,16 +149,6 @@ service cloud.firestore {
              request.time > resource.data.lastModified + duration.value(cooldownSeconds, 's');
     }
 
-    // Check if user hasn't exceeded daily limit
-    function dailyLimit(limitCount) {
-      let today = request.time.toMillis() / 86400000; // Days since epoch
-      let lastUpdate = resource.data.get(['rateLimitDay'], 0);
-      let count = resource.data.get(['rateLimitCount'], 0);
-
-      // Reset counter if it's a new day
-      return (today > lastUpdate) || (count < limitCount);
-    }
-
     // Validate request size (prevent large document spam)
     function validRequestSize() {
       return request.resource.size() < 1000000; // 1MB max document size
@@ -175,17 +161,6 @@ service cloud.firestore {
              request.resource.data.availableSeats == request.resource.data.totalSeats &&
              request.resource.data.reservedSeats is int &&
              request.resource.data.reservedSeats == 0;
-    }
-
-    // Ensure required fields for rate limiting are set
-    function setRateLimitFields() {
-      let today = request.time.toMillis() / 86400000;
-      let isNewDay = !('rateLimitDay' in resource.data) ||
-                      (request.time.toMillis() / 86400000) > resource.data.rateLimitDay;
-
-      return request.resource.data.lastModified == request.time &&
-             request.resource.data.rateLimitDay == today &&
-             request.resource.data.rateLimitCount == (isNewDay ? 1 : resource.data.rateLimitCount + 1);
     }
 
     // ============================================================================
