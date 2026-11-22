@@ -51,10 +51,150 @@ const createDriverApprovalRepository = ({
   }
 
   const users = firestore.collection('users');
+  const requestsCol = firestore.collection('requests');
+  const vacanciesCol = firestore.collection('vacancies');
 
   const getProfile = async (transaction, uid) => {
     const snapshot = await transaction.get(users.doc(uid));
     return snapshot.exists ? snapshot.data() : null;
+  };
+
+  /**
+   * Helper implementing two-phase transaction execution (Phase 1: Reads, Phase 2: Writes)
+   * for cascading cancellation of active vacancies and matches when a driver is rejected or revoked.
+   */
+  const cascadeCancelDriverOperations = async ({ transaction, vacanciesSnap, matchesSnap }) => {
+    const timestamp = serverTimestamp();
+
+    // Collect unique requestRefs and vacancyRefs to batch reads
+    const requestRefsMap = new Map();
+    const vacancyRefsMap = new Map();
+
+    for (const docSnap of matchesSnap.docs) {
+      const match = docSnap.data();
+      if (match.requestId) {
+        requestRefsMap.set(match.requestId, requestsCol.doc(match.requestId));
+      }
+      if (match.vacancyId) {
+        vacancyRefsMap.set(match.vacancyId, vacanciesCol.doc(match.vacancyId));
+      }
+    }
+
+    // Phase 1: All transaction.get calls via Promise.all before any writes
+    const requestRefs = [...requestRefsMap.values()];
+    const vacancyRefsFromMatches = [...vacancyRefsMap.values()];
+
+    const [requestSnaps, vacancySnapsFromMatches] = await Promise.all([
+      Promise.all(requestRefs.map((ref) => transaction.get(ref))),
+      Promise.all(vacancyRefsFromMatches.map((ref) => transaction.get(ref))),
+    ]);
+
+    const requestMap = new Map();
+    requestSnaps.forEach((snap, idx) => {
+      requestMap.set(requestRefs[idx].id, snap);
+    });
+
+    const vacancySnapMap = new Map();
+    vacancySnapsFromMatches.forEach((snap, idx) => {
+      vacancySnapMap.set(vacancyRefsFromMatches[idx].id, snap);
+    });
+
+    // Also include explicitly fetched vacancies from vacanciesSnap query
+    for (const docSnap of vacanciesSnap.docs) {
+      if (!vacancySnapMap.has(docSnap.id)) {
+        const snap = await transaction.get(docSnap.ref);
+        vacancySnapMap.set(docSnap.id, snap);
+      }
+    }
+
+    // Phase 2: Calculations and Unique Writes
+    const releasedSeatsByVacancy = new Map(); // vacancyId -> seats to add back
+    for (const docSnap of matchesSnap.docs) {
+      const match = docSnap.data();
+      if (
+        match.capacityReservationStatus === 'reserved' &&
+        Number.isInteger(match.reservedSeats) &&
+        match.vacancyId
+      ) {
+        const currentReleased = releasedSeatsByVacancy.get(match.vacancyId) || 0;
+        releasedSeatsByVacancy.set(match.vacancyId, currentReleased + match.reservedSeats);
+      }
+    }
+
+    // Update vacancies: cancel and restore released seats in a single update per vacancy
+    const processedVacancyIds = new Set();
+    for (const docSnap of vacanciesSnap.docs) {
+      processedVacancyIds.add(docSnap.id);
+      const vacSnap = vacancySnapMap.get(docSnap.id);
+      const updateData = {
+        status: 'cancelled',
+        cancellationReason: 'driver_revoked',
+        updatedAt: timestamp,
+      };
+      if (vacSnap && vacSnap.exists) {
+        const vacancy = vacSnap.data();
+        const seatsToAdd = releasedSeatsByVacancy.get(docSnap.id) || 0;
+        if (seatsToAdd > 0) {
+          updateData.availableSeats = (vacancy.availableSeats || 0) + seatsToAdd;
+          updateData.reservedSeats = Math.max(0, (vacancy.reservedSeats || 0) - seatsToAdd);
+        }
+      }
+      transaction.update(docSnap.ref, updateData);
+    }
+
+    // Also handle vacancies referenced by matches that weren't in vacanciesSnap query
+    for (const [vacancyId, seatsToAdd] of releasedSeatsByVacancy.entries()) {
+      if (!processedVacancyIds.has(vacancyId)) {
+        const vacancyRef = vacanciesCol.doc(vacancyId);
+        const vacSnap = vacancySnapMap.get(vacancyId);
+        if (vacSnap && vacSnap.exists) {
+          const vacancy = vacSnap.data();
+          transaction.update(vacancyRef, {
+            status: 'cancelled',
+            availableSeats: (vacancy.availableSeats || 0) + seatsToAdd,
+            reservedSeats: Math.max(0, (vacancy.reservedSeats || 0) - seatsToAdd),
+            cancellationReason: 'driver_revoked',
+            updatedAt: timestamp,
+          });
+        }
+      }
+    }
+
+    // Update requests to clear activeMatchId (once per unique requestId)
+    const processedRequestIds = new Set();
+    for (const docSnap of matchesSnap.docs) {
+      const match = docSnap.data();
+      if (match.requestId && !processedRequestIds.has(match.requestId)) {
+        processedRequestIds.add(match.requestId);
+        const reqSnap = requestMap.get(match.requestId);
+        if (reqSnap && reqSnap.exists && reqSnap.data().activeMatchId === docSnap.id) {
+          transaction.update(requestsCol.doc(match.requestId), {
+            activeMatchId: FieldValue.delete(),
+            updatedAt: timestamp,
+          });
+        }
+      }
+    }
+
+    // Update matches and delete tracking current docs
+    for (const docSnap of matchesSnap.docs) {
+      const match = docSnap.data();
+      const matchRef = docSnap.ref;
+      const trackingRef = matchRef.collection('tracking').doc('current');
+      const hasReservation = match.capacityReservationStatus === 'reserved';
+
+      transaction.update(matchRef, {
+        status: 'cancelled',
+        capacityReservationStatus: hasReservation ? 'released' : 'unreserved',
+        cancelledBy: 'system',
+        cancellationReason: 'driver_revoked',
+        cancelledAt: timestamp,
+        updatedAt: timestamp,
+      });
+      transaction.delete(trackingRef);
+    }
+
+    return [...new Set(matchesSnap.docs.map((d) => d.data().parentId).filter(Boolean))];
   };
 
   const requestDriverApproval = async ({ actorUid }) => {
@@ -95,6 +235,24 @@ const createDriverApprovalRepository = ({
       fail('invalid-argument');
     }
     if (actorUid === targetUid) fail('permission-denied');
+
+    let vacanciesSnap = { docs: [] };
+    let matchesSnap = { docs: [] };
+
+    if (decision === 'revoke' || decision === 'reject') {
+      [vacanciesSnap, matchesSnap] = await Promise.all([
+        firestore
+          .collection('vacancies')
+          .where('driverId', '==', targetUid)
+          .where('status', '==', 'active')
+          .get(),
+        firestore
+          .collection('matches')
+          .where('driverId', '==', targetUid)
+          .where('status', 'in', ['active', 'accepted', 'pending'])
+          .get(),
+      ]);
+    }
 
     return firestore.runTransaction(async (transaction) => {
       const [adminSnapshot, targetSnapshot] = await transaction.getAll(
@@ -144,15 +302,30 @@ const createDriverApprovalRepository = ({
           fail('failed-precondition');
         }
 
-        transaction.update(targetRef, {
-          role: 'parent',
-          approved: false,
-          driverRequestStatus: REQUEST_STATUS.REJECTED,
-          driverRequestUpdatedAt: serverTimestamp(),
-        });
-        return { status: REQUEST_STATUS.REJECTED, idempotent: false };
+        try {
+          const affectedParentIds = await cascadeCancelDriverOperations({
+            transaction,
+            vacanciesSnap,
+            matchesSnap,
+          });
+
+          transaction.update(targetRef, {
+            role: 'parent',
+            approved: false,
+            driverRequestStatus: REQUEST_STATUS.REJECTED,
+            driverRequestUpdatedAt: serverTimestamp(),
+          });
+
+          const res = { status: REQUEST_STATUS.REJECTED, idempotent: false };
+          if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
+          return res;
+        } catch (err) {
+          console.log('CASCADE REJECT ERROR:', err);
+          throw err;
+        }
       }
 
+      // Revoke
       if (
         currentStatus === REQUEST_STATUS.REVOKED &&
         targetProfile.role === 'parent' &&
@@ -168,19 +341,34 @@ const createDriverApprovalRepository = ({
         fail('failed-precondition');
       }
 
-      transaction.update(targetRef, {
-        role: 'parent',
-        approved: false,
-        driverRequestStatus: REQUEST_STATUS.REVOKED,
-        driverRequestUpdatedAt: serverTimestamp(),
-      });
-      return { status: REQUEST_STATUS.REVOKED, idempotent: false };
+      try {
+        const affectedParentIds = await cascadeCancelDriverOperations({
+          transaction,
+          vacanciesSnap,
+          matchesSnap,
+        });
+
+        transaction.update(targetRef, {
+          role: 'parent',
+          approved: false,
+          driverRequestStatus: REQUEST_STATUS.REVOKED,
+          driverRequestUpdatedAt: serverTimestamp(),
+        });
+
+        const res = { status: REQUEST_STATUS.REVOKED, idempotent: false };
+        if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
+        return res;
+      } catch (err) {
+        console.log('CASCADE REVOKE ERROR:', err);
+        throw err;
+      }
     });
   };
 
   return {
     requestDriverApproval,
     reviewDriverRequest,
+    firestore,
   };
 };
 
