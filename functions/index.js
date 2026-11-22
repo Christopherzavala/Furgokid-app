@@ -171,6 +171,11 @@ exports.updatePassengerAuthorizationStatus = onCall(
   passengerAuthCallables.updatePassengerAuthorizationStatusCallable
 );
 
+const custodyChain = require('./src/custodyChain');
+exports.updatePassengerState = onCall(callOpts, custodyChain.updatePassengerStateCallable);
+exports.generateHandoverOtp = onCall(callOpts, custodyChain.generateHandoverOtp);
+exports.confirmStudentHandover = onCall(callOpts, custodyChain.confirmStudentHandover);
+
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
   createMatchFinalizationCleanup({

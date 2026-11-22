@@ -425,6 +425,19 @@ service cloud.firestore {
         // Shared current points are deleted only by trusted backend code.
         allow delete: if false;
       }
+
+      match /handoverOtps/{otpId} {
+        allow read, write: if false;
+      }
+
+      match /passengerStates/{passengerId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          (isParent() && resource.data.parentId == request.auth.uid) ||
+          (isApprovedDriver() && resource.data.driverId == request.auth.uid)
+        );
+        allow write: if false;
+      }
     }
 
     // ============================================================================

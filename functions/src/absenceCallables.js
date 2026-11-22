@@ -51,6 +51,22 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     );
   }
 
+  // Check passenger state machine to prevent reporting absence after boarding
+  const stateSnap = await matchRef.collection('passengerStates').doc(passengerId).get();
+  if (stateSnap.exists) {
+    const currentState = stateSnap.data().state;
+    if (
+      ['BOARDING_CONFIRMED', 'IN_TRANSIT', 'ARRIVAL_CONFIRMED', 'HANDOVER_CONFIRMED'].includes(
+        currentState
+      )
+    ) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Cannot register absence because the student has already boarded or started transit.'
+      );
+    }
+  }
+
   const absenceId = `abs_${matchId}_${passengerId}_${date.trim()}`;
   const absenceRef = matchRef.collection('absences').doc(absenceId);
 
