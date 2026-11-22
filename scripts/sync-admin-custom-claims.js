@@ -8,10 +8,17 @@
  *   GOOGLE_APPLICATION_CREDENTIALS set or firebase-admin initialized with service account.
  */
 
-const admin = require('firebase-admin');
+let admin;
+try {
+  admin = require('firebase-admin');
+} catch (err) {
+  admin = require('../functions/node_modules/firebase-admin');
+}
 
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    projectId: process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || 'furgokid',
+  });
 }
 
 async function syncAdminCustomClaims() {
@@ -72,7 +79,20 @@ if (require.main === module) {
   syncAdminCustomClaims()
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('Error fatal al sincronizar custom claims:', err);
+      if (err && err.message && err.message.includes('Could not load the default credentials')) {
+        console.error(
+          '\n❌ Error al cargar credenciales: Could not load the default credentials.\n'
+        );
+        console.error(
+          'Para autenticar en Windows PowerShell, utiliza una de las siguientes opciones:'
+        );
+        console.error('a) gcloud auth application-default login');
+        console.error(
+          'b) $env:GOOGLE_APPLICATION_CREDENTIALS="C:\\ruta\\a\\service-account.json" (descargable desde Firebase Console > Configuración del proyecto > Cuentas de servicio > Generar nueva clave privada).\n'
+        );
+      } else {
+        console.error('Error fatal al sincronizar custom claims:', err);
+      }
       process.exit(1);
     });
 }
