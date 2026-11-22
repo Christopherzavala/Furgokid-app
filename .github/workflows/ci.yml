@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
   JAVA_VERSION: '21'
   FIREBASE_CLI_VERSION: '15.28.1'
   # Every suite runs against demo-* project IDs only. The Firebase Emulator
