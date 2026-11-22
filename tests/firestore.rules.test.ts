@@ -221,7 +221,20 @@ describe('Firestore Rules', () => {
   // -------------------------------------------------------------------------
 
   describe('/requests – parent role', () => {
-    runOrSkip('prevents parent from creating a request directly (backend-only)', async () => {
+    runOrSkip('allows parent to create their own request directly', async () => {
+      await seedUser(testEnv, 'parent-user', { role: 'parent' });
+
+      await assertSucceeds(
+        testEnv
+          .authenticatedContext('parent-user')
+          .firestore()
+          .collection('requests')
+          .doc('req-1')
+          .set({ parentId: 'parent-user', status: 'active', zone: 'Norte', school: 'Colegio' })
+      );
+    });
+
+    runOrSkip('prevents parent from creating a request with forged parentId', async () => {
       await seedUser(testEnv, 'parent-user', { role: 'parent' });
 
       await assertFails(
@@ -230,12 +243,12 @@ describe('Firestore Rules', () => {
           .firestore()
           .collection('requests')
           .doc('req-1')
-          .set({ parentId: 'parent-user', driverId: 'some-driver', status: 'pending' })
+          .set({ parentId: 'other-parent', status: 'active', zone: 'Norte', school: 'Colegio' })
       );
     });
 
     runOrSkip('prevents a driver from creating a request', async () => {
-      await seedUser(testEnv, 'driver-user', { role: 'driver' });
+      await seedUser(testEnv, 'driver-user', { role: 'driver', approved: true });
 
       await assertFails(
         testEnv
@@ -243,7 +256,7 @@ describe('Firestore Rules', () => {
           .firestore()
           .collection('requests')
           .doc('req-2')
-          .set({ parentId: 'driver-user', driverId: 'driver-user', status: 'pending' })
+          .set({ parentId: 'driver-user', status: 'active', zone: 'Norte' })
       );
     });
 
@@ -254,7 +267,7 @@ describe('Firestore Rules', () => {
           .firestore()
           .collection('requests')
           .doc('req-3')
-          .set({ parentId: 'ghost-user', driverId: 'some-driver', status: 'pending' })
+          .set({ parentId: 'ghost-user', status: 'active', zone: 'Norte' })
       );
     });
   });

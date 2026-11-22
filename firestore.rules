@@ -286,8 +286,14 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Request identity, matching, and status are written by authenticated backend operations.
-      allow create, update: if false;
+      // Parents can create their own requests from ParentRequestScreen
+      allow create: if isParent() &&
+                      request.resource.data.parentId == request.auth.uid &&
+                      !hasActiveDeletionRequest(request.auth.uid) &&
+                      validRequestSize();
+
+      // Request matching and status are managed by authenticated backend operations.
+      allow update: if false;
 
       // Request removal requires a backend operation that can validate related matches.
       allow delete: if false;
