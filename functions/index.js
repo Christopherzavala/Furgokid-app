@@ -32,6 +32,8 @@ const { createDriverApprovalRepository } = require('./src/driverApproval');
 const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
 const { createAccountDeletionService } = require('./src/accountDeletionService');
 const { createAccountDeletionCallables } = require('./src/accountDeletionCallables');
+const { createPassengerAuthorizationCallables } = require('./src/passengerAuthorizationCallables');
+const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
 const {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
@@ -142,10 +144,6 @@ exports.startTracking = onCall(
   })
 );
 
-// Blocking Auth Trigger provisionUserProfile requires GCIP enabled on Firebase project.
-// Profile provisioning is handled on-demand by ensureUserProfile callable.
-// exports.provisionUserProfile = provisionUserProfile;
-
 exports.ensureUserProfile = onCall(
   callOpts,
   createEnsureUserProfileHandler({
@@ -162,6 +160,16 @@ const driverApprovalHandlers = createDriverApprovalCallables({
 
 exports.requestDriverApproval = onCall(callOpts, driverApprovalHandlers.requestDriverApproval);
 exports.reviewDriverRequest = onCall(callOpts, driverApprovalHandlers.reviewDriverRequest);
+
+const passengerAuthCallables = createPassengerAuthorizationCallables({
+  manager: createPassengerAuthorizationManager({ firestore: admin.firestore() }),
+});
+
+exports.onboardPassenger = onCall(callOpts, passengerAuthCallables.onboardPassengerCallable);
+exports.updatePassengerAuthorizationStatus = onCall(
+  callOpts,
+  passengerAuthCallables.updatePassengerAuthorizationStatusCallable
+);
 
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
@@ -202,6 +210,17 @@ exports.cleanupStaleTracking = onSchedule(
     logger: (entry) => console.info('GPS cleanup', entry),
   })
 );
+
+exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
+  const manager = createPassengerAuthorizationManager({
+    firestore: admin.firestore(),
+  });
+  const result = await manager.retryPendingRevocationCleanups({
+    workerId: 'cloud_scheduler_worker',
+  });
+  console.log('🔄 Retry pending revocation cleanups completed:', result);
+  return null;
+});
 
 /**
  * ========================================
@@ -315,7 +334,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
   console.log('🚐 NEW VACANCY RECEIVED');
 
   try {
-    // 1. Find active parent requests in the same zone
     const requestsSnapshot = await admin
       .firestore()
       .collection('requests')
@@ -330,13 +348,11 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
       return null;
     }
 
-    // 2. Get parent user data and filter by schedule compatibility
     const notifications = [];
 
     for (const requestDoc of requestsSnapshot.docs) {
       const request = requestDoc.data();
 
-      // Check schedule compatibility
       const scheduleMatch =
         vacancy.schedule === 'Ambas' ||
         request.schedule === 'Ambas' ||
@@ -347,7 +363,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
         continue;
       }
 
-      // Get parent user data for pushToken
       const parentDoc = await admin.firestore().collection('users').doc(request.parentId).get();
 
       const parent = parentDoc.data();
@@ -379,7 +394,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
       return null;
     }
 
-    // 3. Send notifications via Expo Push API
     const response = await sendExpoPush({
       payload: notifications,
       headers: {
@@ -395,7 +409,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     console.log(`   ✅ Notifications sent in ${duration}ms`);
     console.log(`   Response:`, JSON.stringify(result));
 
-    // 4. Log success
     await admin.firestore().collection('notification_logs').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
@@ -411,7 +424,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     if (error.code === BLOCKED_CODE) throw error;
     console.error('   ❌ ERROR in notifyParentsNewVacancy:', error);
 
-    // Log error
     await admin.firestore().collection('notification_errors').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
@@ -421,52 +433,13 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Graceful degradation
     return null;
   }
 });
 
-/**
- * ========================================
- * TRIGGER: Welcome Email (v1.1 - Optional)
- * ========================================
- *
- * Envía email de bienvenida cuando nuevo usuario se registra
- *
- * TODO v1.1:
- * - Integrar con SendGrid o Firebase Email Extension
- * - Templates HTML para emails
- * - Link de onboarding
- */
 exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) => {
   console.log('👋 NEW USER PROFILE');
-
-  // TODO v1.1: Implementar email service
-  // Por ahora solo log
   console.log('   Welcome email feature coming in v1.1');
-
-  return null;
-});
-
-const {
-  onboardPassengerCallable,
-  updatePassengerAuthorizationStatusCallable,
-} = require('./src/passengerAuthorizationCallables');
-const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
-
-exports.onboardPassenger = onCall(callOpts, onboardPassengerCallable);
-exports.updatePassengerAuthorizationStatus = onCall(
-  callOpts,
-  updatePassengerAuthorizationStatusCallable
-);
-exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
-  const manager = createPassengerAuthorizationManager({
-    firestore: admin.firestore(),
-  });
-  const result = await manager.retryPendingRevocationCleanups({
-    workerId: 'cloud_scheduler_worker',
-  });
-  console.log('🔄 Retry pending revocation cleanups completed:', result);
   return null;
 });
 
@@ -474,13 +447,6 @@ exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_eve
  * ========================================
  * HTTP FUNCTION: Test Notification
  * ========================================
- *
- * Testing endpoint para enviar notificación de prueba
- *
- * USAGE:
- * curl -X POST https://<region>-furgokid.cloudfunctions.net/testNotification \
- *   -H "Content-Type: application/json" \
- *   -d '{"pushToken":"ExponentPushToken[xxx]","message":"Test"}'
  */
 exports.testNotification = onRequest(async (req, res) => {
   if (req.method !== 'POST') {

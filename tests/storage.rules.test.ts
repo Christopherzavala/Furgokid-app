@@ -133,6 +133,20 @@ describe('Storage Security Rules', () => {
 
       await assertFails(ref.getDownloadURL());
     });
+
+    runOrSkip('LEGIT: admin can read driver documents', async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
+        await ctx
+          .storage()
+          .ref(docPath)
+          .put(Buffer.from('pdf-content'), { contentType: 'application/pdf' });
+      });
+
+      const storage = testEnv.authenticatedContext('admin-user', { role: 'admin' }).storage();
+      const ref = storage.ref(docPath);
+
+      await assertSucceeds(ref.getDownloadURL());
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -162,6 +176,20 @@ describe('Storage Security Rules', () => {
       const ref = storage.ref(docPath);
 
       await assertFails(ref.getDownloadURL());
+    });
+
+    runOrSkip('LEGIT: admin can read passenger minor document', async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx: any) => {
+        await ctx
+          .storage()
+          .ref(docPath)
+          .put(Buffer.from('consent-pdf'), { contentType: 'application/pdf' });
+      });
+
+      const storage = testEnv.authenticatedContext('admin-user', { role: 'admin' }).storage();
+      const ref = storage.ref(docPath);
+
+      await assertSucceeds(ref.getDownloadURL());
     });
   });
 });

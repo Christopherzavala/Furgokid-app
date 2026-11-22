@@ -1,11 +1,6 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { createPassengerAuthorizationManager } = require('./passengerAuthorization');
-
-const getManager = (firestore) =>
-  createPassengerAuthorizationManager({
-    firestore: firestore || admin.firestore(),
-  });
 
 const isValidDocumentId = (value) =>
   typeof value === 'string' &&
@@ -15,67 +10,84 @@ const isValidDocumentId = (value) =>
   value !== '..' &&
   !value.includes('/');
 
-const onboardPassengerCallable = onCall(async (request) => {
-  const adultUid = request?.auth?.uid;
-  if (!adultUid) {
-    throw new HttpsError('unauthenticated', 'Authentication is required.');
-  }
+const createPassengerAuthorizationCallables = ({ manager, HttpsErrorClass = HttpsError }) => {
+  const getManager = () =>
+    manager || createPassengerAuthorizationManager({ firestore: admin.firestore() });
 
-  const {
-    passengerId,
-    requestId,
-    passengerAlias,
-    purpose,
-    privacyNoticeVersion,
-    authorizationTextVersion,
-    responsibilityDeclared,
-    privacyNoticeAccepted,
-  } = request?.data || {};
+  const onboardPassengerCallable = async (request) => {
+    const adultUid = request?.auth?.uid;
+    if (!adultUid) {
+      throw new HttpsErrorClass('unauthenticated', 'Authentication is required.');
+    }
 
-  const manager = getManager();
-  return manager.createPassengerWithDeclaration({
-    adultUid,
-    passengerId,
-    requestId,
-    passengerAlias,
-    purpose,
-    privacyNoticeVersion,
-    authorizationTextVersion,
-    responsibilityDeclared,
-    privacyNoticeAccepted,
-  });
-});
+    const {
+      passengerId,
+      requestId,
+      passengerAlias,
+      purpose,
+      privacyNoticeVersion,
+      authorizationTextVersion,
+      responsibilityDeclared,
+      privacyNoticeAccepted,
+    } = request?.data || {};
 
-const updatePassengerAuthorizationStatusCallable = onCall(async (request) => {
-  const adultUid = request?.auth?.uid;
-  if (!adultUid) {
-    throw new HttpsError('unauthenticated', 'Authentication is required.');
-  }
+    return getManager().createPassengerWithDeclaration({
+      adultUid,
+      passengerId,
+      requestId,
+      passengerAlias,
+      purpose,
+      privacyNoticeVersion,
+      authorizationTextVersion,
+      responsibilityDeclared,
+      privacyNoticeAccepted,
+    });
+  };
+  onboardPassengerCallable.run = onboardPassengerCallable;
 
-  const { passengerId, authorizationId, newStatus } = request?.data || {};
-  if (newStatus !== 'revoked') {
-    throw new HttpsError(
-      'permission-denied',
-      'Clients may only revoke their own passenger authorization.'
-    );
-  }
-  if (!isValidDocumentId(passengerId) || !isValidDocumentId(authorizationId)) {
-    throw new HttpsError(
-      'invalid-argument',
-      'A valid passengerId and authorizationId are required.'
-    );
-  }
+  const updatePassengerAuthorizationStatusCallable = async (request) => {
+    const adultUid = request?.auth?.uid;
+    if (!adultUid) {
+      throw new HttpsErrorClass('unauthenticated', 'Authentication is required.');
+    }
 
-  const manager = getManager();
-  return manager.updateAuthorizationStatus({
-    adultUid,
-    passengerId,
-    authorizationId,
-    newStatus,
-  });
-});
+    const { passengerId, authorizationId, newStatus } = request?.data || {};
+    if (newStatus !== 'revoked') {
+      throw new HttpsErrorClass(
+        'permission-denied',
+        'Clients may only revoke their own passenger authorization.'
+      );
+    }
+    if (!isValidDocumentId(passengerId) || !isValidDocumentId(authorizationId)) {
+      throw new HttpsErrorClass(
+        'invalid-argument',
+        'A valid passengerId and authorizationId are required.'
+      );
+    }
+
+    return getManager().updateAuthorizationStatus({
+      adultUid,
+      passengerId,
+      authorizationId,
+      newStatus,
+    });
+  };
+  updatePassengerAuthorizationStatusCallable.run = updatePassengerAuthorizationStatusCallable;
+
+  return {
+    onboardPassengerCallable,
+    updatePassengerAuthorizationStatusCallable,
+  };
+};
+
+const defaultCallables = createPassengerAuthorizationCallables({});
+defaultCallables.onboardPassengerCallable.run = defaultCallables.onboardPassengerCallable;
+defaultCallables.updatePassengerAuthorizationStatusCallable.run =
+  defaultCallables.updatePassengerAuthorizationStatusCallable;
 
 module.exports = {
-  onboardPassengerCallable,
-  updatePassengerAuthorizationStatusCallable,
+  createPassengerAuthorizationCallables,
+  onboardPassengerCallable: defaultCallables.onboardPassengerCallable,
+  updatePassengerAuthorizationStatusCallable:
+    defaultCallables.updatePassengerAuthorizationStatusCallable,
 };
