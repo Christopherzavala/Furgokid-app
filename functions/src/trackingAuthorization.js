@@ -29,7 +29,14 @@ const createTrackingAuthorizationHandler = ({
     }
 
     const [profile, match] = await Promise.all([getUserProfile(uid), getMatch(matchId)]);
-    if (!profile || profile.role !== 'driver' || profile.approved !== true) {
+    const isApprovedDriver =
+      profile &&
+      profile.role === 'driver' &&
+      profile.approved === true &&
+      profile.driverRequestStatus !== 'revoked' &&
+      profile.driverRequestStatus !== 'rejected';
+
+    if (!isApprovedDriver) {
       throw new HttpsErrorClass('permission-denied', 'An approved driver profile is required.');
     }
     if (!match) {

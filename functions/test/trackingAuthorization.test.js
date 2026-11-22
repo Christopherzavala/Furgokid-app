@@ -36,6 +36,8 @@ describe('startTracking authorization', () => {
     [{ role: 'parent', approved: true }, 'permission-denied'],
     [{ role: 'driver', approved: false }, 'permission-denied'],
     [{ role: 'driver' }, 'permission-denied'],
+    [{ role: 'driver', approved: true, driverRequestStatus: 'revoked' }, 'permission-denied'],
+    [{ role: 'driver', approved: true, driverRequestStatus: 'rejected' }, 'permission-denied'],
   ])('rejects a profile that is not an approved driver', async (profile, code) => {
     const { handler } = createHarness({
       profile,

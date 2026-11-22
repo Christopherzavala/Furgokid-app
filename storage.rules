@@ -1,0 +1,53 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Default fail-closed rule
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidFileSize() {
+      return request.resource.size < 10 * 1024 * 1024; // 10MB max
+    }
+
+    function isValidMimeType() {
+      return request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Driver & user documents storage under users/{userId}/...
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidFileSize() && isValidMimeType();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Driver document storage under driver-documents/{userId}/...
+    match /driver-documents/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidFileSize() && isValidMimeType();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Driver document storage under drivers/{userId}/...
+    match /drivers/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidFileSize() && isValidMimeType();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+  }
+}
