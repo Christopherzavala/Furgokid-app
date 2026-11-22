@@ -445,7 +445,7 @@ exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) =>
 
 /**
  * ========================================
- * HTTP FUNCTION: Test Notification
+ * HTTP FUNCTION: Test Notification (Protected Admin Only)
  * ========================================
  */
 exports.testNotification = onRequest(async (req, res) => {
@@ -454,14 +454,35 @@ exports.testNotification = onRequest(async (req, res) => {
     return;
   }
 
-  const { pushToken, message } = req.body;
-
-  if (!pushToken) {
-    res.status(400).send('Missing pushToken');
+  const authHeader = req.headers?.authorization;
+  if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized' });
     return;
   }
 
+  const token = authHeader.split('Bearer ')[1];
   try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    let isAdmin = decodedToken.role === 'admin' || decodedToken.admin === true;
+    if (!isAdmin) {
+      const userDoc = await admin.firestore().collection('users').doc(decodedToken.uid).get();
+      if (userDoc.exists && userDoc.data().role === 'admin') {
+        isAdmin = true;
+      }
+    }
+
+    if (!isAdmin) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const { pushToken, message } = req.body;
+
+    if (!pushToken) {
+      res.status(400).send('Missing pushToken');
+      return;
+    }
+
     const response = await sendExpoPush({
       headers: { 'Content-Type': 'application/json' },
       payload: {
@@ -476,6 +497,14 @@ exports.testNotification = onRequest(async (req, res) => {
     const result = await response.json();
     res.status(200).json({ success: true, result });
   } catch (error) {
+    if (error.code === BLOCKED_CODE) {
+      res.status(500).json({ success: false, error: error.message, code: error.code });
+      return;
+    }
+    if (error.message && error.message.includes('Invalid token')) {
+      res.status(401).json({ success: false, error: 'Unauthorized', message: error.message });
+      return;
+    }
     console.error('Error sending test notification:', error);
     res.status(500).json({ success: false, error: error.message, code: error.code });
   }

@@ -347,7 +347,31 @@ describe('Cloud Functions Unit Tests', () => {
   });
 
   describe('testNotification', () => {
-    test('should send test notification successfully', async () => {
+    beforeEach(() => {
+      jest.spyOn(admin.auth(), 'verifyIdToken').mockImplementation(async (token) => {
+        if (token === 'invalid-token') {
+          throw new Error('Invalid token');
+        }
+        if (token === 'parent-token') {
+          return { uid: 'parent-uid', role: 'parent' };
+        }
+        return { uid: 'admin-uid', role: 'admin' };
+      });
+      jest.spyOn(admin.firestore(), 'collection').mockReturnValue({
+        doc: (uid) => ({
+          get: async () => ({
+            exists: true,
+            data: () => ({ role: uid === 'parent-uid' ? 'parent' : 'admin' }),
+          }),
+        }),
+      });
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    test('should send test notification successfully with admin auth', async () => {
       global.fetch = jest.fn(() =>
         Promise.resolve({
           json: () => Promise.resolve({ data: [{ status: 'ok', id: 'test-id' }] }),
@@ -356,6 +380,7 @@ describe('Cloud Functions Unit Tests', () => {
 
       const req = {
         method: 'POST',
+        headers: { authorization: 'Bearer admin-token' },
         body: {
           pushToken: 'ExponentPushToken[TEST]',
           message: 'Test message',
@@ -386,7 +411,7 @@ describe('Cloud Functions Unit Tests', () => {
     });
 
     test('should reject non-POST requests', async () => {
-      const req = { method: 'GET' };
+      const req = { method: 'GET', headers: { authorization: 'Bearer admin-token' } };
       const res = {
         status: jest.fn().mockReturnThis(),
         send: jest.fn(),
@@ -398,9 +423,57 @@ describe('Cloud Functions Unit Tests', () => {
       expect(res.send).toHaveBeenCalledWith('Method Not Allowed');
     });
 
+    test('should reject requests without authorization header (401)', async () => {
+      const req = {
+        method: 'POST',
+        body: { pushToken: 'ExponentPushToken[TEST]' },
+      };
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        send: jest.fn(),
+      };
+
+      await myFunctions.testNotification(req, res);
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    test('should reject requests with invalid token (401)', async () => {
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer invalid-token' },
+        body: { pushToken: 'ExponentPushToken[TEST]' },
+      };
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        send: jest.fn(),
+      };
+
+      await myFunctions.testNotification(req, res);
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    test('should reject requests from non-admin users (403)', async () => {
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer parent-token' },
+        body: { pushToken: 'ExponentPushToken[TEST]' },
+      };
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        send: jest.fn(),
+      };
+
+      await myFunctions.testNotification(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
     test('should reject requests without pushToken', async () => {
       const req = {
         method: 'POST',
+        headers: { authorization: 'Bearer admin-token' },
         body: { message: 'Test' },
       };
 
@@ -503,6 +576,15 @@ describe('Cloud Functions Unit Tests', () => {
     });
 
     test('testNotification reports a blocked Expo Push attempt without calling fetch', async () => {
+      jest
+        .spyOn(admin.auth(), 'verifyIdToken')
+        .mockResolvedValue({ uid: 'admin-uid', role: 'admin' });
+      jest.spyOn(admin.firestore(), 'collection').mockReturnValue({
+        doc: () => ({
+          get: async () => ({ exists: true, data: () => ({ role: 'admin' }) }),
+        }),
+      });
+
       const response = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
@@ -511,6 +593,7 @@ describe('Cloud Functions Unit Tests', () => {
       await myFunctions.testNotification(
         {
           method: 'POST',
+          headers: { authorization: 'Bearer admin-token' },
           body: { pushToken: 'ExponentPushToken[CI]', message: 'CI guard test' },
         },
         response
