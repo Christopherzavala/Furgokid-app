@@ -37,7 +37,7 @@ function createPushDeviceCallables({ firestore, logger = console }) {
     const userRef = firestore.collection('users').doc(uid);
 
     await firestore.runTransaction(async (transaction) => {
-      // 1. Check if tokenHash is already registered to another user/device
+      // 1. Check if tokenHash is already registered to another user or another device for same user
       const indexDoc = await transaction.get(indexRef);
       if (indexDoc.exists) {
         const indexData = indexDoc.data();
@@ -50,6 +50,18 @@ function createPushDeviceCallables({ firestore, logger = console }) {
             .doc(indexData.deviceId);
           transaction.set(
             prevDeviceRef,
+            { status: 'detached', updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          );
+        } else if (indexData.uid === uid && indexData.deviceId && indexData.deviceId !== deviceId) {
+          // Same user, same token, but different deviceId (reinstall/device change)
+          const oldDeviceRef = firestore
+            .collection('users')
+            .doc(uid)
+            .collection('devices')
+            .doc(indexData.deviceId);
+          transaction.set(
+            oldDeviceRef,
             { status: 'detached', updatedAt: FieldValue.serverTimestamp() },
             { merge: true }
           );
@@ -108,27 +120,47 @@ function createPushDeviceCallables({ firestore, logger = console }) {
     const devicesRef = firestore.collection('users').doc(uid).collection('devices');
     const userRef = firestore.collection('users').doc(uid);
 
-    // Fetch active devices outside transaction since queries aren't supported directly inside transaction.get()
-    let activeDevicesDocs = [];
+    let activeDevicesMeta = [];
     if (deviceId) {
       const deviceDoc = await devicesRef.doc(deviceId).get();
       if (deviceDoc.exists) {
-        activeDevicesDocs = [deviceDoc];
+        activeDevicesMeta = [{ ref: deviceDoc.ref, tokenHash: deviceDoc.data()?.tokenHash }];
       }
     } else {
       const activeQuery = await devicesRef.where('status', '==', 'active').get();
-      activeDevicesDocs = activeQuery.docs;
+      activeDevicesMeta = activeQuery.docs.map((d) => ({
+        ref: d.ref,
+        tokenHash: d.data()?.tokenHash,
+      }));
     }
 
     await firestore.runTransaction(async (transaction) => {
       const timestamp = FieldValue.serverTimestamp();
-      for (const docSnap of activeDevicesDocs) {
-        const data = docSnap.data();
-        if (data.tokenHash) {
-          const indexRef = firestore.collection('pushTokenIndex').doc(data.tokenHash);
-          transaction.set(indexRef, { status: 'detached', updatedAt: timestamp }, { merge: true });
+      for (const meta of activeDevicesMeta) {
+        // Re-read inside transaction and verify expectedTokenHash matches (race condition protection)
+        const currentSnap = await transaction.get(meta.ref);
+        if (!currentSnap.exists) continue;
+        const currentData = currentSnap.data();
+        if (currentData.status !== 'active') continue;
+        if (meta.tokenHash && currentData.tokenHash !== meta.tokenHash) continue;
+
+        if (currentData.tokenHash) {
+          const indexRef = firestore.collection('pushTokenIndex').doc(currentData.tokenHash);
+          const indexSnap = await transaction.get(indexRef);
+          if (indexSnap.exists) {
+            const indexData = indexSnap.data();
+            // Only detach index if it still belongs to this user and device
+            if (indexData.uid === uid && indexData.deviceId === meta.ref.id) {
+              transaction.set(
+                indexRef,
+                { status: 'detached', updatedAt: timestamp },
+                { merge: true }
+              );
+            }
+          }
         }
-        transaction.set(docSnap.ref, { status: 'detached', updatedAt: timestamp }, { merge: true });
+
+        transaction.set(meta.ref, { status: 'detached', updatedAt: timestamp }, { merge: true });
       }
 
       transaction.set(

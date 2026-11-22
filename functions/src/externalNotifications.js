@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const { FieldValue } = require('firebase-admin/firestore');
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 const BLOCKED_CODE = 'CI_EXTERNAL_NOTIFICATION_BLOCKED';
 const GUARD_ENABLED = 'CI_DISABLE_EXTERNAL_NOTIFICATIONS';
 const READY_FILE = 'CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE';
@@ -144,10 +145,156 @@ const handleExpoReceipts = async (firestore, receipts, notificationTargets) => {
   }
 };
 
+/**
+ * Scheduled Worker: Poll Expo Push Receipts for pending tickets (/getReceipts)
+ */
+const pollExpoReceiptsHandler = async ({ firestore, logger = console }) => {
+  if (process.env[GUARD_ENABLED] === 'true') {
+    logger.info('Receipt polling disabled during CI.');
+    return null;
+  }
+
+  try {
+    const logsSnapshot = await firestore
+      .collection('notification_logs')
+      .where('pendingReceipts', '==', true)
+      .limit(20)
+      .get();
+
+    if (logsSnapshot.empty) return { polledLogs: 0 };
+
+    for (const logDoc of logsSnapshot.docs) {
+      const logData = logDoc.data();
+      const ticketMap = logData.ticketMap || {};
+      const ticketIds = Object.keys(ticketMap);
+
+      if (ticketIds.length === 0) {
+        await logDoc.ref.update({ pendingReceipts: false });
+        continue;
+      }
+
+      const response = await fetch(EXPO_RECEIPTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ticketIds }),
+      });
+
+      if (!response.ok) {
+        logger.warn(`Failed to fetch receipts from Expo API: ${response.statusText}`);
+        continue;
+      }
+
+      const { data: receipts } = await response.json();
+      if (!receipts) continue;
+
+      for (const [ticketId, receipt] of Object.entries(receipts)) {
+        if (receipt.status === 'error' && receipt.details?.error === 'DeviceNotRegistered') {
+          const target = ticketMap[ticketId];
+          if (target && target.userId && target.deviceId) {
+            const deviceRef = firestore
+              .collection('users')
+              .doc(target.userId)
+              .collection('devices')
+              .doc(target.deviceId);
+            const deviceDoc = await deviceRef.get();
+            if (deviceDoc.exists && deviceDoc.data().tokenHash === target.tokenHash) {
+              await deviceRef.update({
+                status: 'unregistered',
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+              await firestore
+                .collection('pushTokenIndex')
+                .doc(target.tokenHash)
+                .set(
+                  { status: 'unregistered', updatedAt: FieldValue.serverTimestamp() },
+                  { merge: true }
+                );
+              logger.info(`Device ${target.deviceId} marked as unregistered via pollReceipts.`);
+            }
+          }
+        }
+      }
+
+      await logDoc.ref.update({ pendingReceipts: false });
+    }
+
+    return { polledLogs: logsSnapshot.size };
+  } catch (error) {
+    logger.error('Error polling Expo receipts:', error);
+    return null;
+  }
+};
+
+/**
+ * Scheduled Worker: Cleanup inactive devices (detached / unregistered > 30 days old) with pagination
+ */
+const cleanupInactiveDevicesHandler = async ({ firestore, logger = console }) => {
+  try {
+    const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let deletedCount = 0;
+
+    // 1. Devices subcollection (paginated batch loop)
+    let hasMoreDevices = true;
+    while (hasMoreDevices) {
+      const staleDevicesQuery = await firestore
+        .collectionGroup('devices')
+        .where('status', 'in', ['detached', 'unregistered'])
+        .where('updatedAt', '<=', cutoffDate)
+        .limit(400)
+        .get();
+
+      if (staleDevicesQuery.empty) break;
+
+      const batch = firestore.batch();
+      for (const docSnap of staleDevicesQuery.docs) {
+        batch.delete(docSnap.ref);
+        deletedCount++;
+      }
+      await batch.commit();
+
+      if (staleDevicesQuery.size < 400) {
+        hasMoreDevices = false;
+      }
+    }
+
+    // 2. Token index (paginated batch loop)
+    let hasMoreIndexes = true;
+    while (hasMoreIndexes) {
+      const staleIndexQuery = await firestore
+        .collection('pushTokenIndex')
+        .where('status', 'in', ['detached', 'unregistered'])
+        .where('updatedAt', '<=', cutoffDate)
+        .limit(400)
+        .get();
+
+      if (staleIndexQuery.empty) break;
+
+      const batch = firestore.batch();
+      for (const docSnap of staleIndexQuery.docs) {
+        batch.delete(docSnap.ref);
+        deletedCount++;
+      }
+      await batch.commit();
+
+      if (staleIndexQuery.size < 400) {
+        hasMoreIndexes = false;
+      }
+    }
+
+    logger.info(`Cleaned up ${deletedCount} inactive device/index records older than 30 days.`);
+    return { deletedCount };
+  } catch (error) {
+    logger.error('Error cleaning up inactive devices:', error);
+    return null;
+  }
+};
+
 module.exports = {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
   sendExpoPush,
   getUserActiveDevices,
   handleExpoReceipts,
+  pollExpoReceiptsHandler,
+  cleanupInactiveDevicesHandler,
 };

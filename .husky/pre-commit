@@ -13,7 +13,7 @@ fi
 echo "🔍 Validando configuración de Expo antes del commit..."
 
 # Validar que app.config.js no tenga errores de sintaxis
-npx expo config --type public > /dev/null 2>&1
+APP_VARIANT=development EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-furgokid npx expo config --type public > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
   echo "❌ ERROR: app.config.js tiene errores de sintaxis"

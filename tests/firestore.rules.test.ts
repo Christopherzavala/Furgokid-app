@@ -117,6 +117,76 @@ describe('Firestore Rules', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Push Notification Security Rules (FKG-GATE-028)
+  // -------------------------------------------------------------------------
+
+  describe('/users/{uid}/devices and /pushTokenIndex security', () => {
+    runOrSkip(
+      'prevents authenticated client from creating or writing /users/{uid}/devices',
+      async () => {
+        const uid = 'alice';
+        await seedUser(testEnv, uid, { role: 'parent' });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext(uid)
+            .firestore()
+            .collection('users')
+            .doc(uid)
+            .collection('devices')
+            .doc('dev1')
+            .set({
+              deviceId: 'dev1',
+              userId: uid,
+              expoPushToken: 'ExponentPushToken[attacker]',
+              status: 'active',
+            })
+        );
+      }
+    );
+
+    runOrSkip('prevents authenticated client from reading or writing /pushTokenIndex', async () => {
+      const uid = 'alice';
+      await seedUser(testEnv, uid, { role: 'parent' });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext(uid)
+          .firestore()
+          .collection('pushTokenIndex')
+          .doc('tokenhash123')
+          .get()
+      );
+
+      await assertFails(
+        testEnv
+          .authenticatedContext(uid)
+          .firestore()
+          .collection('pushTokenIndex')
+          .doc('tokenhash123')
+          .set({ uid, status: 'active' })
+      );
+    });
+
+    runOrSkip(
+      'prevents authenticated client from updating legacy pushToken in /users/{uid}',
+      async () => {
+        const uid = 'alice';
+        await seedUser(testEnv, uid, { role: 'parent', name: 'Alice' });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext(uid)
+            .firestore()
+            .collection('users')
+            .doc(uid)
+            .update({ pushToken: 'ExponentPushToken[unauthorized]' })
+        );
+      }
+    );
+  });
+
+  // -------------------------------------------------------------------------
   // /users collection – admin role
   // -------------------------------------------------------------------------
 

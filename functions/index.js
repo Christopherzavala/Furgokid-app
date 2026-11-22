@@ -4,6 +4,8 @@
  * Push Notifications Backend
  * - notifyDriversNewRequest: Notifica conductores cuando padre crea solicitud
  * - notifyParentsNewVacancy: Notifica padres cuando conductor publica cupo
+ * - pollExpoReceipts: Consulta recibos asíncronos de Expo Push API
+ * - cleanupInactiveDevices: Limpieza programada de dispositivos e índices obsoletos
  * - sendWelcomeEmail: Email de bienvenida a nuevos usuarios (v1.1)
  */
 
@@ -34,11 +36,17 @@ const { createAccountDeletionService } = require('./src/accountDeletionService')
 const { createAccountDeletionCallables } = require('./src/accountDeletionCallables');
 const { createPushDeviceCallables } = require('./src/pushDeviceCallables');
 const {
+  onboardPassengerCallable,
+  updatePassengerAuthorizationStatusCallable,
+} = require('./src/passengerAuthorizationCallables');
+const {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
   sendExpoPush,
   getUserActiveDevices,
   handleExpoReceipts,
+  pollExpoReceiptsHandler,
+  cleanupInactiveDevicesHandler,
 } = require('./src/externalNotifications');
 
 initializeExternalNotificationGuard();
@@ -62,6 +70,42 @@ exports.registerPushDevice = onCall(
   pushDeviceCallables.registerPushDevice
 );
 exports.revokePushDevice = onCall({ enforceAppCheck: true }, pushDeviceCallables.revokePushDevice);
+
+exports.onboardPassenger = onboardPassengerCallable;
+exports.updatePassengerAuthorizationStatus = updatePassengerAuthorizationStatusCallable;
+
+exports.testNotification = onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).send('Method Not Allowed');
+  }
+  const { pushToken, message } = req.body || {};
+  if (!pushToken) {
+    return res.status(400).send('Missing pushToken');
+  }
+  try {
+    const response = await sendExpoPush({
+      payload: [{ to: pushToken, body: message || 'Test' }],
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+    });
+    const result = await response.json();
+    return res.status(200).json({ success: true, result });
+  } catch (err) {
+    return res.status(500).json({ success: false, code: err.code, error: err.message });
+  }
+});
+
+exports.pollExpoReceipts = onSchedule({ schedule: 'every 15 minutes', retryCount: 3 }, async () =>
+  pollExpoReceiptsHandler({ firestore: admin.firestore(), logger: console })
+);
+
+exports.cleanupInactiveDevices = onSchedule(
+  { schedule: 'every 24 hours', retryCount: 3 },
+  async () => cleanupInactiveDevicesHandler({ firestore: admin.firestore(), logger: console })
+);
 
 const resolveStorageBucket = () => {
   let firebaseConfig = {};
@@ -207,8 +251,6 @@ exports.cleanupStaleTracking = onSchedule(
  * ========================================
  * TRIGGER: New Pending Match Created
  * ========================================
- *
- * Notifies only the driver assigned by the trusted match lifecycle operation.
  */
 exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (event) => {
   const startTime = Date.now();
@@ -229,7 +271,6 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
       return null;
     }
 
-    // Fetch active devices exclusively from /users/{uid}/devices
     const activeDevices = await getUserActiveDevices(admin.firestore(), match.driverId);
     if (activeDevices.length === 0) {
       console.log('   Assigned driver has no active push devices');
@@ -282,18 +323,32 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
     const result = await response.json();
     await handleExpoReceipts(admin.firestore(), result.data, notificationTargets);
 
+    const ticketMap = {};
+    if (result.data && Array.isArray(result.data)) {
+      result.data.forEach((ticket, idx) => {
+        if (ticket.status === 'ok' && ticket.id) {
+          ticketMap[ticket.id] = notificationTargets[idx];
+        }
+      });
+    }
+
     const duration = Date.now() - startTime;
     console.log(`   ✅ Notifications sent in ${duration}ms`);
 
-    await admin.firestore().collection('notification_logs').add({
-      type: 'new_match',
-      matchId,
-      driverId: match.driverId,
-      driversNotified: notifications.length,
-      success: true,
-      duration: duration,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await admin
+      .firestore()
+      .collection('notification_logs')
+      .add({
+        type: 'new_match',
+        matchId,
+        driverId: match.driverId,
+        driversNotified: notifications.length,
+        success: true,
+        ticketMap,
+        pendingReceipts: Object.keys(ticketMap).length > 0,
+        duration: duration,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
     return null;
   } catch (error) {
@@ -356,7 +411,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
         continue;
       }
 
-      // Fetch active devices for parent exclusively from /users/{uid}/devices
       const activeDevices = await getUserActiveDevices(admin.firestore(), request.parentId);
       for (const device of activeDevices) {
         if (device.expoPushToken) {
@@ -404,18 +458,32 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     const result = await response.json();
     await handleExpoReceipts(admin.firestore(), result.data, notificationTargets);
 
+    const ticketMap = {};
+    if (result.data && Array.isArray(result.data)) {
+      result.data.forEach((ticket, idx) => {
+        if (ticket.status === 'ok' && ticket.id) {
+          ticketMap[ticket.id] = notificationTargets[idx];
+        }
+      });
+    }
+
     const duration = Date.now() - startTime;
     console.log(`   ✅ Notifications sent in ${duration}ms`);
 
-    await admin.firestore().collection('notification_logs').add({
-      type: 'new_vacancy',
-      vacancyId: vacancyId,
-      driverId: vacancy.driverId,
-      parentsNotified: notifications.length,
-      success: true,
-      duration: duration,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await admin
+      .firestore()
+      .collection('notification_logs')
+      .add({
+        type: 'new_vacancy',
+        vacancyId: vacancyId,
+        driverId: vacancy.driverId,
+        parentsNotified: notifications.length,
+        success: true,
+        ticketMap,
+        pendingReceipts: Object.keys(ticketMap).length > 0,
+        duration: duration,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
     return null;
   } catch (error) {
@@ -439,68 +507,4 @@ exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) =>
   console.log('👋 NEW USER PROFILE');
   console.log('   Welcome email feature coming in v1.1');
   return null;
-});
-
-const {
-  onboardPassengerCallable,
-  updatePassengerAuthorizationStatusCallable,
-} = require('./src/passengerAuthorizationCallables');
-const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
-
-exports.onboardPassenger = onboardPassengerCallable;
-exports.updatePassengerAuthorizationStatus = updatePassengerAuthorizationStatusCallable;
-exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
-  const manager = createPassengerAuthorizationManager({
-    firestore: admin.firestore(),
-  });
-  const result = await manager.retryPendingRevocationCleanups({
-    workerId: 'cloud_scheduler_worker',
-  });
-  console.log('🔄 Retry pending revocation cleanups completed:', result);
-  return null;
-});
-
-/**
- * ========================================
- * HTTP FUNCTION: Test Notification
- * ========================================
- *
- * Testing endpoint para enviar notificación de prueba
- *
- * USAGE:
- * curl -X POST https://<region>-furgokid.cloudfunctions.net/testNotification \
- *   -H "Content-Type: application/json" \
- *   -d '{"pushToken":"ExponentPushToken[xxx]","message":"Test"}'
- */
-exports.testNotification = onRequest(async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed');
-    return;
-  }
-
-  const { pushToken, message } = req.body;
-
-  if (!pushToken) {
-    res.status(400).send('Missing pushToken');
-    return;
-  }
-
-  try {
-    const response = await sendExpoPush({
-      headers: { 'Content-Type': 'application/json' },
-      payload: {
-        to: pushToken,
-        sound: 'default',
-        title: 'Test Notification',
-        body: message || 'This is a test notification from Firebase Functions',
-        data: { type: 'test' },
-      },
-    });
-
-    const result = await response.json();
-    res.status(200).json({ success: true, result });
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    res.status(500).json({ success: false, error: error.message, code: error.code });
-  }
 });
