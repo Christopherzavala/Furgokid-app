@@ -1,0 +1,52 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isImageOrPdf() {
+      return request.resource.contentType.matches('image/.*') ||
+             request.resource.contentType == 'application/pdf';
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function validSize(maxMegaBytes) {
+      return request.resource.size < maxMegaBytes * 1024 * 1024;
+    }
+
+    // Default deny all get, list, and write operations
+    match /{allPaths=**} {
+      allow get, list, write: if false;
+    }
+
+    // User profile images (avatars)
+    match /users/{userId}/profile/{fileName} {
+      allow get: if isAuthenticated();
+      allow list: if false;
+      allow write: if isOwner(userId) && isImage() && validSize(5);
+    }
+
+    // Driver sensitive documents (driver license, background check, vehicle docs)
+    match /drivers/{driverId}/documents/{fileName} {
+      allow get: if isOwner(driverId);
+      allow list: if false;
+      allow write: if isOwner(driverId) && isImageOrPdf() && validSize(10);
+    }
+
+    // Minor passenger authorizations & documents
+    match /passengers/{parentId}/{passengerId}/{fileName} {
+      allow get: if isOwner(parentId);
+      allow list: if false;
+      allow write: if isOwner(parentId) && isImageOrPdf() && validSize(10);
+    }
+  }
+}

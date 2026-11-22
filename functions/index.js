@@ -46,6 +46,11 @@ setGlobalOptions({
   maxInstances: 10,
 });
 
+// App Check configuration (controlled via ENFORCE_APP_CHECK environment variable)
+const callOpts = {
+  enforceAppCheck: process.env.ENFORCE_APP_CHECK === 'true',
+};
+
 // Initialize Firebase Admin SDK
 admin.initializeApp();
 
@@ -86,8 +91,8 @@ const accountDeletion = createAccountDeletionCallables({
   logger: (entry) => console.info('Account deletion', entry),
 });
 
-exports.requestAccountDeletion = onCall(accountDeletion.requestAccountDeletion);
-exports.getAccountDeletionStatus = onCall(accountDeletion.getAccountDeletionStatus);
+exports.requestAccountDeletion = onCall(callOpts, accountDeletion.requestAccountDeletion);
+exports.getAccountDeletionStatus = onCall(callOpts, accountDeletion.getAccountDeletionStatus);
 exports.resumeAccountDeletionRequests = onSchedule(
   { schedule: 'every 5 minutes', retryCount: 3 },
   async () => accountDeletionService.resumePendingRequests()
@@ -98,16 +103,17 @@ const matchLifecycle = createMatchLifecycleCallables({
   logger: (entry) => console.info('Match lifecycle', entry),
 });
 
-exports.createMatch = onCall(matchLifecycle.createMatch);
-exports.acceptMatch = onCall(matchLifecycle.acceptMatch);
-exports.cancelMatch = onCall(matchLifecycle.cancelMatch);
-exports.completeMatch = onCall(matchLifecycle.completeMatch);
-exports.closeRequest = onCall(matchLifecycle.closeRequest);
-exports.deleteRequests = onCall(matchLifecycle.deleteRequests);
-exports.updateVacancyCapacity = onCall(matchLifecycle.updateVacancyCapacity);
-exports.initializeVacancyCapacity = onCall(matchLifecycle.initializeVacancyCapacity);
+exports.createMatch = onCall(callOpts, matchLifecycle.createMatch);
+exports.acceptMatch = onCall(callOpts, matchLifecycle.acceptMatch);
+exports.cancelMatch = onCall(callOpts, matchLifecycle.cancelMatch);
+exports.completeMatch = onCall(callOpts, matchLifecycle.completeMatch);
+exports.closeRequest = onCall(callOpts, matchLifecycle.closeRequest);
+exports.deleteRequests = onCall(callOpts, matchLifecycle.deleteRequests);
+exports.updateVacancyCapacity = onCall(callOpts, matchLifecycle.updateVacancyCapacity);
+exports.initializeVacancyCapacity = onCall(callOpts, matchLifecycle.initializeVacancyCapacity);
 
 exports.stopTracking = onCall(
+  callOpts,
   createStopTrackingHandler({
     createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
     logger: (entry) => console.info('GPS cleanup', entry),
@@ -115,6 +121,7 @@ exports.stopTracking = onCall(
 );
 
 exports.cleanupDriverTracking = onCall(
+  callOpts,
   createCleanupDriverTrackingHandler({
     createRepository: () => createFirestoreGpsCleanupRepository({ firestore: admin.firestore() }),
     logger: (entry) => console.info('GPS cleanup', entry),
@@ -122,6 +129,7 @@ exports.cleanupDriverTracking = onCall(
 );
 
 exports.startTracking = onCall(
+  callOpts,
   createTrackingAuthorizationHandler({
     getUserProfile: async (uid) => {
       const userSnapshot = await admin.firestore().collection('users').doc(uid).get();
@@ -139,19 +147,21 @@ exports.startTracking = onCall(
 // exports.provisionUserProfile = provisionUserProfile;
 
 exports.ensureUserProfile = onCall(
+  callOpts,
   createEnsureUserProfileHandler({
     firestore: admin.firestore(),
     logger: (entry) => console.info('User profile provisioning', entry),
   })
 );
 
-const driverApproval = createDriverApprovalCallables({
-  repository: createDriverApprovalRepository({ firestore: admin.firestore() }),
+const driverApproval = createDriverApprovalRepository({ firestore: admin.firestore() });
+const driverApprovalHandlers = createDriverApprovalCallables({
+  repository: driverApproval,
   logger: (entry) => console.info('Driver approval', entry),
 });
 
-exports.requestDriverApproval = onCall(driverApproval.requestDriverApproval);
-exports.reviewDriverRequest = onCall(driverApproval.reviewDriverRequest);
+exports.requestDriverApproval = onCall(callOpts, driverApprovalHandlers.requestDriverApproval);
+exports.reviewDriverRequest = onCall(callOpts, driverApprovalHandlers.reviewDriverRequest);
 
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
@@ -444,8 +454,11 @@ const {
 } = require('./src/passengerAuthorizationCallables');
 const { createPassengerAuthorizationManager } = require('./src/passengerAuthorization');
 
-exports.onboardPassenger = onboardPassengerCallable;
-exports.updatePassengerAuthorizationStatus = updatePassengerAuthorizationStatusCallable;
+exports.onboardPassenger = onCall(callOpts, onboardPassengerCallable);
+exports.updatePassengerAuthorizationStatus = onCall(
+  callOpts,
+  updatePassengerAuthorizationStatusCallable
+);
 exports.retryPendingRevocationCleanups = onSchedule('every 1 hours', async (_event) => {
   const manager = createPassengerAuthorizationManager({
     firestore: admin.firestore(),
