@@ -9,11 +9,13 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from '../config/firebase';
+import { auth, db, functions } from '../config/firebase';
 import { setUserContext } from '../config/sentry';
 import analyticsService from '../services/analyticsService';
 import notificationService from '../services/notificationService';
+import secureStorage from '../utils/secureStorage';
 import { ensureUserProfile, waitForUserProfile } from '../services/userProfileService';
 import { requestDriverApproval } from '../services/driverApprovalService';
 import { stopBackgroundLocation } from '../services/backgroundLocation';
@@ -290,6 +292,23 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       setError(null);
+
+      // Revoke push device registration on backend before local session teardown
+      try {
+        const deviceId = await secureStorage.getItem('furgokid_device_id');
+        if (deviceId) {
+          const revokeFn = httpsCallable(functions, 'revokePushDevice');
+          await Promise.race([
+            revokeFn({ deviceId }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Revoke timeout')), 3000)),
+          ]);
+        }
+      } catch (err) {
+        console.warn(
+          '⚠️ Push device revocation failed or timed out during logout (non-critical):',
+          err
+        );
+      }
 
       // Sensor cleanup is best-effort, but the authenticated backend sweep is
       // mandatory while the identity is still valid. Logout is not completed

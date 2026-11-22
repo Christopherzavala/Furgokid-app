@@ -1,10 +1,11 @@
 // NotificationService.js - Push Notifications Management
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
-import { doc, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { Platform } from 'react-native';
-import { db } from '../config/firebase';
+import { functions } from '../config/firebase';
 import analyticsService from './analyticsService';
+import secureStorage from '../utils/secureStorage';
 
 // Configure notification behavior when app is foregrounded
 Notifications.setNotificationHandler({
@@ -21,6 +22,23 @@ class NotificationService {
     this.token = null;
     this.notificationListener = null;
     this.responseListener = null;
+  }
+
+  /**
+   * Get or generate a stable persistent device ID
+   */
+  async getOrCreateDeviceId() {
+    try {
+      let deviceId = await secureStorage.getItem('furgokid_device_id');
+      if (!deviceId) {
+        deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        await secureStorage.setItem('furgokid_device_id', deviceId);
+      }
+      return deviceId;
+    } catch (err) {
+      console.warn('⚠️ Error managing stable deviceId, falling back to random:', err);
+      return 'dev_fallback_' + Date.now();
+    }
   }
 
   /**
@@ -58,14 +76,16 @@ class NotificationService {
 
       console.log('✅ Push token obtained');
 
-      // Save token to Firestore user profile
-      if (userId) {
-        await updateDoc(doc(db, 'users', userId), {
-          pushToken: this.token,
-          pushTokenUpdatedAt: new Date(),
+      // Register device via Cloud Function callable (secure backend registration & indexing)
+      if (userId && this.token) {
+        const deviceId = await this.getOrCreateDeviceId();
+        const registerPushDeviceFn = httpsCallable(functions, 'registerPushDevice');
+        await registerPushDeviceFn({
+          expoPushToken: this.token,
+          deviceId,
           platform: Platform.OS,
         });
-        console.log('✅ Push token saved to Firestore');
+        console.log('✅ Push device registered via Cloud Function successfully');
       }
 
       // Configure Android notification channel
@@ -162,81 +182,6 @@ class NotificationService {
     } catch (error) {
       console.error('❌ Error scheduling notification:', error);
     }
-  }
-
-  /**
-   * Cancel all scheduled notifications
-   */
-  async cancelAllNotifications() {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-    console.log('✅ All notifications canceled');
-  }
-
-  /**
-   * Set up listeners for notifications
-   * @param {function} onNotificationReceived - Called when notification is received (foreground)
-   * @param {function} onNotificationTapped - Called when notification is tapped
-   */
-  setupListeners(onNotificationReceived, onNotificationTapped) {
-    // Listener for notifications received while app is foregrounded
-    this.notificationListener = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('📬 Notification received:', notification);
-      analyticsService.trackEvent('notification_received', {
-        title: notification.request.content.title,
-        type: notification.request.content.data?.type,
-      });
-
-      if (onNotificationReceived) {
-        onNotificationReceived(notification);
-      }
-    });
-
-    // Listener for when user taps on a notification
-    this.responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log('👆 Notification tapped:', response);
-      analyticsService.trackEvent('notification_tapped', {
-        title: response.notification.request.content.title,
-        type: response.notification.request.content.data?.type,
-      });
-
-      if (onNotificationTapped) {
-        onNotificationTapped(response);
-      }
-    });
-  }
-
-  /**
-   * Remove notification listeners (call on unmount)
-   */
-  removeListeners() {
-    if (this.notificationListener) {
-      Notifications.removeNotificationSubscription(this.notificationListener);
-    }
-    if (this.responseListener) {
-      Notifications.removeNotificationSubscription(this.responseListener);
-    }
-  }
-
-  /**
-   * Get current badge count (iOS only)
-   */
-  async getBadgeCount() {
-    return await Notifications.getBadgeCountAsync();
-  }
-
-  /**
-   * Set badge count (iOS only)
-   * @param {number} count
-   */
-  async setBadgeCount(count) {
-    await Notifications.setBadgeCountAsync(count);
-  }
-
-  /**
-   * Clear all delivered notifications
-   */
-  async dismissAllNotifications() {
-    await Notifications.dismissAllNotificationsAsync();
   }
 }
 

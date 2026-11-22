@@ -124,7 +124,27 @@ describe('Cloud Functions Unit Tests', () => {
       const mockCollection = jest.fn((collectionName) => {
         if (collectionName === 'users') {
           return {
-            doc: jest.fn(() => ({ get: jest.fn(() => Promise.resolve(assignedDriver)) })),
+            doc: jest.fn(() => ({
+              get: jest.fn(() => Promise.resolve(assignedDriver)),
+              collection: jest.fn(() => ({
+                where: jest.fn(() => ({
+                  get: jest.fn(() =>
+                    Promise.resolve({
+                      docs: [
+                        {
+                          data: () => ({
+                            deviceId: 'dev-1',
+                            expoPushToken: 'ExponentPushToken[AAAA]',
+                            tokenHash: 'hash-1',
+                            status: 'active',
+                          }),
+                        },
+                      ],
+                    })
+                  ),
+                })),
+              })),
+            })),
           };
         }
         return { add: notificationLogAdd };
@@ -278,7 +298,27 @@ describe('Cloud Functions Unit Tests', () => {
         }
       });
 
-      const mockDoc = jest.fn(() => ({ get: mockGet }));
+      const mockDoc = jest.fn(() => ({
+        get: mockGet,
+        collection: jest.fn(() => ({
+          where: jest.fn(() => ({
+            get: jest.fn(() =>
+              Promise.resolve({
+                docs: [
+                  {
+                    data: () => ({
+                      deviceId: 'dev-p1',
+                      expoPushToken: 'ExponentPushToken[CCCC]',
+                      tokenHash: 'hash-p1',
+                      status: 'active',
+                    }),
+                  },
+                ],
+              })
+            ),
+          })),
+        })),
+      }));
       const mockWhere = jest.fn(() => ({ where: mockWhere, get: mockGet }));
       const mockCollection = jest.fn(() => ({
         where: mockWhere,
@@ -452,7 +492,27 @@ describe('Cloud Functions Unit Tests', () => {
       jest.spyOn(admin, 'firestore').mockReturnValue({
         collection: jest.fn((name) => {
           if (name === 'users') {
-            return { doc: () => ({ get: async () => driver }) };
+            return {
+              doc: () => ({
+                get: async () => driver,
+                collection: () => ({
+                  where: () => ({
+                    get: async () => ({
+                      docs: [
+                        {
+                          data: () => ({
+                            deviceId: 'dev-ci',
+                            expoPushToken: 'ExponentPushToken[CI]',
+                            tokenHash: 'hash-ci',
+                            status: 'active',
+                          }),
+                        },
+                      ],
+                    }),
+                  }),
+                }),
+              }),
+            };
           }
           return { add: errorLogAdd };
         }),
@@ -487,7 +547,28 @@ describe('Cloud Functions Unit Tests', () => {
         collection: jest.fn((name) =>
           name === 'requests'
             ? { where: mockWhere }
-            : { doc: () => ({ get: mockGet }), add: errorLogAdd }
+            : {
+                doc: () => ({
+                  get: mockGet,
+                  collection: () => ({
+                    where: () => ({
+                      get: async () => ({
+                        docs: [
+                          {
+                            data: () => ({
+                              deviceId: 'dev-ci',
+                              expoPushToken: 'ExponentPushToken[CI]',
+                              tokenHash: 'hash-ci',
+                              status: 'active',
+                            }),
+                          },
+                        ],
+                      }),
+                    }),
+                  }),
+                }),
+                add: errorLogAdd,
+              }
         ),
       });
 

@@ -32,10 +32,13 @@ const { createDriverApprovalRepository } = require('./src/driverApproval');
 const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
 const { createAccountDeletionService } = require('./src/accountDeletionService');
 const { createAccountDeletionCallables } = require('./src/accountDeletionCallables');
+const { createPushDeviceCallables } = require('./src/pushDeviceCallables');
 const {
   BLOCKED_CODE,
   initializeExternalNotificationGuard,
   sendExpoPush,
+  getUserActiveDevices,
+  handleExpoReceipts,
 } = require('./src/externalNotifications');
 
 initializeExternalNotificationGuard();
@@ -48,6 +51,17 @@ setGlobalOptions({
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
+
+const pushDeviceCallables = createPushDeviceCallables({
+  firestore: admin.firestore(),
+  logger: console,
+});
+
+exports.registerPushDevice = onCall(
+  { enforceAppCheck: true },
+  pushDeviceCallables.registerPushDevice
+);
+exports.revokePushDevice = onCall({ enforceAppCheck: true }, pushDeviceCallables.revokePushDevice);
 
 const resolveStorageBucket = () => {
   let firebaseConfig = {};
@@ -134,10 +148,6 @@ exports.startTracking = onCall(
   })
 );
 
-// Blocking Auth Trigger provisionUserProfile requires GCIP enabled on Firebase project.
-// Profile provisioning is handled on-demand by ensureUserProfile callable.
-// exports.provisionUserProfile = provisionUserProfile;
-
 exports.ensureUserProfile = onCall(
   createEnsureUserProfileHandler({
     firestore: admin.firestore(),
@@ -218,30 +228,47 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
       console.warn('   Assigned driver profile is unavailable; notification skipped');
       return null;
     }
-    const driver = driverSnapshot.data();
-    if (!driver.pushToken) {
-      console.log('   Assigned driver has no push token');
+
+    // Fetch active devices exclusively from /users/{uid}/devices
+    const activeDevices = await getUserActiveDevices(admin.firestore(), match.driverId);
+    if (activeDevices.length === 0) {
+      console.log('   Assigned driver has no active push devices');
       return null;
     }
 
-    const notifications = [
-      {
-        to: driver.pushToken,
-        sound: 'default',
-        title: '🚌 Nueva solicitud asignada',
-        body: `${match.parentName} busca transporte para ${match.childrenCount} niño(s) en ${match.zone}`,
-        data: {
-          type: 'new_request',
-          requestId: match.requestId,
-          matchId,
-          zone: match.zone,
-          schedule: match.schedule,
-          school: match.school,
-        },
-        priority: 'high',
-        channelId: 'urgent',
-      },
-    ];
+    const notifications = [];
+    const notificationTargets = [];
+
+    for (const device of activeDevices) {
+      if (device.expoPushToken) {
+        notifications.push({
+          to: device.expoPushToken,
+          sound: 'default',
+          title: '🚌 Nueva solicitud asignada',
+          body: `${match.parentName} busca transporte para ${match.childrenCount} niño(s) en ${match.zone}`,
+          data: {
+            type: 'new_request',
+            requestId: match.requestId,
+            matchId,
+            zone: match.zone,
+            schedule: match.schedule,
+            school: match.school,
+          },
+          priority: 'high',
+          channelId: 'urgent',
+        });
+        notificationTargets.push({
+          userId: match.driverId,
+          deviceId: device.deviceId,
+          tokenHash: device.tokenHash,
+        });
+      }
+    }
+
+    if (notifications.length === 0) {
+      console.log('   Assigned driver has no valid push tokens');
+      return null;
+    }
 
     const response = await sendExpoPush({
       payload: notifications,
@@ -253,10 +280,10 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
     });
 
     const result = await response.json();
-    const duration = Date.now() - startTime;
+    await handleExpoReceipts(admin.firestore(), result.data, notificationTargets);
 
+    const duration = Date.now() - startTime;
     console.log(`   ✅ Notifications sent in ${duration}ms`);
-    console.log(`   Response:`, JSON.stringify(result));
 
     await admin.firestore().collection('notification_logs').add({
       type: 'new_match',
@@ -290,11 +317,6 @@ exports.notifyDriversNewRequest = onDocumentCreated('matches/{matchId}', async (
  * ========================================
  * TRIGGER: New Vacancy Created (Driver)
  * ========================================
- *
- * Cuando un conductor publica un cupo disponible:
- * 1. Busca padres con solicitudes activas en la misma zona
- * 2. Filtra por schedule compatible
- * 3. Envía push notification a padres matched
  */
 exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', async (event) => {
   const startTime = Date.now();
@@ -305,7 +327,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
   console.log('🚐 NEW VACANCY RECEIVED');
 
   try {
-    // 1. Find active parent requests in the same zone
     const requestsSnapshot = await admin
       .firestore()
       .collection('requests')
@@ -320,56 +341,57 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
       return null;
     }
 
-    // 2. Get parent user data and filter by schedule compatibility
     const notifications = [];
+    const notificationTargets = [];
 
     for (const requestDoc of requestsSnapshot.docs) {
       const request = requestDoc.data();
 
-      // Check schedule compatibility
       const scheduleMatch =
         vacancy.schedule === 'Ambas' ||
         request.schedule === 'Ambas' ||
         vacancy.schedule === request.schedule;
 
       if (!scheduleMatch) {
-        console.log(`   ⏭️ Skip: Schedule mismatch (${vacancy.schedule} vs ${request.schedule})`);
         continue;
       }
 
-      // Get parent user data for pushToken
-      const parentDoc = await admin.firestore().collection('users').doc(request.parentId).get();
-
-      const parent = parentDoc.data();
-
-      if (parent && parent.pushToken) {
-        notifications.push({
-          to: parent.pushToken,
-          sound: 'default',
-          title: '✅ Nuevo conductor disponible',
-          body: `${vacancy.driverName} tiene ${vacancy.availableSeats} cupo(s) en ${vacancy.zone} - ${vacancy.schedule}`,
-          data: {
-            type: 'new_vacancy',
-            vacancyId: vacancyId,
-            zone: vacancy.zone,
-            schedule: vacancy.schedule,
-            schools: vacancy.schools.join(', '),
-            seatsAvailable: vacancy.availableSeats,
-          },
-          priority: 'high',
-          channelId: 'urgent',
-        });
+      // Fetch active devices for parent exclusively from /users/{uid}/devices
+      const activeDevices = await getUserActiveDevices(admin.firestore(), request.parentId);
+      for (const device of activeDevices) {
+        if (device.expoPushToken) {
+          notifications.push({
+            to: device.expoPushToken,
+            sound: 'default',
+            title: '✅ Nuevo conductor disponible',
+            body: `${vacancy.driverName} tiene ${vacancy.availableSeats} cupo(s) en ${vacancy.zone} - ${vacancy.schedule}`,
+            data: {
+              type: 'new_vacancy',
+              vacancyId: vacancyId,
+              zone: vacancy.zone,
+              schedule: vacancy.schedule,
+              schools: vacancy.schools.join(', '),
+              seatsAvailable: vacancy.availableSeats,
+            },
+            priority: 'high',
+            channelId: 'urgent',
+          });
+          notificationTargets.push({
+            userId: request.parentId,
+            deviceId: device.deviceId,
+            tokenHash: device.tokenHash,
+          });
+        }
       }
     }
 
     console.log(`   Prepared ${notifications.length} notifications`);
 
     if (notifications.length === 0) {
-      console.log('   ⚠️ No parents with push tokens or schedule match');
+      console.log('   ⚠️ No parents with active devices or schedule match');
       return null;
     }
 
-    // 3. Send notifications via Expo Push API
     const response = await sendExpoPush({
       payload: notifications,
       headers: {
@@ -380,12 +402,11 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     });
 
     const result = await response.json();
+    await handleExpoReceipts(admin.firestore(), result.data, notificationTargets);
+
     const duration = Date.now() - startTime;
-
     console.log(`   ✅ Notifications sent in ${duration}ms`);
-    console.log(`   Response:`, JSON.stringify(result));
 
-    // 4. Log success
     await admin.firestore().collection('notification_logs').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
@@ -401,7 +422,6 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
     if (error.code === BLOCKED_CODE) throw error;
     console.error('   ❌ ERROR in notifyParentsNewVacancy:', error);
 
-    // Log error
     await admin.firestore().collection('notification_errors').add({
       type: 'new_vacancy',
       vacancyId: vacancyId,
@@ -411,30 +431,13 @@ exports.notifyParentsNewVacancy = onDocumentCreated('vacancies/{vacancyId}', asy
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Graceful degradation
     return null;
   }
 });
 
-/**
- * ========================================
- * TRIGGER: Welcome Email (v1.1 - Optional)
- * ========================================
- *
- * Envía email de bienvenida cuando nuevo usuario se registra
- *
- * TODO v1.1:
- * - Integrar con SendGrid o Firebase Email Extension
- * - Templates HTML para emails
- * - Link de onboarding
- */
 exports.sendWelcomeEmail = onDocumentCreated('users/{userId}', async (_event) => {
   console.log('👋 NEW USER PROFILE');
-
-  // TODO v1.1: Implementar email service
-  // Por ahora solo log
   console.log('   Welcome email feature coming in v1.1');
-
   return null;
 });
 

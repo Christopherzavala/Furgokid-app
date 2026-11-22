@@ -175,6 +175,14 @@ service cloud.firestore {
     }
 
     // ============================================================================
+    // PUSH TOKEN INDEX COLLECTION (Admin SDK only)
+    // ============================================================================
+
+    match /pushTokenIndex/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    // ============================================================================
     // USERS COLLECTION
     // ============================================================================
 
@@ -194,11 +202,18 @@ service cloud.firestore {
                       approvedUnchanged() &&
                       driverRequestStateUnchanged() &&
                       childFieldsUnchangedOrRemoved() &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushToken']) &&
                       rateLimit(60) &&
                       validRequestSize();
 
       // Only admins can delete users.
       allow delete: if isAdmin() && !hasOwnActiveDeletionRequest();
+
+      // Devices subcollection for multi-device push notification tracking (Admin SDK managed)
+      match /devices/{deviceId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false;
+      }
     }
 
     // ============================================================================
