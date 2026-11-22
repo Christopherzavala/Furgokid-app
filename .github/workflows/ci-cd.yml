@@ -97,6 +97,9 @@ jobs:
       - name: Run Firestore Rules Tests
         run: npm run test:rules
 
+      - name: Run Storage Rules Tests
+        run: npm run test:storage
+
       - name: Run Cloud Functions Tests
         run: npm test --prefix functions
 

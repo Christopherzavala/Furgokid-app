@@ -113,6 +113,9 @@ jobs:
       - name: Firestore Rules tests (Firestore Emulator)
         run: npm run test:rules
 
+      - name: Storage Rules tests (Storage Emulator)
+        run: npm run test:storage
+
   functions-emulators:
     name: Functions integration (Auth + Firestore + Functions Emulator)
     runs-on: ubuntu-latest
