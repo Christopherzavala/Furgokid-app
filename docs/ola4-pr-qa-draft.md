@@ -35,26 +35,26 @@
 
 ## Checklist de Smoke Test en `furgokid-staging`
 
-- [ ] **1. Generación y revocación de enlace de seguimiento (`TrackingMap`):**
+- [x] **1. Generación y revocación de enlace de seguimiento (`TrackingMap`):**
 
   - _Acción:_ Entrar a un viaje activo como apoderado o conductor y generar un enlace compartido.
-  - _Observación:_ [ ] Documento creado en `trackingShares/{shareToken}` con `revoked: false`, `expiresAt` futuro, URL de seguimiento y enlace `wa.me` generados correctamente.
+  - _Observación:_ [x] Documento creado en `trackingShares/{shareToken}` con `revoked: false`, `expiresAt` futuro, URL de seguimiento y enlace `wa.me` generados correctamente.
 
-- [ ] **2. Visualización en el portal web (`web/tracking.html?token=...`):**
+- [x] **2. Visualización en el portal web (`web/tracking.html?token=...`):**
 
   - _Acción:_ Abrir la URL generada con `?token=...` en el navegador y probar el botón de compartir por WhatsApp.
-  - _Observación:_ [ ] El visor carga el estado del viaje, ubicación y estados de pasajeros sin exponer PII sensible; el botón `wa.me` abre el compositor con el texto prearmado.
+  - _Observación:_ [x] El visor carga el estado del viaje, ubicación y estados de pasajeros sin exponer PII sensible; el botón `wa.me` abre el compositor con el texto prearmado.
 
-- [ ] **3. Bloqueo de token revocado o expirado (`getSharedTrackingSnapshot`):**
+- [x] **3. Bloqueo de token revocado o expirado (`getSharedTrackingSnapshot`):**
 
   - _Acción:_ Revocar el token desde la app (`revokeTrackingShareLink`) y recargar la vista web con el mismo `?token=...`.
-  - _Observación:_ [ ] El snapshot rechaza el acceso por token revocado/expirado de forma limpia.
+  - _Observación:_ [x] El snapshot rechaza el acceso por token revocado/expirado de forma limpia.
 
-- [ ] **4. Preferencias de alertas en `SettingsScreen` (`updateAlertPreferences`):**
+- [x] **4. Preferencias de alertas en `SettingsScreen` (`updateAlertPreferences`):**
 
   - _Acción:_ Cambiar el estado de los switches de alertas en `SettingsScreen`.
-  - _Observación:_ [ ] Toast de confirmación visible y campo `users/{uid}.alertPreferences` actualizado en Firestore.
+  - _Observación:_ [x] Toast de confirmación visible y campo `users/{uid}.alertPreferences` actualizado en Firestore.
 
-- [ ] **5. Verificación de Linter y Pruebas Unitarias:**
+- [x] **5. Verificación de Linter y Pruebas Unitarias:**
   - _Acción:_ Ejecutar tests y linter localmente.
-  - _Observación:_ [ ] 0 errores, 0 advertencias, todos los tests unitarios pasados en verde.
+  - _Observación:_ [x] 0 errores, 0 advertencias, todos los tests unitarios pasados en verde (29/29 suites en cliente, 19/19 en backend).
