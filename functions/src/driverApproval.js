@@ -260,7 +260,7 @@ const createDriverApprovalRepository = ({
       );
       const adminProfile = adminSnapshot.exists ? adminSnapshot.data() : null;
       const targetProfile = targetSnapshot.exists ? targetSnapshot.data() : null;
-      if (adminProfile?.role !== 'admin') fail('permission-denied');
+      if (adminProfile?.role !== 'admin' && adminProfile?.role !== 'ops') fail('permission-denied');
       if (!targetProfile) fail('not-found');
 
       const currentStatus = getRequestStatus(targetProfile);

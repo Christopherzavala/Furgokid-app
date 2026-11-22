@@ -26,6 +26,7 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TrackingMap from './src/screens/TrackingMap';
+import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import analyticsService from './src/services/analyticsService';
 import consentService from './src/services/consentService';
 // import crashlyticsService from './src/services/crashlyticsService';
@@ -125,6 +126,8 @@ function Navigation() {
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
           <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="TrackingMap" component={TrackingMap} />
+          <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
         </>
       ) : (
         <>
@@ -137,6 +140,7 @@ function Navigation() {
           <Stack.Screen name="GDPRSettings" component={GDPRSettingsScreen} />
           <Stack.Screen name="ConsentPreferences" component={ConsentPreferencesScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
         </>
       )}
     </Stack.Navigator>

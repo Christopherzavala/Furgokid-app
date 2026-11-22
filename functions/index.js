@@ -518,3 +518,6 @@ exports.testNotification = onRequest(async (req, res) => {
 const { triggerSosAlert, resolveSosAlert } = require('./src/emergencyCallables');
 exports.triggerSosAlert = triggerSosAlert;
 exports.resolveSosAlert = resolveSosAlert;
+
+const { getOpsDashboardSnapshot } = require('./src/adminOpsCallables');
+exports.getOpsDashboardSnapshot = getOpsDashboardSnapshot;

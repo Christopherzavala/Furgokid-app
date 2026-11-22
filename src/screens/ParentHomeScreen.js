@@ -93,6 +93,16 @@ const ParentHomeScreen = ({ navigation }) => {
 
       {/* CONTENT */}
       <View style={styles.content}>
+        {(userProfile?.role === 'admin' || userProfile?.role === 'ops') && (
+          <TouchableOpacity
+            style={styles.opsButton}
+            onPress={() => navigation.navigate('AdminOps')}
+          >
+            <Ionicons name="shield-checkmark" size={20} color="#fff" />
+            <Text style={styles.opsButtonText}>Consola Ops / Admin</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.sectionTitle}>Mis Hijos</Text>
 
         {children.length === 0 ? (
@@ -242,6 +252,22 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  opsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A237E',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 15,
+    gap: 8,
+    elevation: 3,
+  },
+  opsButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   sectionTitle: {
     fontSize: 18,
