@@ -514,3 +514,7 @@ exports.testNotification = onRequest(async (req, res) => {
     res.status(500).json({ success: false, error: error.message, code: error.code });
   }
 });
+
+const { triggerSosAlert, resolveSosAlert } = require('./src/emergencyCallables');
+exports.triggerSosAlert = triggerSosAlert;
+exports.resolveSosAlert = resolveSosAlert;

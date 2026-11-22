@@ -27,6 +27,7 @@ import {
   transitionPassengerState,
   verifyStudentHandover,
 } from '../services/custodyService';
+import { triggerSosAlert } from '../services/emergencyService';
 import toastService from '../services/toastService';
 import notificationService from '../utils/notificationService';
 
@@ -266,7 +267,7 @@ const TrackingMap = ({ route, navigation }) => {
     }
   };
 
-  // SOS Emergency Handler (#12) with SMS and Google Maps link
+  // SOS Emergency Handler (#12) with Cloud Function trigger, SMS, and Google Maps link
   const handleSosEmergency = () => {
     const lat = driverLocation?.latitude || region?.latitude || 0;
     const lng = driverLocation?.longitude || region?.longitude || 0;
@@ -283,7 +284,27 @@ const TrackingMap = ({ route, navigation }) => {
           style: 'destructive',
         },
         {
-          text: 'Enviar SMS de Alerta con Ubicación GPS',
+          text: 'Enviar Alerta SOS (Registrar y Notificar)',
+          onPress: async () => {
+            try {
+              if (activeMatchId) {
+                await triggerSosAlert({
+                  matchId: activeMatchId,
+                  location: { latitude: lat, longitude: lng },
+                  reason: 'Emergencia reportada desde el mapa',
+                });
+                toastService.success(
+                  'Alerta SOS',
+                  'Incidente registrado y notificado al equipo de operaciones.'
+                );
+              }
+            } catch (err) {
+              toastService.error('Error SOS', err.message || 'No se pudo enviar la alerta SOS.');
+            }
+          },
+        },
+        {
+          text: 'Enviar SMS con Ubicación GPS',
           onPress: () => Linking.openURL(`sms:?body=${encodeURIComponent(smsBody)}`),
         },
         { text: 'Cancelar', style: 'cancel' },

@@ -453,6 +453,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /emergencyIncidents/{incidentId} {
+      allow read: if isMatchParticipant(resource.data.matchId) || hasRole('ops');
+      allow write: if false;
+    }
+
+    match /rateLimits/{limitId} {
+      allow read, write: if false;
+    }
+
+    match /securityAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+
     // ============================================================================
     // PASSENGERS COLLECTION (F0.10 Child Protection & Data Minimization)
     // ============================================================================
