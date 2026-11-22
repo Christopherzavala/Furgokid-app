@@ -80,13 +80,17 @@ const createDriverApprovalRepository = ({
       }
     }
 
-    // Phase 1: All transaction.get calls via Promise.all before any writes
+    // Phase 1: All transaction.get calls via Promise.all (fully parallelized)
     const requestRefs = [...requestRefsMap.values()];
     const vacancyRefsFromMatches = [...vacancyRefsMap.values()];
+    const vacancyDocsToFetch = vacanciesSnap.docs.filter(
+      (docSnap) => !vacancyRefsMap.has(docSnap.id)
+    );
 
-    const [requestSnaps, vacancySnapsFromMatches] = await Promise.all([
+    const [requestSnaps, vacancySnapsFromMatches, vacancySnapsExplicit] = await Promise.all([
       Promise.all(requestRefs.map((ref) => transaction.get(ref))),
       Promise.all(vacancyRefsFromMatches.map((ref) => transaction.get(ref))),
+      Promise.all(vacancyDocsToFetch.map((docSnap) => transaction.get(docSnap.ref))),
     ]);
 
     const requestMap = new Map();
@@ -98,14 +102,9 @@ const createDriverApprovalRepository = ({
     vacancySnapsFromMatches.forEach((snap, idx) => {
       vacancySnapMap.set(vacancyRefsFromMatches[idx].id, snap);
     });
-
-    // Also include explicitly fetched vacancies from vacanciesSnap query
-    for (const docSnap of vacanciesSnap.docs) {
-      if (!vacancySnapMap.has(docSnap.id)) {
-        const snap = await transaction.get(docSnap.ref);
-        vacancySnapMap.set(docSnap.id, snap);
-      }
-    }
+    vacancyDocsToFetch.forEach((docSnap, idx) => {
+      vacancySnapMap.set(docSnap.id, vacancySnapsExplicit[idx]);
+    });
 
     // Phase 2: Calculations and Unique Writes
     const releasedSeatsByVacancy = new Map(); // vacancyId -> seats to add back
@@ -167,7 +166,7 @@ const createDriverApprovalRepository = ({
       if (match.requestId && !processedRequestIds.has(match.requestId)) {
         processedRequestIds.add(match.requestId);
         const reqSnap = requestMap.get(match.requestId);
-        if (reqSnap && reqSnap.exists && reqSnap.data().activeMatchId === docSnap.id) {
+        if (reqSnap && reqSnap.exists) {
           transaction.update(requestsCol.doc(match.requestId), {
             activeMatchId: FieldValue.delete(),
             updatedAt: timestamp,
