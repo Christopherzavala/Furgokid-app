@@ -41,11 +41,11 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@v3 # v3 release
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           base: ${{ github.event.pull_request.base.ref || 'main' }}
           head: ${{ github.ref }}
-          extra_args: --no-update
+          extra_args: --results=verified,unknown --exclude-paths=.trufflehog-exclude
 
   quality:
     name: Quality, type-check, lint and client tests

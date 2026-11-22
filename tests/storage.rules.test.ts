@@ -36,8 +36,10 @@ describe('Storage Security Rules', () => {
   });
 
   afterEach(async () => {
-    if (!isEmulatorMode) return;
-    await testEnv.clearStorage();
+    if (!isEmulatorMode || !testEnv) return;
+    if (typeof testEnv.clearStorage === 'function') {
+      await testEnv.clearStorage();
+    }
   });
 
   // -------------------------------------------------------------------------
