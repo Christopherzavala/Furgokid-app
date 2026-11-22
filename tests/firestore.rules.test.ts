@@ -1206,4 +1206,250 @@ describe('Firestore Rules', () => {
       await assertFails(db.collection('authorizationEvents').doc(eventId).delete());
     });
   });
+
+  // -------------------------------------------------------------------------
+  // FKG-PR3 — Driver Revocation & Security Rules Hardening
+  // -------------------------------------------------------------------------
+
+  describe('FKG-PR3 — Driver Revocation & Security Rules Hardening', () => {
+    function freshTrackingData(overrides: Record<string, unknown> = {}) {
+      const { Timestamp } = jest.requireActual('@firebase/firestore');
+      return {
+        latitude: -33.4489,
+        longitude: -70.6693,
+        speed: 0,
+        active: true,
+        updatedAt: Timestamp.now(),
+        ...overrides,
+      };
+    }
+
+    runOrSkip('BLOCKED: revoked driver cannot create a vacancy', async () => {
+      await seedUser(testEnv, 'revoked-driver', {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'revoked',
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('revoked-driver')
+          .firestore()
+          .collection('vacancies')
+          .doc('vac-revoked')
+          .set({
+            driverId: 'revoked-driver',
+            totalSeats: 5,
+            availableSeats: 5,
+            reservedSeats: 0,
+            status: 'active',
+          })
+      );
+    });
+
+    runOrSkip('BLOCKED: revoked driver cannot edit an existing vacancy', async () => {
+      await seedUser(testEnv, 'revoked-driver', {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'revoked',
+      });
+      await seedDocument(testEnv, 'vacancies/vac-1', {
+        driverId: 'revoked-driver',
+        status: 'active',
+        totalSeats: 5,
+        availableSeats: 5,
+        reservedSeats: 0,
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('revoked-driver')
+          .firestore()
+          .collection('vacancies')
+          .doc('vac-1')
+          .update({ notes: 'Hack note' })
+      );
+    });
+
+    runOrSkip('BLOCKED: revoked driver cannot write live tracking', async () => {
+      await seedUser(testEnv, 'revoked-driver', {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'revoked',
+      });
+      await seedMatchFixture(testEnv, 'match-revoked', {
+        driverId: 'revoked-driver',
+        status: 'active',
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('revoked-driver')
+          .firestore()
+          .doc('matches/match-revoked/tracking/current')
+          .set(freshTrackingData())
+      );
+    });
+
+    runOrSkip(
+      'BLOCKED: client cannot reactivate a vacancy cancelled by driver_revoked',
+      async () => {
+        await seedUser(testEnv, 'approved-driver', {
+          role: 'driver',
+          approved: true,
+          driverRequestStatus: 'approved',
+        });
+        await seedDocument(testEnv, 'vacancies/vac-cancelled', {
+          driverId: 'approved-driver',
+          status: 'cancelled',
+          cancellationReason: 'driver_revoked',
+          totalSeats: 5,
+          availableSeats: 5,
+          reservedSeats: 0,
+        });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext('approved-driver')
+            .firestore()
+            .collection('vacancies')
+            .doc('vac-cancelled')
+            .update({ status: 'active' })
+        );
+      }
+    );
+
+    runOrSkip(
+      'BLOCKED: client cannot manipulate reservedSeats or capacity on vacancy',
+      async () => {
+        await seedUser(testEnv, 'approved-driver', {
+          role: 'driver',
+          approved: true,
+          driverRequestStatus: 'approved',
+        });
+        await seedDocument(testEnv, 'vacancies/vac-active', {
+          driverId: 'approved-driver',
+          status: 'active',
+          totalSeats: 5,
+          availableSeats: 5,
+          reservedSeats: 0,
+        });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext('approved-driver')
+            .firestore()
+            .collection('vacancies')
+            .doc('vac-active')
+            .update({ reservedSeats: 5 })
+        );
+      }
+    );
+
+    runOrSkip(
+      'LEGIT: approved driver can create vacancy and update non-controlled fields',
+      async () => {
+        await seedUser(testEnv, 'legit-driver', {
+          role: 'driver',
+          approved: true,
+          driverRequestStatus: 'approved',
+        });
+
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('legit-driver')
+            .firestore()
+            .collection('vacancies')
+            .doc('vac-legit')
+            .set({
+              driverId: 'legit-driver',
+              totalSeats: 4,
+              availableSeats: 4,
+              reservedSeats: 0,
+              status: 'active',
+            })
+        );
+
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('legit-driver')
+            .firestore()
+            .collection('vacancies')
+            .doc('vac-legit')
+            .update({ notes: 'Avisar 10 min antes' })
+        );
+      }
+    );
+
+    runOrSkip(
+      'BLOCKED: participant cannot alter participants array or matchId in chats',
+      async () => {
+        await seedUser(testEnv, 'chat-user-1', { role: 'parent', approved: false });
+        await seedUser(testEnv, 'chat-user-2', { role: 'parent', approved: false });
+        await seedDocument(testEnv, 'chats/chat-1', {
+          participants: ['chat-user-1', 'chat-user-2'],
+          matchId: 'match-123',
+        });
+
+        await assertFails(
+          testEnv
+            .authenticatedContext('chat-user-1')
+            .firestore()
+            .collection('chats')
+            .doc('chat-1')
+            .update({ participants: ['chat-user-1'] })
+        );
+
+        await assertFails(
+          testEnv
+            .authenticatedContext('chat-user-1')
+            .firestore()
+            .collection('chats')
+            .doc('chat-1')
+            .update({ matchId: 'hacked-match' })
+        );
+      }
+    );
+
+    runOrSkip('BLOCKED: user cannot send message with spoofed senderId', async () => {
+      await seedUser(testEnv, 'chat-user-1', { role: 'parent', approved: false });
+      await seedUser(testEnv, 'chat-user-2', { role: 'parent', approved: false });
+      await seedDocument(testEnv, 'chats/chat-1', {
+        participants: ['chat-user-1', 'chat-user-2'],
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('chat-user-1')
+          .firestore()
+          .collection('chats')
+          .doc('chat-1')
+          .collection('messages')
+          .doc('msg-1')
+          .set({ senderId: 'chat-user-2', text: 'Impersonating user 2' })
+      );
+    });
+
+    runOrSkip(
+      'LEGIT: participant can send message with senderId matching request.auth.uid',
+      async () => {
+        await seedUser(testEnv, 'chat-user-1', { role: 'parent', approved: false });
+        await seedUser(testEnv, 'chat-user-2', { role: 'parent', approved: false });
+        await seedDocument(testEnv, 'chats/chat-1', {
+          participants: ['chat-user-1', 'chat-user-2'],
+        });
+
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('chat-user-1')
+            .firestore()
+            .collection('chats')
+            .doc('chat-1')
+            .collection('messages')
+            .doc('msg-1')
+            .set({ senderId: 'chat-user-1', text: 'Hola!' })
+        );
+      }
+    );
+  });
 });

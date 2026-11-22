@@ -15,10 +15,10 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-              return isAuthenticated() &&
-                exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
-            }
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
 
     function isAdmin() {
       return hasRole('admin');
@@ -45,14 +45,20 @@ service cloud.firestore {
                ['pending', 'processing', 'failed'];
     }
 
-    // Driver approved by admin (role == 'driver' AND approved == true).
+    // Driver approved by admin (role == 'driver' AND approved == true AND driverRequestStatus == 'approved').
     // The existence check must precede access to the profile fields so a
     // missing profile fails closed.
-    function isApprovedDriver() {
+    function isApprovedDriverFor(uid) {
       return isAuthenticated() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver' &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
+             exists(/databases/$(database)/documents/users/$(uid)) &&
+             get(/databases/$(database)/documents/users/$(uid)).data.role == 'driver' &&
+             get(/databases/$(database)/documents/users/$(uid)).data.approved == true &&
+             (!('driverRequestStatus' in get(/databases/$(database)/documents/users/$(uid)).data) ||
+              get(/databases/$(database)/documents/users/$(uid)).data.driverRequestStatus == 'approved');
+    }
+
+    function isApprovedDriver() {
+      return isApprovedDriverFor(request.auth.uid);
     }
 
     function validTrackingLocation() {
@@ -146,7 +152,8 @@ service cloud.firestore {
     // Check if enough time has passed since last write (prevents spam)
     function rateLimit(cooldownSeconds) {
       return !('lastModified' in resource.data) ||
-             request.time > resource.data.lastModified + duration.value(cooldownSeconds, 's');
+             (request.resource.data.lastModified == request.time &&
+              request.time > resource.data.lastModified + duration.value(cooldownSeconds, 's'));
     }
 
     // Validate request size (prevent large document spam)
@@ -304,15 +311,19 @@ service cloud.firestore {
                       validRequestSize();
 
       // Only the driver who created can update
-      // Capacity is reserved and edited by trusted backend operations.
+      // Capacity and status transitions are managed by trusted backend operations.
       allow update: if isApprovedDriver() &&
                       resource.data.driverId == request.auth.uid &&
                       !hasActiveDeletionRequest(request.auth.uid) &&
+                      resource.data.status != 'cancelled' &&
+                      (!('cancellationReason' in resource.data) || resource.data.cancellationReason != 'driver_revoked') &&
                       !request.resource.data.diff(resource.data).affectedKeys().hasAny([
                         'driverId',
                         'totalSeats',
                         'availableSeats',
-                        'reservedSeats'
+                        'reservedSeats',
+                        'cancellationReason',
+                        'status'
                       ]) &&
                       rateLimit(600) &&
                       validRequestSize();
@@ -433,10 +444,11 @@ service cloud.firestore {
                       request.auth.uid in request.resource.data.participants &&
                       !hasActiveDeletionRequest(request.auth.uid);
 
-      // Only participants can update (send messages)
+      // Only participants can update, but cannot alter participants or matchId
       allow update: if isAuthenticated() &&
                       request.auth.uid in resource.data.participants &&
-                      !hasActiveDeletionRequest(request.auth.uid);
+                      !hasActiveDeletionRequest(request.auth.uid) &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participants', 'matchId']);
 
       // Only admin can delete chats
       allow delete: if isAdmin() && !hasOwnActiveDeletionRequest();
@@ -447,6 +459,7 @@ service cloud.firestore {
                       request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
         allow create: if isAuthenticated() &&
                         request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+                        request.resource.data.senderId == request.auth.uid &&
                         !hasActiveDeletionRequest(request.auth.uid);
         allow update, delete: if false;
       }
