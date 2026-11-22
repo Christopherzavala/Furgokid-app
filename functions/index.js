@@ -521,3 +521,16 @@ exports.resolveSosAlert = resolveSosAlert;
 
 const { getOpsDashboardSnapshot } = require('./src/adminOpsCallables');
 exports.getOpsDashboardSnapshot = getOpsDashboardSnapshot;
+
+const {
+  registerSchoolB2b,
+  authorizeSchoolDriver,
+  getSchoolArrivalsSnapshot,
+} = require('./src/schoolB2bCallables');
+exports.registerSchoolB2b = registerSchoolB2b;
+exports.authorizeSchoolDriver = authorizeSchoolDriver;
+exports.getSchoolArrivalsSnapshot = getSchoolArrivalsSnapshot;
+
+const { upsertDriverFleetAsset, verifyDriverFleetAsset } = require('./src/fleetCallables');
+exports.upsertDriverFleetAsset = upsertDriverFleetAsset;
+exports.verifyDriverFleetAsset = verifyDriverFleetAsset;

@@ -103,6 +103,18 @@ const ParentHomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
+        {(userProfile?.role === 'school_admin' ||
+          userProfile?.schoolRole === 'school_admin' ||
+          Boolean(userProfile?.schoolId)) && (
+          <TouchableOpacity
+            style={styles.schoolPortalBtn}
+            onPress={() => navigation.navigate('SchoolPortal')}
+          >
+            <Ionicons name="business" size={20} color="#fff" />
+            <Text style={styles.schoolPortalBtnText}>Portal Colegio B2B</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.sectionTitle}>Mis Hijos</Text>
 
         {children.length === 0 ? (
@@ -260,11 +272,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A237E',
     padding: 12,
     borderRadius: 10,
-    marginBottom: 15,
+    marginBottom: 12,
     gap: 8,
     elevation: 3,
   },
   opsButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  schoolPortalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0D47A1',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 15,
+    gap: 8,
+    elevation: 3,
+  },
+  schoolPortalBtnText: {
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,

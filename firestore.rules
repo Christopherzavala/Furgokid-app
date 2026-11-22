@@ -470,6 +470,30 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /driverFleets/{driverId} {
+      function canReadDriverFleet() {
+        return isAuthenticated() && (
+          request.auth.uid == driverId ||
+          isAdminOrOps()
+        );
+      }
+
+      match /vehicles/{vehicleId} {
+        allow read: if canReadDriverFleet();
+        allow write: if false;
+      }
+
+      match /assistants/{assistantId} {
+        allow read: if canReadDriverFleet();
+        allow write: if false;
+      }
+    }
+
     // ============================================================================
     // PASSENGERS COLLECTION (F0.10 Child Protection & Data Minimization)
     // ============================================================================
