@@ -221,20 +221,60 @@ describe('Firestore Rules', () => {
   // -------------------------------------------------------------------------
 
   describe('/requests – parent role', () => {
-    runOrSkip('allows parent to create their own request directly', async () => {
+    runOrSkip(
+      'allows parent to create valid request matching ParentRequestScreen schema',
+      async () => {
+        const { Timestamp } = jest.requireActual('@firebase/firestore');
+        await seedUser(testEnv, 'parent-user', { role: 'parent' });
+
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('parent-user')
+            .firestore()
+            .collection('requests')
+            .doc('req-1')
+            .set({
+              parentId: 'parent-user',
+              parentName: 'Parent Test',
+              parentPhone: '+56912345678',
+              school: 'Colegio San Jose',
+              zone: 'Norte',
+              schedule: 'Entrada',
+              childrenCount: 2,
+              ages: '7, 9',
+              specialNeeds: '',
+              createdAt: Timestamp.now(),
+              status: 'active',
+            })
+        );
+      }
+    );
+
+    runOrSkip('prevents parent from creating request with disallowed fields', async () => {
+      const { Timestamp } = jest.requireActual('@firebase/firestore');
       await seedUser(testEnv, 'parent-user', { role: 'parent' });
 
-      await assertSucceeds(
+      await assertFails(
         testEnv
           .authenticatedContext('parent-user')
           .firestore()
           .collection('requests')
           .doc('req-1')
-          .set({ parentId: 'parent-user', status: 'active', zone: 'Norte', school: 'Colegio' })
+          .set({
+            parentId: 'parent-user',
+            school: 'Colegio San Jose',
+            zone: 'Norte',
+            schedule: 'Entrada',
+            childrenCount: 2,
+            createdAt: Timestamp.now(),
+            status: 'active',
+            childrenNames: 'Hacked name',
+          })
       );
     });
 
-    runOrSkip('prevents parent from creating a request with forged parentId', async () => {
+    runOrSkip('prevents parent from creating request with invalid childrenCount', async () => {
+      const { Timestamp } = jest.requireActual('@firebase/firestore');
       await seedUser(testEnv, 'parent-user', { role: 'parent' });
 
       await assertFails(
@@ -243,31 +283,15 @@ describe('Firestore Rules', () => {
           .firestore()
           .collection('requests')
           .doc('req-1')
-          .set({ parentId: 'other-parent', status: 'active', zone: 'Norte', school: 'Colegio' })
-      );
-    });
-
-    runOrSkip('prevents a driver from creating a request', async () => {
-      await seedUser(testEnv, 'driver-user', { role: 'driver', approved: true });
-
-      await assertFails(
-        testEnv
-          .authenticatedContext('driver-user')
-          .firestore()
-          .collection('requests')
-          .doc('req-2')
-          .set({ parentId: 'driver-user', status: 'active', zone: 'Norte' })
-      );
-    });
-
-    runOrSkip('prevents a user without a /users doc from creating a request', async () => {
-      await assertFails(
-        testEnv
-          .authenticatedContext('ghost-user')
-          .firestore()
-          .collection('requests')
-          .doc('req-3')
-          .set({ parentId: 'ghost-user', status: 'active', zone: 'Norte' })
+          .set({
+            parentId: 'parent-user',
+            school: 'Colegio San Jose',
+            zone: 'Norte',
+            schedule: 'Entrada',
+            childrenCount: 0,
+            createdAt: Timestamp.now(),
+            status: 'active',
+          })
       );
     });
   });

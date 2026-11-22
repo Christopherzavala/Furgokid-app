@@ -286,10 +286,47 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Parents can create their own requests from ParentRequestScreen
+      // Parents can create their own requests from ParentRequestScreen with strict schema validation
       allow create: if isParent() &&
                       request.resource.data.parentId == request.auth.uid &&
                       !hasActiveDeletionRequest(request.auth.uid) &&
+                      request.resource.data.status == 'active' &&
+                      request.resource.data.keys().hasAll([
+                        'parentId',
+                        'school',
+                        'zone',
+                        'schedule',
+                        'childrenCount',
+                        'createdAt',
+                        'status'
+                      ]) &&
+                      request.resource.data.keys().hasOnly([
+                        'parentId',
+                        'parentName',
+                        'parentPhone',
+                        'school',
+                        'zone',
+                        'schedule',
+                        'childrenCount',
+                        'ages',
+                        'specialNeeds',
+                        'createdAt',
+                        'status'
+                      ]) &&
+                      request.resource.data.school is string &&
+                      request.resource.data.school.size() > 0 &&
+                      request.resource.data.school.size() <= 200 &&
+                      request.resource.data.zone is string &&
+                      request.resource.data.zone.size() > 0 &&
+                      request.resource.data.zone.size() <= 100 &&
+                      request.resource.data.schedule is string &&
+                      request.resource.data.schedule.size() > 0 &&
+                      request.resource.data.schedule.size() <= 100 &&
+                      request.resource.data.childrenCount is int &&
+                      request.resource.data.childrenCount >= 1 &&
+                      request.resource.data.childrenCount <= 10 &&
+                      request.resource.data.createdAt is timestamp &&
+                      request.resource.data.createdAt <= request.time &&
                       validRequestSize();
 
       // Request matching and status are managed by authenticated backend operations.
