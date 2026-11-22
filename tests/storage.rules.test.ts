@@ -31,7 +31,7 @@ describe('Storage Security Rules', () => {
   });
 
   afterAll(async () => {
-    if (!isEmulatorMode) return;
+    if (!isEmulatorMode || !testEnv) return;
     await testEnv.cleanup();
   });
 

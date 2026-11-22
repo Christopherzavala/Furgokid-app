@@ -27,7 +27,10 @@ const { createStaleTrackingCleanup } = require('./src/staleTrackingCleanup');
 const { createDriverTrackingCleanup } = require('./src/driverTrackingCleanup');
 const { createMatchLifecycleRepository } = require('./src/matchLifecycle');
 const { createMatchLifecycleCallables } = require('./src/matchLifecycleCallables');
-const { createEnsureUserProfileHandler } = require('./src/userProfileTrigger');
+const {
+  createEnsureUserProfileHandler,
+  provisionUserProfile,
+} = require('./src/userProfileTrigger');
 const { createDriverApprovalRepository } = require('./src/driverApproval');
 const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
 const { createAccountDeletionService } = require('./src/accountDeletionService');
@@ -143,6 +146,8 @@ exports.startTracking = onCall(
     },
   })
 );
+
+exports.provisionUserProfile = provisionUserProfile;
 
 exports.ensureUserProfile = onCall(
   callOpts,
