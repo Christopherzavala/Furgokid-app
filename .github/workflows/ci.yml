@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3 # v3 release
         with:
           base: ${{ github.event.pull_request.base.ref || 'main' }}
           head: ${{ github.ref }}
