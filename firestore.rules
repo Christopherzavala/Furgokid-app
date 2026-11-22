@@ -105,6 +105,14 @@ service cloud.firestore {
               (isApprovedDriver() && matchData.driverId == request.auth.uid));
     }
 
+    function isMatchParticipant(matchId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/matches/$(matchId)) &&
+             (isAdmin() ||
+              get(/databases/$(database)/documents/matches/$(matchId)).data.driverId == request.auth.uid ||
+              get(/databases/$(database)/documents/matches/$(matchId)).data.parentId == request.auth.uid);
+    }
+
     // Prevent clients from adding, removing, or changing privileged fields.
     // Missing values are treated as different so an attacker cannot delete
     // `approved` or `role` and bypass a later comparison.
@@ -425,19 +433,24 @@ service cloud.firestore {
         // Shared current points are deleted only by trusted backend code.
         allow delete: if false;
       }
+    }
 
-      match /handoverOtps/{otpId} {
-        allow read, write: if false;
-      }
+    // ============================================================================
+    // HANDOVER OTPS, PASSENGER STATES & CUSTODY EVENTS (Root collections)
+    // ============================================================================
 
-      match /passengerStates/{passengerId} {
-        allow read: if isAuthenticated() && (
-          isAdmin() ||
-          (isParent() && resource.data.parentId == request.auth.uid) ||
-          (isApprovedDriver() && resource.data.driverId == request.auth.uid)
-        );
-        allow write: if false;
-      }
+    match /handoverOtps/{otpId} {
+      allow read, write: if false;
+    }
+
+    match /passengerStates/{stateId} {
+      allow read: if isMatchParticipant(resource.data.matchId);
+      allow write: if false;
+    }
+
+    match /custodyEvents/{eventId} {
+      allow read: if isMatchParticipant(resource.data.matchId);
+      allow write: if false;
     }
 
     // ============================================================================

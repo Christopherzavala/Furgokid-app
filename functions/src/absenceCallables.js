@@ -7,6 +7,8 @@
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const { Timestamp } = require('firebase-admin/firestore');
+const { transitionPassengerStateInternal } = require('./custodyChain');
 
 const VALID_DOCUMENT_ID = (value) =>
   typeof value === 'string' &&
@@ -51,8 +53,8 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     );
   }
 
-  // Check passenger state machine to prevent reporting absence after boarding
-  const stateSnap = await matchRef.collection('passengerStates').doc(passengerId).get();
+  // Check passenger state machine to prevent reporting absence after boarding (using root collection)
+  const stateSnap = await db.collection('passengerStates').doc(`${matchId}_${passengerId}`).get();
   if (stateSnap.exists) {
     const currentState = stateSnap.data().state;
     if (
@@ -67,10 +69,20 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     }
   }
 
+  // Synchronize state to ABSENT
+  await transitionPassengerStateInternal({
+    db,
+    matchId,
+    passengerId,
+    newState: 'ABSENT',
+    actorUid: parentUid,
+    actorRole: 'parent',
+  });
+
   const absenceId = `abs_${matchId}_${passengerId}_${date.trim()}`;
   const absenceRef = matchRef.collection('absences').doc(absenceId);
 
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   await absenceRef.set(
     {
       absenceId,
