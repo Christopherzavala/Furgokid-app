@@ -28,6 +28,11 @@ import {
   verifyStudentHandover,
 } from '../services/custodyService';
 import { triggerSosAlert } from '../services/emergencyService';
+import {
+  buildWhatsAppShareUrl,
+  createTrackingShareLink,
+  revokeTrackingShareLink,
+} from '../services/webTrackingService';
 import toastService from '../services/toastService';
 import notificationService from '../utils/notificationService';
 
@@ -50,6 +55,7 @@ const TrackingMap = ({ route, navigation }) => {
   const [otpLoading, setOtpLoading] = useState(false);
   const [activeOtpInfo, setActiveOtpInfo] = useState(null);
   const [countdown, setCountdown] = useState(null);
+  const [activeShareUrl, setActiveShareUrl] = useState(null);
 
   const mapRef = useRef(null);
   const lastAnimateTsRef = useRef(0);
@@ -313,6 +319,28 @@ const TrackingMap = ({ route, navigation }) => {
     );
   };
 
+  // WhatsApp Share Shortcut (#7 / #8)
+  const handleShareWhatsApp = async () => {
+    if (!activeMatchId) return;
+    try {
+      let shareUrl = activeShareUrl;
+      if (!shareUrl) {
+        const res = await createTrackingShareLink({ matchId: activeMatchId, expiresInHours: 24 });
+        shareUrl = res.shareUrl;
+        setActiveShareUrl(res.shareUrl);
+      }
+      const waUrl = buildWhatsAppShareUrl({
+        shareUrl,
+        schoolOrZone: matchData?.school || matchData?.zone || 'Transporte Escolar',
+        status: driverLocation ? 'En Ruta' : 'Programado',
+      });
+      await Linking.openURL(waUrl);
+      toastService.success('WhatsApp', 'Abriendo WhatsApp para compartir seguimiento.');
+    } catch (error) {
+      toastService.error('Error Al Compartir', error.message || 'No se pudo compartir el enlace.');
+    }
+  };
+
   // Driver actions
   const handleDriverTransition = async (newState) => {
     if (!activeMatchId || !selectedPassengerId) return;
@@ -462,6 +490,9 @@ const TrackingMap = ({ route, navigation }) => {
           <View style={[styles.dot, driverLocation ? styles.dotActive : styles.dotInactive]} />
           <Text style={styles.statusText}>{driverLocation ? 'EN VIVO' : 'SIN RUTA'}</Text>
         </View>
+        <TouchableOpacity style={styles.waShareButton} onPress={handleShareWhatsApp}>
+          <Ionicons name="logo-whatsapp" size={22} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.sosButton} onPress={handleSosEmergency}>
           <Ionicons name="alert-circle" size={24} color="#fff" />
         </TouchableOpacity>
@@ -676,8 +707,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   backButton: { backgroundColor: '#fff', padding: 10, borderRadius: 30, elevation: 5 },
+  waShareButton: { backgroundColor: '#25D366', padding: 10, borderRadius: 30, elevation: 5 },
   sosButton: { backgroundColor: '#F44336', padding: 10, borderRadius: 30, elevation: 5 },
   statusBadge: {
     backgroundColor: '#fff',
@@ -687,6 +720,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     elevation: 5,
+    flex: 1,
+    justifyContent: 'center',
   },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   dotActive: { backgroundColor: '#4CAF50' },

@@ -470,6 +470,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /trackingShares/{shareToken} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.parentId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isAdminOrOps()
+      );
+      allow write: if false;
+    }
+
     match /schools/{schoolId} {
       allow read: if isAuthenticated();
       allow write: if false;

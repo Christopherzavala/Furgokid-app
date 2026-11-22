@@ -538,3 +538,12 @@ exports.verifyDriverFleetAsset = verifyDriverFleetAsset;
 const { saveMultiSchoolRoute, advanceRouteStop } = require('./src/multiSchoolRouteCallables');
 exports.saveMultiSchoolRoute = saveMultiSchoolRoute;
 exports.advanceRouteStop = advanceRouteStop;
+
+const {
+  createTrackingShareLink,
+  revokeTrackingShareLink,
+  getSharedTrackingSnapshot,
+} = require('./src/webTrackingCallables');
+exports.createTrackingShareLink = createTrackingShareLink;
+exports.revokeTrackingShareLink = revokeTrackingShareLink;
+exports.getSharedTrackingSnapshot = getSharedTrackingSnapshot;
