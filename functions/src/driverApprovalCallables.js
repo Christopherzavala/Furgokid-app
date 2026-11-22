@@ -39,7 +39,6 @@ const createDriverApprovalCallables = ({
       const data = request.data === undefined ? {} : request.data;
       return await invoke(actorUid, data);
     } catch (error) {
-      process.stderr.write('CALLABLE ERROR: ' + (error.stack || error.message) + '\n');
       const code = error instanceof DriverApprovalError ? error.code : 'internal';
       const safeCode = SAFE_CODES.has(code) ? code : 'internal';
       logger({ operation, result: 'failed', errorCode: safeCode });

@@ -302,27 +302,22 @@ const createDriverApprovalRepository = ({
           fail('failed-precondition');
         }
 
-        try {
-          const affectedParentIds = await cascadeCancelDriverOperations({
-            transaction,
-            vacanciesSnap,
-            matchesSnap,
-          });
+        const affectedParentIds = await cascadeCancelDriverOperations({
+          transaction,
+          vacanciesSnap,
+          matchesSnap,
+        });
 
-          transaction.update(targetRef, {
-            role: 'parent',
-            approved: false,
-            driverRequestStatus: REQUEST_STATUS.REJECTED,
-            driverRequestUpdatedAt: serverTimestamp(),
-          });
+        transaction.update(targetRef, {
+          role: 'parent',
+          approved: false,
+          driverRequestStatus: REQUEST_STATUS.REJECTED,
+          driverRequestUpdatedAt: serverTimestamp(),
+        });
 
-          const res = { status: REQUEST_STATUS.REJECTED, idempotent: false };
-          if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
-          return res;
-        } catch (err) {
-          console.log('CASCADE REJECT ERROR:', err);
-          throw err;
-        }
+        const res = { status: REQUEST_STATUS.REJECTED, idempotent: false };
+        if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
+        return res;
       }
 
       // Revoke
@@ -341,27 +336,22 @@ const createDriverApprovalRepository = ({
         fail('failed-precondition');
       }
 
-      try {
-        const affectedParentIds = await cascadeCancelDriverOperations({
-          transaction,
-          vacanciesSnap,
-          matchesSnap,
-        });
+      const affectedParentIds = await cascadeCancelDriverOperations({
+        transaction,
+        vacanciesSnap,
+        matchesSnap,
+      });
 
-        transaction.update(targetRef, {
-          role: 'parent',
-          approved: false,
-          driverRequestStatus: REQUEST_STATUS.REVOKED,
-          driverRequestUpdatedAt: serverTimestamp(),
-        });
+      transaction.update(targetRef, {
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: REQUEST_STATUS.REVOKED,
+        driverRequestUpdatedAt: serverTimestamp(),
+      });
 
-        const res = { status: REQUEST_STATUS.REVOKED, idempotent: false };
-        if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
-        return res;
-      } catch (err) {
-        console.log('CASCADE REVOKE ERROR:', err);
-        throw err;
-      }
+      const res = { status: REQUEST_STATUS.REVOKED, idempotent: false };
+      if (affectedParentIds.length > 0) res.affectedParentIds = affectedParentIds;
+      return res;
     });
   };
 
