@@ -13,6 +13,7 @@ import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 // Detecta si estamos en Expo Go (desarrollo)
 // En Expo Go no funcionan módulos nativos compilados
 const isExpoGo = Constants.executionEnvironment === 'StoreClient';
+const isJest = typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -41,9 +42,8 @@ let auth;
 if (!isNewApp) {
   // Ya fue inicializado anteriormente
   auth = getAuth(app);
-} else if (isExpoGo) {
-  // En Expo Go: Sin persistencia compilada (causa error)
-  console.log('[Firebase] Expo Go detectado - Auth sin persistencia compilada');
+} else if (isExpoGo || isJest) {
+  // En Expo Go o Jest: Sin persistencia compilada (causa error)
   auth = getAuth(app);
 } else {
   // En builds nativos (EAS/APK/AAB): Con persistencia usando AsyncStorage

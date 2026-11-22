@@ -161,6 +161,20 @@ const DriverScreen = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
 
+        {(isRouteActive || selectedMatchId) && (
+          <TouchableOpacity
+            style={styles.mapNavButton}
+            onPress={() =>
+              navigation.navigate('TrackingMap', {
+                matchId: activeTrackingMatchId || selectedMatchId,
+              })
+            }
+          >
+            <Ionicons name="map" size={20} color="#fff" />
+            <Text style={styles.mapNavButtonText}>Gestionar Pasajeros y Entrega (Mapa)</Text>
+          </TouchableOpacity>
+        )}
+
         {activeMatches.length > 1 && (
           <View style={styles.matchSelector}>
             <Text style={styles.sectionTitle}>Emparejamiento activo</Text>
@@ -303,7 +317,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
     borderRadius: 15,
-    marginBottom: 20,
+    marginBottom: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -321,6 +335,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  mapNavButton: {
+    flexDirection: 'row',
+    backgroundColor: '#FF6B35',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    elevation: 4,
+  },
+  mapNavButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginLeft: 8,
   },
   statusIndicator: {
     flexDirection: 'row',
