@@ -547,3 +547,9 @@ const {
 exports.createTrackingShareLink = createTrackingShareLink;
 exports.revokeTrackingShareLink = revokeTrackingShareLink;
 exports.getSharedTrackingSnapshot = getSharedTrackingSnapshot;
+
+const { updateAlertPreferencesCallable } = require('./src/alertPreferences');
+exports.updateAlertPreferences = onCall(
+  require('./src/securityGuard').getCallableSecurityOptions(),
+  async (req) => updateAlertPreferencesCallable(req, admin.firestore())
+);
