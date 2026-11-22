@@ -534,3 +534,7 @@ exports.getSchoolArrivalsSnapshot = getSchoolArrivalsSnapshot;
 const { upsertDriverFleetAsset, verifyDriverFleetAsset } = require('./src/fleetCallables');
 exports.upsertDriverFleetAsset = upsertDriverFleetAsset;
 exports.verifyDriverFleetAsset = verifyDriverFleetAsset;
+
+const { saveMultiSchoolRoute, advanceRouteStop } = require('./src/multiSchoolRouteCallables');
+exports.saveMultiSchoolRoute = saveMultiSchoolRoute;
+exports.advanceRouteStop = advanceRouteStop;

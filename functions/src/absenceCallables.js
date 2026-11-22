@@ -2,13 +2,14 @@
  * Smart Absence Callables
  *
  * Allows verified parents to report student absences before morning cutoff time,
- * notifying drivers and dynamically adapting route stops.
+ * notifying drivers, updating custody states, and dynamically skipping route stops.
  */
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { Timestamp } = require('firebase-admin/firestore');
 const { transitionPassengerStateInternal } = require('./custodyChain');
+const { computeOrderedStopsAndEta } = require('./multiSchoolRouteCallables');
 
 const VALID_DOCUMENT_ID = (value) =>
   typeof value === 'string' &&
@@ -96,6 +97,47 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     },
     { merge: true }
   );
+
+  // Automatically skip pending route stops for this passenger in active driver routes
+  if (match.driverId) {
+    try {
+      const routesSnap = await db
+        .collection('routes')
+        .where('driverId', '==', match.driverId)
+        .where('status', '==', 'ACTIVE')
+        .get();
+
+      for (const routeDoc of routesSnap.docs) {
+        const routeData = routeDoc.data();
+        let modified = false;
+        const updatedStops = (routeData.stops || []).map((stop) => {
+          if (
+            (stop.passengerId === passengerId || stop.matchId === matchId) &&
+            stop.status === 'PENDING'
+          ) {
+            modified = true;
+            return {
+              ...stop,
+              status: 'SKIPPED',
+              skipReason: 'ABSENT',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return stop;
+        });
+
+        if (modified) {
+          const recomputedStops = computeOrderedStopsAndEta(updatedStops);
+          await routeDoc.ref.update({
+            stops: recomputedStops,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    } catch (routeErr) {
+      console.warn('Failed to auto-skip route stop on student absence:', routeErr?.message);
+    }
+  }
 
   // Notify driver via FCM if push token exists
   const driverId = match.driverId;

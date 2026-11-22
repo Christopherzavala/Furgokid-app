@@ -221,15 +221,24 @@ const DriverScreen = ({ navigation }) => {
             style={styles.actionCard}
             onPress={() => navigation.navigate('DriverVacancy')}
           >
-            <Ionicons name="add-circle" size={32} color="#2196F3" />
+            <Ionicons name="add-circle" size={28} color="#2196F3" />
             <Text style={styles.actionCardText}>Publicar Cupo</Text>
-            <Text style={styles.actionCardSubtext}>Abre espacios disponibles</Text>
+            <Text style={styles.actionCardSubtext}>Abre espacios</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => navigation.navigate('MultiSchoolRoute')}
+          >
+            <Ionicons name="git-network-outline" size={28} color="#FF9800" />
+            <Text style={styles.actionCardText}>Rutas Multi-Colegio</Text>
+            <Text style={styles.actionCardSubtext}>Paradas y ETA</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Search')}>
-            <Ionicons name="search" size={32} color="#4CAF50" />
+            <Ionicons name="search" size={28} color="#4CAF50" />
             <Text style={styles.actionCardText}>Ver Solicitudes</Text>
-            <Text style={styles.actionCardSubtext}>Padres buscando transporte</Text>
+            <Text style={styles.actionCardSubtext}>Búsquedas padres</Text>
           </TouchableOpacity>
         </View>
 
@@ -400,29 +409,29 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginBottom: 25,
   },
   actionCard: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 15,
+    padding: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#eee',
   },
   actionCardText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: '#333',
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   actionCardSubtext: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#999',
-    marginTop: 4,
+    marginTop: 2,
     textAlign: 'center',
   },
   sectionTitle: {
