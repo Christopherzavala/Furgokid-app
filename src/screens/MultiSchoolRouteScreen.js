@@ -1,6 +1,6 @@
 // src/screens/MultiSchoolRouteScreen.js
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -43,7 +43,7 @@ const MultiSchoolRouteScreen = ({ navigation }) => {
   const [stopLat, setStopLat] = useState('');
   const [stopLng, setStopLng] = useState('');
 
-  const loadRoutes = async () => {
+  const loadRoutes = useCallback(async () => {
     if (!driverUid) return;
     try {
       setLoading(true);
@@ -61,11 +61,11 @@ const MultiSchoolRouteScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [driverUid]);
 
   useEffect(() => {
     loadRoutes();
-  }, [driverUid]);
+  }, [loadRoutes]);
 
   const handleAddStop = () => {
     if (!stopLabel.trim()) {
@@ -144,6 +144,12 @@ const MultiSchoolRouteScreen = ({ navigation }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const getStatusTagStyle = (status) => {
+    if (status === 'COMPLETED') return styles.tagCompleted;
+    if (status === 'SKIPPED') return styles.tagSkipped;
+    return styles.tagPending;
   };
 
   return (
@@ -271,7 +277,9 @@ const MultiSchoolRouteScreen = ({ navigation }) => {
                   <Text style={styles.orderBadgeText}>#{item.order}</Text>
                 </View>
                 <Text style={styles.stopTitle}>{item.label}</Text>
-                <Text style={[styles.statusTag, styles[`tag_${item.status}`]]}>{item.status}</Text>
+                <Text style={[styles.statusTag, getStatusTagStyle(item.status)]}>
+                  {item.status}
+                </Text>
               </View>
 
               <Text style={styles.stopDetail}>Tipo: {item.type.toUpperCase()}</Text>
@@ -401,9 +409,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 4,
   },
-  tag_PENDING: { backgroundColor: '#FFF3E0', color: '#E65100' },
-  tag_COMPLETED: { backgroundColor: '#E8F5E9', color: '#2E7D32' },
-  tag_SKIPPED: { backgroundColor: '#FFEBEE', color: '#C62828' },
+  tagPending: { backgroundColor: '#FFF3E0', color: '#E65100' },
+  tagCompleted: { backgroundColor: '#E8F5E9', color: '#2E7D32' },
+  tagSkipped: { backgroundColor: '#FFEBEE', color: '#C62828' },
   stopDetail: { fontSize: 12, color: '#666', marginBottom: 2 },
   stopEta: { fontSize: 13, fontWeight: 'bold', color: '#1976D2', marginTop: 4 },
   stopEtaNull: { fontSize: 12, color: '#999', fontStyle: 'italic', marginTop: 4 },

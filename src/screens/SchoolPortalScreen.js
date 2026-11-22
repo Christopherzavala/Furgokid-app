@@ -1,6 +1,6 @@
 // src/screens/SchoolPortalScreen.js
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -42,7 +42,7 @@ const SchoolPortalScreen = ({ navigation }) => {
   const [newDriverId, setNewDriverId] = useState('');
   const [authorizing, setAuthorizing] = useState(false);
 
-  const loadSnapshot = async () => {
+  const loadSnapshot = useCallback(async () => {
     if (!schoolId) {
       setLoading(false);
       setRefreshing(false);
@@ -61,11 +61,11 @@ const SchoolPortalScreen = ({ navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [schoolId]);
 
   useEffect(() => {
     loadSnapshot();
-  }, [schoolId]);
+  }, [loadSnapshot]);
 
   const handleRefresh = () => {
     setRefreshing(true);
