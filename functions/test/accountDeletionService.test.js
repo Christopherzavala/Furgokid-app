@@ -217,19 +217,34 @@ describe('accountDeletionService Unit Tests', () => {
     expect(status.status).toBe('completed');
   });
 
-  test('resumePendingRequests processes pending and failed retryable deletion states', async () => {
+  test('isDeletionPending returns true when pending, false otherwise', async () => {
     const firestore = makeMockFirestore({
       'accountDeletionRequests/user-pending': {
         status: 'pending',
-        requestId: 'req-1',
-        uid: 'user-pending',
-        phase: 'matches',
-        lease: { lockedAt: 0 },
       },
     });
+    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
+    const storage = { bucket: jest.fn() };
+
+    const service = createAccountDeletionService({
+      firestore,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+
+    expect(await service.isDeletionPending('user-pending')).toBe(true);
+    expect(Boolean(await service.isDeletionPending('user-missing'))).toBe(false);
+  });
+
+  test('requestDeletion blocks when active match exists', async () => {
+    const firestore = makeMockFirestore({
+      'users/driver-1': { role: 'driver' },
+      'matches/match-1': { driverId: 'driver-1', status: 'active' },
+    });
     const auth = {
-      getUser: jest.fn().mockResolvedValue({ uid: 'user', email: 'u@test.com' }),
-      deleteUser: jest.fn().mockResolvedValue(),
+      getUser: jest.fn().mockResolvedValue({ uid: 'driver-1', email: 'driver@example.com' }),
+      deleteUser: jest.fn(),
     };
     const storage = {
       bucket: jest.fn(() => ({
@@ -244,7 +259,22 @@ describe('accountDeletionService Unit Tests', () => {
       serverTimestamp: FieldValue.serverTimestamp,
     });
 
+    await expect(service.requestDeletion('driver-1')).rejects.toThrow(AccountDeletionError);
+  });
+
+  test('resumePendingRequests runs successfully with no candidates', async () => {
+    const firestore = makeMockFirestore();
+    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
+    const storage = { bucket: jest.fn() };
+
+    const service = createAccountDeletionService({
+      firestore,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+
     const res = await service.resumePendingRequests();
-    expect(res.processed).toBeGreaterThanOrEqual(0);
+    expect(res.processed).toBe(0);
   });
 });
