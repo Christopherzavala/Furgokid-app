@@ -1,13 +1,66 @@
-// SettingsScreen.js - Pantalla de Configuración
+// SettingsScreen.js - Pantalla de Configuración y Preferencias de Alertas
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import {
+  DEFAULT_ALERT_PREFERENCES,
+  fetchAlertPreferences,
+  saveAlertPreferences,
+} from '../services/alertPreferencesService';
 import toastService from '../services/toastService';
 
 const SettingsScreen = ({ navigation }) => {
-  const { userProfile, signOut } = useAuth();
+  const { user, userProfile, signOut } = useAuth();
+  const [alertPrefs, setAlertPrefs] = useState(DEFAULT_ALERT_PREFERENCES);
+  const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (user?.uid) {
+      fetchAlertPreferences(user.uid)
+        .then((prefs) => {
+          if (active) setAlertPrefs(prefs);
+        })
+        .finally(() => {
+          if (active) setLoadingPrefs(false);
+        });
+    } else {
+      setLoadingPrefs(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [user?.uid]);
+
+  const handleTogglePref = async (key) => {
+    const updated = { ...alertPrefs, [key]: !alertPrefs[key] };
+    setAlertPrefs(updated);
+    try {
+      setSavingPrefs(true);
+      await saveAlertPreferences(updated);
+      toastService.success('Preferencias actualizadas', 'Tus alertas de viaje han sido guardadas.');
+    } catch (error) {
+      toastService.error('Error', error.message || 'No se pudieron guardar las preferencias.');
+      // Revert on error
+      setAlertPrefs(alertPrefs);
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert('Cerrar sesión', '¿Seguro que deseas cerrar sesión?', [
@@ -79,7 +132,7 @@ const SettingsScreen = ({ navigation }) => {
           </TouchableOpacity>
           <View style={styles.headerTextBlock}>
             <Text style={styles.headerTitle}>Configuración</Text>
-            <Text style={styles.headerSubtitle}>Privacidad, cuenta y soporte</Text>
+            <Text style={styles.headerSubtitle}>Privacidad, alertas y cuenta</Text>
           </View>
           <View style={{ width: 40 }} />
         </View>
@@ -102,6 +155,78 @@ const SettingsScreen = ({ navigation }) => {
             'Preferencias de Consentimiento',
             'Gestiona analítica y anuncios',
             () => navigation.navigate('ConsentPreferences')
+          )}
+        </View>
+
+        {/* NOTIFICATION PREFERENCES SECTION (#8) */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Preferencias de Alertas (Push)</Text>
+            {savingPrefs && <ActivityIndicator size="small" color="#2196F3" />}
+          </View>
+
+          {loadingPrefs ? (
+            <ActivityIndicator style={{ marginVertical: 10 }} color="#2196F3" />
+          ) : (
+            <View style={styles.card}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchTextContainer}>
+                  <Text style={styles.switchTitle}>Abordaje y Tránsito</Text>
+                  <Text style={styles.switchSub}>
+                    Avisos cuando el estudiante aborda o inicia viaje
+                  </Text>
+                </View>
+                <Switch
+                  value={alertPrefs.boardingAlert}
+                  onValueChange={() => handleTogglePref('boardingAlert')}
+                  trackColor={{ false: '#ddd', true: '#90CAF9' }}
+                  thumbColor={alertPrefs.boardingAlert ? '#2196F3' : '#f4f3f4'}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={styles.switchTextContainer}>
+                  <Text style={styles.switchTitle}>Cercanía y ETA</Text>
+                  <Text style={styles.switchSub}>
+                    Alertas cuando el furgón se aproxima (~5 min)
+                  </Text>
+                </View>
+                <Switch
+                  value={alertPrefs.etaProximityAlert}
+                  onValueChange={() => handleTogglePref('etaProximityAlert')}
+                  trackColor={{ false: '#ddd', true: '#90CAF9' }}
+                  thumbColor={alertPrefs.etaProximityAlert ? '#2196F3' : '#f4f3f4'}
+                />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={styles.switchTextContainer}>
+                  <Text style={styles.switchTitle}>Llegada y Entrega (OTP)</Text>
+                  <Text style={styles.switchSub}>Avisos al confirmar llegada y entrega segura</Text>
+                </View>
+                <Switch
+                  value={alertPrefs.handoverAlert}
+                  onValueChange={() => handleTogglePref('handoverAlert')}
+                  trackColor={{ false: '#ddd', true: '#90CAF9' }}
+                  thumbColor={alertPrefs.handoverAlert ? '#2196F3' : '#f4f3f4'}
+                />
+              </View>
+
+              <View style={[styles.switchRow, { borderBottomWidth: 0 }]}>
+                <View style={styles.switchTextContainer}>
+                  <Text style={styles.switchTitle}>Avisos de Ausencia</Text>
+                  <Text style={styles.switchSub}>
+                    Confirmación y omisión de paradas por inasistencia
+                  </Text>
+                </View>
+                <Switch
+                  value={alertPrefs.absenceAlert}
+                  onValueChange={() => handleTogglePref('absenceAlert')}
+                  trackColor={{ false: '#ddd', true: '#90CAF9' }}
+                  thumbColor={alertPrefs.absenceAlert ? '#2196F3' : '#f4f3f4'}
+                />
+              </View>
+            </View>
           )}
         </View>
 
@@ -209,12 +334,49 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 25,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginLeft: 5,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
-    marginLeft: 5,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  switchTextContainer: {
+    flex: 1,
+    marginRight: 10,
+  },
+  switchTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  switchSub: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   settingItem: {
     backgroundColor: '#fff',

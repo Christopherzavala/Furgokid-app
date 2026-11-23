@@ -534,7 +534,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   title: { fontSize: 20, fontWeight: 'bold', color: '#17456B', marginTop: 8, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: '#555', textAlign: 'center', marginTop: 4 },
   body: { fontSize: 14, color: '#333', lineHeight: 20, marginTop: 4 },
   notice: {
     backgroundColor: '#E3F2FD',

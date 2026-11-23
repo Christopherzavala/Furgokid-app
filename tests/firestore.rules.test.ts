@@ -1489,4 +1489,113 @@ describe('Firestore Rules', () => {
       }
     );
   });
+
+  describe('Custody Chain & OTP Handover Rules', () => {
+    runOrSkip('BLOCKED: client cannot read or write handoverOtps', async () => {
+      await seedUser(testEnv, 'parent-custody', { role: 'parent' });
+      await seedDocument(testEnv, 'handoverOtps/otp-1', {
+        matchId: 'match-custody',
+        passengerId: 'pass-1',
+        pinHash: 'hash',
+        status: 'active',
+      });
+
+      await assertFails(
+        testEnv
+          .authenticatedContext('parent-custody')
+          .firestore()
+          .collection('handoverOtps')
+          .doc('otp-1')
+          .get()
+      );
+      await assertFails(
+        testEnv
+          .authenticatedContext('parent-custody')
+          .firestore()
+          .collection('handoverOtps')
+          .doc('otp-2')
+          .set({ matchId: 'match-custody' })
+      );
+    });
+
+    runOrSkip(
+      'AUTHORIZATION: passengerStates and custodyEvents read restricted to match participants',
+      async () => {
+        await seedUser(testEnv, 'parent-p', { role: 'parent' });
+        await seedUser(testEnv, 'driver-d', { role: 'driver', approved: true });
+        await seedUser(testEnv, 'stranger-s', { role: 'parent' });
+        await seedDocument(testEnv, 'matches/match-custody', {
+          parentId: 'parent-p',
+          driverId: 'driver-d',
+          status: 'active',
+        });
+        await seedDocument(testEnv, 'passengerStates/state-1', {
+          matchId: 'match-custody',
+          passengerId: 'pass-1',
+          state: 'EXPECTED',
+        });
+        await seedDocument(testEnv, 'custodyEvents/evt-1', {
+          matchId: 'match-custody',
+          passengerId: 'pass-1',
+          nextState: 'BOARDING_CONFIRMED',
+        });
+
+        // Parent can read
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('parent-p')
+            .firestore()
+            .collection('passengerStates')
+            .doc('state-1')
+            .get()
+        );
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('parent-p')
+            .firestore()
+            .collection('custodyEvents')
+            .doc('evt-1')
+            .get()
+        );
+
+        // Driver can read
+        await assertSucceeds(
+          testEnv
+            .authenticatedContext('driver-d')
+            .firestore()
+            .collection('passengerStates')
+            .doc('state-1')
+            .get()
+        );
+
+        // Stranger denied
+        await assertFails(
+          testEnv
+            .authenticatedContext('stranger-s')
+            .firestore()
+            .collection('passengerStates')
+            .doc('state-1')
+            .get()
+        );
+        await assertFails(
+          testEnv
+            .authenticatedContext('stranger-s')
+            .firestore()
+            .collection('custodyEvents')
+            .doc('evt-1')
+            .get()
+        );
+
+        // Direct client writes denied
+        await assertFails(
+          testEnv
+            .authenticatedContext('driver-d')
+            .firestore()
+            .collection('passengerStates')
+            .doc('state-1')
+            .update({ state: 'HANDOVER_CONFIRMED' })
+        );
+      }
+    );
+  });
 });

@@ -27,7 +27,10 @@ const { createStaleTrackingCleanup } = require('./src/staleTrackingCleanup');
 const { createDriverTrackingCleanup } = require('./src/driverTrackingCleanup');
 const { createMatchLifecycleRepository } = require('./src/matchLifecycle');
 const { createMatchLifecycleCallables } = require('./src/matchLifecycleCallables');
-const { createEnsureUserProfileHandler } = require('./src/userProfileTrigger');
+const {
+  createEnsureUserProfileHandler,
+  provisionUserProfile,
+} = require('./src/userProfileTrigger');
 const { createDriverApprovalRepository } = require('./src/driverApproval');
 const { createDriverApprovalCallables } = require('./src/driverApprovalCallables');
 const { createAccountDeletionService } = require('./src/accountDeletionService');
@@ -144,6 +147,8 @@ exports.startTracking = onCall(
   })
 );
 
+exports.provisionUserProfile = provisionUserProfile;
+
 exports.ensureUserProfile = onCall(
   callOpts,
   createEnsureUserProfileHandler({
@@ -170,6 +175,11 @@ exports.updatePassengerAuthorizationStatus = onCall(
   callOpts,
   passengerAuthCallables.updatePassengerAuthorizationStatusCallable
 );
+
+const custodyChain = require('./src/custodyChain');
+exports.updatePassengerState = onCall(callOpts, custodyChain.updatePassengerStateCallable);
+exports.generateHandoverOtp = onCall(callOpts, custodyChain.generateHandoverOtp);
+exports.confirmStudentHandover = onCall(callOpts, custodyChain.confirmStudentHandover);
 
 exports.cleanupFinalizedMatchTracking = onDocumentUpdated(
   { document: 'matches/{matchId}', retry: true },
@@ -509,3 +519,42 @@ exports.testNotification = onRequest(async (req, res) => {
     res.status(500).json({ success: false, error: error.message, code: error.code });
   }
 });
+
+const { triggerSosAlert, resolveSosAlert } = require('./src/emergencyCallables');
+exports.triggerSosAlert = triggerSosAlert;
+exports.resolveSosAlert = resolveSosAlert;
+
+const { getOpsDashboardSnapshot } = require('./src/adminOpsCallables');
+exports.getOpsDashboardSnapshot = getOpsDashboardSnapshot;
+
+const {
+  registerSchoolB2b,
+  authorizeSchoolDriver,
+  getSchoolArrivalsSnapshot,
+} = require('./src/schoolB2bCallables');
+exports.registerSchoolB2b = registerSchoolB2b;
+exports.authorizeSchoolDriver = authorizeSchoolDriver;
+exports.getSchoolArrivalsSnapshot = getSchoolArrivalsSnapshot;
+
+const { upsertDriverFleetAsset, verifyDriverFleetAsset } = require('./src/fleetCallables');
+exports.upsertDriverFleetAsset = upsertDriverFleetAsset;
+exports.verifyDriverFleetAsset = verifyDriverFleetAsset;
+
+const { saveMultiSchoolRoute, advanceRouteStop } = require('./src/multiSchoolRouteCallables');
+exports.saveMultiSchoolRoute = saveMultiSchoolRoute;
+exports.advanceRouteStop = advanceRouteStop;
+
+const {
+  createTrackingShareLink,
+  revokeTrackingShareLink,
+  getSharedTrackingSnapshot,
+} = require('./src/webTrackingCallables');
+exports.createTrackingShareLink = createTrackingShareLink;
+exports.revokeTrackingShareLink = revokeTrackingShareLink;
+exports.getSharedTrackingSnapshot = getSharedTrackingSnapshot;
+
+const { updateAlertPreferencesCallable } = require('./src/alertPreferences');
+exports.updateAlertPreferences = onCall(
+  require('./src/securityGuard').getCallableSecurityOptions(),
+  async (req) => updateAlertPreferencesCallable(req, admin.firestore())
+);

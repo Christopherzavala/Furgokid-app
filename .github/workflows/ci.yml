@@ -27,6 +27,26 @@ env:
   FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
 
 jobs:
+  security-scan:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
+        with:
+          base: ${{ github.event.pull_request.base.ref || 'main' }}
+          head: ${{ github.ref }}
+          extra_args: --results=verified,unknown --exclude-paths=.trufflehog-exclude
+
   quality:
     name: Quality, type-check, lint and client tests
     runs-on: ubuntu-latest
@@ -122,8 +142,8 @@ jobs:
     timeout-minutes: 30
     env:
       CI_DISABLE_EXTERNAL_NOTIFICATIONS: 'true'
-      CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: functions-emulator-guard-ready.txt
-      CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: functions-emulator-attempts.txt
+      CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: ${{ runner.temp }}/functions-emulator-guard-ready-${{ github.run_id }}-${{ github.run_attempt }}.txt
+      CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: ${{ runner.temp }}/functions-emulator-attempts-${{ github.run_id }}-${{ github.run_attempt }}.txt
       GCLOUD_PROJECT: demo-furgokid
       GOOGLE_CLOUD_PROJECT: demo-furgokid
       ACCOUNT_DELETION_EMULATOR: 'true'

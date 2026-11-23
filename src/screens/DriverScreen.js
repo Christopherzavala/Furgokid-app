@@ -138,6 +138,16 @@ const DriverScreen = ({ navigation }) => {
 
       {/* MAIN CONTENT */}
       <View style={styles.content}>
+        {(userProfile?.role === 'admin' || userProfile?.role === 'ops') && (
+          <TouchableOpacity
+            style={styles.opsButton}
+            onPress={() => navigation.navigate('AdminOps')}
+          >
+            <Ionicons name="shield-checkmark" size={20} color="#fff" />
+            <Text style={styles.opsButtonText}>Consola Ops / Admin</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.bigButton, isRouteActive ? styles.stopButton : styles.startButton]}
           onPress={toggleRoute}
@@ -160,6 +170,20 @@ const DriverScreen = ({ navigation }) => {
             {isRouteActive ? 'TERMINAR RUTA' : 'INICIAR RUTA'}
           </Text>
         </TouchableOpacity>
+
+        {(isRouteActive || selectedMatchId) && (
+          <TouchableOpacity
+            style={styles.mapNavButton}
+            onPress={() =>
+              navigation.navigate('TrackingMap', {
+                matchId: activeTrackingMatchId || selectedMatchId,
+              })
+            }
+          >
+            <Ionicons name="map" size={20} color="#fff" />
+            <Text style={styles.mapNavButtonText}>Gestionar Pasajeros y Entrega (Mapa)</Text>
+          </TouchableOpacity>
+        )}
 
         {activeMatches.length > 1 && (
           <View style={styles.matchSelector}>
@@ -197,15 +221,24 @@ const DriverScreen = ({ navigation }) => {
             style={styles.actionCard}
             onPress={() => navigation.navigate('DriverVacancy')}
           >
-            <Ionicons name="add-circle" size={32} color="#2196F3" />
+            <Ionicons name="add-circle" size={28} color="#2196F3" />
             <Text style={styles.actionCardText}>Publicar Cupo</Text>
-            <Text style={styles.actionCardSubtext}>Abre espacios disponibles</Text>
+            <Text style={styles.actionCardSubtext}>Abre espacios</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => navigation.navigate('MultiSchoolRoute')}
+          >
+            <Ionicons name="git-network-outline" size={28} color="#FF9800" />
+            <Text style={styles.actionCardText}>Rutas Multi-Colegio</Text>
+            <Text style={styles.actionCardSubtext}>Paradas y ETA</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Search')}>
-            <Ionicons name="search" size={32} color="#4CAF50" />
+            <Ionicons name="search" size={28} color="#4CAF50" />
             <Text style={styles.actionCardText}>Ver Solicitudes</Text>
-            <Text style={styles.actionCardSubtext}>Padres buscando transporte</Text>
+            <Text style={styles.actionCardSubtext}>Búsquedas padres</Text>
           </TouchableOpacity>
         </View>
 
@@ -291,6 +324,22 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  opsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A237E',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 15,
+    gap: 8,
+    elevation: 3,
+  },
+  opsButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
   list: {
     flex: 1,
   },
@@ -303,7 +352,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
     borderRadius: 15,
-    marginBottom: 20,
+    marginBottom: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -321,6 +370,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  mapNavButton: {
+    flexDirection: 'row',
+    backgroundColor: '#FF6B35',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    elevation: 4,
+  },
+  mapNavButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginLeft: 8,
   },
   statusIndicator: {
     flexDirection: 'row',
@@ -344,29 +409,29 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginBottom: 25,
   },
   actionCard: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 15,
+    padding: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#eee',
   },
   actionCardText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: '#333',
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   actionCardSubtext: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#999',
-    marginTop: 4,
+    marginTop: 2,
     textAlign: 'center',
   },
   sectionTitle: {

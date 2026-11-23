@@ -24,6 +24,10 @@ service cloud.firestore {
       return hasRole('admin');
     }
 
+    function isAdminOrOps() {
+      return hasRole('admin') || hasRole('ops');
+    }
+
     function isParent() {
       return hasRole('parent');
     }
@@ -100,9 +104,17 @@ service cloud.firestore {
     // that match. Drivers must be approved; admins retain break-glass access.
     function canReadMatch(matchData) {
       return isAuthenticated() &&
-             (isAdmin() ||
+             (isAdminOrOps() ||
               (isParent() && matchData.parentId == request.auth.uid) ||
               (isApprovedDriver() && matchData.driverId == request.auth.uid));
+    }
+
+    function isMatchParticipant(matchId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/matches/$(matchId)) &&
+             (isAdminOrOps() ||
+              get(/databases/$(database)/documents/matches/$(matchId)).data.driverId == request.auth.uid ||
+              get(/databases/$(database)/documents/matches/$(matchId)).data.parentId == request.auth.uid);
     }
 
     // Prevent clients from adding, removing, or changing privileged fields.
@@ -186,8 +198,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /users/{userId} {
-      // A user can read their own profile. Admins can read any profile.
-      allow read: if isOwner(userId) || isAdmin();
+      // A user can read their own profile. Admins and ops can read any profile.
+      allow read: if isOwner(userId) || isAdminOrOps();
 
       // Profiles are created only by the blocking beforeUserCreated Auth
       // trigger. The Admin SDK bypasses Firestore Security Rules.
@@ -213,8 +225,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /routes/{routeId} {
-      // Only route owner (approved driver) or admin can read routes
-      allow read: if isAdmin() ||
+      // Only route owner (approved driver) or admin/ops can read routes
+      allow read: if isAdminOrOps() ||
                     (isApprovedDriver() && resource.data.driverId == request.auth.uid);
 
       // Only APPROVED drivers can create routes
@@ -247,7 +259,7 @@ service cloud.firestore {
 
     match /trackingPoints/{pointId} {
       // Historical GPS data is private to its owner and administrators.
-      allow read: if isAdmin() ||
+      allow read: if isAdminOrOps() ||
                     (isAuthenticated() && resource.data.userId == request.auth.uid);
 
       // The app has no supported writer for this legacy history collection.
@@ -283,7 +295,7 @@ service cloud.firestore {
       // Users can read requests where they are parent or driver
       allow read: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
-        isAdmin()
+        isAdminOrOps()
       );
 
       // Parents can create their own requests from ParentRequestScreen with strict schema validation
@@ -341,8 +353,8 @@ service cloud.firestore {
     // ============================================================================
 
     match /vacancies/{vacancyId} {
-      // Only vacancy owner (approved driver) or admin can read vacancies
-      allow read: if isAdmin() ||
+      // Only vacancy owner (approved driver) or admin/ops can read vacancies
+      allow read: if isAdminOrOps() ||
                     (isApprovedDriver() && resource.data.driverId == request.auth.uid);
 
       // Only APPROVED drivers can create vacancies
@@ -428,13 +440,78 @@ service cloud.firestore {
     }
 
     // ============================================================================
+    // HANDOVER OTPS, PASSENGER STATES & CUSTODY EVENTS (Root collections)
+    // ============================================================================
+
+    match /handoverOtps/{otpId} {
+      allow read, write: if false;
+    }
+
+    match /passengerStates/{stateId} {
+      allow read: if isMatchParticipant(resource.data.matchId);
+      allow write: if false;
+    }
+
+    match /custodyEvents/{eventId} {
+      allow read: if isMatchParticipant(resource.data.matchId) || isAdminOrOps();
+      allow write: if false;
+    }
+
+    match /emergencyIncidents/{incidentId} {
+      allow read: if isMatchParticipant(resource.data.matchId) || isAdminOrOps();
+      allow write: if false;
+    }
+
+    match /rateLimits/{limitId} {
+      allow read, write: if false;
+    }
+
+    match /securityAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+
+    match /trackingShares/{shareToken} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.parentId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        isAdminOrOps()
+      );
+      allow write: if false;
+    }
+
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /driverFleets/{driverId} {
+      function canReadDriverFleet() {
+        return isAuthenticated() && (
+          request.auth.uid == driverId ||
+          isAdminOrOps()
+        );
+      }
+
+      match /vehicles/{vehicleId} {
+        allow read: if canReadDriverFleet();
+        allow write: if false;
+      }
+
+      match /assistants/{assistantId} {
+        allow read: if canReadDriverFleet();
+        allow write: if false;
+      }
+    }
+
+    // ============================================================================
     // PASSENGERS COLLECTION (F0.10 Child Protection & Data Minimization)
     // ============================================================================
 
     match /passengers/{passengerId} {
       function canReadPassenger(passengerData) {
         return isAuthenticated() &&
-               (isAdmin() ||
+               (isAdminOrOps() ||
                 (isParent() && passengerData.parentId == request.auth.uid));
       }
 
@@ -449,7 +526,7 @@ service cloud.firestore {
 
     match /passengerAuthorizations/{authorizationId} {
       allow read: if isAuthenticated() &&
-                    (isAdmin() || resource.data.guardianId == request.auth.uid);
+                    (isAdminOrOps() || resource.data.guardianId == request.auth.uid);
       // Authorizations are managed exclusively by trusted backend code.
       allow write: if false;
     }
