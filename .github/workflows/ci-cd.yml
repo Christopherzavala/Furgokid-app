@@ -84,7 +84,6 @@ jobs:
           ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
           ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      EXPO_PUBLIC_ADS_FORCE_TEST: 'true'
           EXPO_PUBLIC_ADS_FORCE_TEST: 'true'
 
       - name: TypeScript Check
@@ -243,6 +242,7 @@ jobs:
       ADMOB_ANDROID_APP_ID: ${{ secrets.ADMOB_ANDROID_APP_ID }}
       ADMOB_IOS_APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      EXPO_PUBLIC_ADS_FORCE_TEST: 'true'
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
