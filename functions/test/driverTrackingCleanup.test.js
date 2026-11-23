@@ -1,6 +1,6 @@
 const { createDriverTrackingCleanup } = require('../src/driverTrackingCleanup');
 
-const createHarness = ({ pages, deletion = 'deleted' } = {}) => {
+const createHarness = ({ pages, deletion = 'deleted', pageSize } = {}) => {
   const repository = {
     listMatchesByDriver: jest.fn(async ({ pageToken }) => {
       if (pageToken === null) return pages[0];
@@ -9,11 +9,36 @@ const createHarness = ({ pages, deletion = 'deleted' } = {}) => {
     deleteDriverCurrentTrackingIfAssigned: jest.fn(async () => deletion),
   };
   const logger = jest.fn();
-  const cleanup = createDriverTrackingCleanup({ repository, logger });
+  const cleanup = createDriverTrackingCleanup({
+    repository,
+    logger,
+    ...(pageSize ? { pageSize } : {}),
+  });
   return { cleanup, repository, logger };
 };
 
 describe('driver tracking cleanup', () => {
+  test('constructor validates required dependencies and pageSize', () => {
+    const validRepo = {
+      listMatchesByDriver: jest.fn(),
+      deleteDriverCurrentTrackingIfAssigned: jest.fn(),
+    };
+    const validLogger = jest.fn();
+
+    expect(() => createDriverTrackingCleanup({ repository: null, logger: validLogger })).toThrow(
+      TypeError
+    );
+    expect(() => createDriverTrackingCleanup({ repository: validRepo, logger: null })).toThrow(
+      TypeError
+    );
+    expect(() =>
+      createDriverTrackingCleanup({ repository: validRepo, logger: validLogger, pageSize: 0 })
+    ).toThrow(RangeError);
+    expect(() =>
+      createDriverTrackingCleanup({ repository: validRepo, logger: validLogger, pageSize: 600 })
+    ).toThrow(RangeError);
+  });
+
   test('cleans every assigned match without changing match state', async () => {
     const { cleanup, repository } = createHarness({
       pages: [
@@ -50,6 +75,73 @@ describe('driver tracking cleanup', () => {
       deletedCount: 0,
       missingCount: 1,
     });
+  });
+
+  test('handles denied, match-missing, unknown deletion results and deletion errors', async () => {
+    const { cleanup, repository } = createHarness({
+      pages: [
+        {
+          matches: [
+            { id: 'match-1' },
+            { id: 'match-missing' },
+            { id: 'match-denied' },
+            { id: 'match-unknown' },
+            { id: 'match-error' },
+          ],
+          nextPageToken: null,
+        },
+      ],
+    });
+    repository.deleteDriverCurrentTrackingIfAssigned
+      .mockResolvedValueOnce('deleted')
+      .mockResolvedValueOnce('match-missing')
+      .mockResolvedValueOnce('denied')
+      .mockResolvedValueOnce('unknown-status')
+      .mockRejectedValueOnce(new Error('Deletion exception'));
+
+    const res = await cleanup('driver-1');
+    expect(res.complete).toBe(false);
+    expect(res.deletedCount).toBe(1);
+    expect(res.deniedCount).toBe(1);
+    expect(res.failedCount).toBe(2);
+  });
+
+  test('handles invalid match page response from repository', async () => {
+    const repository = {
+      listMatchesByDriver: jest.fn(async () => ({ matches: 'not-an-array', nextPageToken: null })),
+      deleteDriverCurrentTrackingIfAssigned: jest.fn(),
+    };
+    const cleanup = createDriverTrackingCleanup({ repository, logger: jest.fn() });
+
+    await expect(cleanup('driver-1')).resolves.toMatchObject({
+      complete: false,
+      failedCount: 1,
+    });
+  });
+
+  test('handles invalid candidate match ID in page', async () => {
+    const { cleanup } = createHarness({
+      pages: [{ matches: [{ id: '../bad-id' }], nextPageToken: null }],
+    });
+
+    const res = await cleanup('driver-1');
+    expect(res.complete).toBe(false);
+    expect(res.failedCount).toBe(1);
+  });
+
+  test('detects infinite pagination token loops', async () => {
+    const repository = {
+      listMatchesByDriver: jest.fn(async () => ({
+        matches: [{ id: 'match-1' }],
+        nextPageToken: 'loop-token',
+      })),
+      deleteDriverCurrentTrackingIfAssigned: jest.fn(async () => 'deleted'),
+    };
+    const cleanup = createDriverTrackingCleanup({ repository, logger: jest.fn() });
+
+    const res = await cleanup('driver-1');
+    expect(res.complete).toBe(false);
+    expect(res.failedCount).toBe(1);
   });
 
   test('reports a partial result when a repository page fails', async () => {
