@@ -3,7 +3,6 @@
 const {
   computeOrderedStopsAndEta,
   saveMultiSchoolRoute,
-  advanceRouteStop,
 } = require('../src/multiSchoolRouteCallables');
 
 describe('Multi-School Route Engine Unit Tests', () => {

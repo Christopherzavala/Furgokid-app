@@ -5,7 +5,7 @@ const { assertAdminOrOps } = require('../src/adminOpsCallables');
 const makeMockDbForOps = (userRole = 'parent') => ({
   collection(name) {
     return {
-      doc(id) {
+      doc(_id) {
         return {
           async get() {
             if (name === 'users') {

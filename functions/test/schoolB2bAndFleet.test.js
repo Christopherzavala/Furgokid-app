@@ -2,7 +2,7 @@
 
 const { assertSchoolAdminOrOps } = require('../src/schoolB2bCallables');
 
-const makeMockDbForB2b = ({ userRole = 'parent', schoolAdmins = [] } = {}) => {
+const makeMockDbForB2b = ({ schoolAdmins = [] } = {}) => {
   const store = new Map();
   store.set('schools/school_12345', {
     schoolId: 'school_12345',
