@@ -142,8 +142,8 @@ jobs:
     timeout-minutes: 30
     env:
       CI_DISABLE_EXTERNAL_NOTIFICATIONS: 'true'
-      CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: ${{ runner.temp }}/functions-emulator-guard-ready-${{ github.run_id }}-${{ github.run_attempt }}.txt
-      CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: ${{ runner.temp }}/functions-emulator-attempts-${{ github.run_id }}-${{ github.run_attempt }}.txt
+      CI_EXTERNAL_NOTIFICATION_GUARD_READY_FILE: /tmp/functions-emulator-guard-ready-${{ github.run_id }}-${{ github.run_attempt }}.txt
+      CI_EXTERNAL_NOTIFICATION_ATTEMPT_FILE: /tmp/functions-emulator-attempts-${{ github.run_id }}-${{ github.run_attempt }}.txt
       GCLOUD_PROJECT: demo-furgokid
       GOOGLE_CLOUD_PROJECT: demo-furgokid
       ACCOUNT_DELETION_EMULATOR: 'true'
