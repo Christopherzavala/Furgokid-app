@@ -425,4 +425,119 @@ describe('driver approval backend & cascade', () => {
 
     expect(documents.get('users/target')).toMatchObject({ role: 'parent', approved: false });
   });
+
+  test('requestDriverApproval transitions eligible parent profiles and handles idempotency', async () => {
+    await expect(repository.requestDriverApproval({ actorUid: 'bad/id' })).rejects.toMatchObject({
+      code: 'invalid-argument',
+    });
+    await expect(
+      repository.requestDriverApproval({ actorUid: 'missing_user' })
+    ).rejects.toMatchObject({
+      code: 'not-found',
+    });
+
+    seed(documents, 'users/driver_1', { role: 'driver', approved: true });
+    await expect(repository.requestDriverApproval({ actorUid: 'driver_1' })).rejects.toMatchObject({
+      code: 'failed-precondition',
+    });
+
+    seed(documents, 'users/parent_none', { role: 'parent', approved: false });
+    await expect(
+      repository.requestDriverApproval({ actorUid: 'parent_none' })
+    ).resolves.toMatchObject({
+      status: REQUEST_STATUS.PENDING,
+      idempotent: false,
+    });
+    expect(documents.get('users/parent_none').driverRequestStatus).toBe(REQUEST_STATUS.PENDING);
+
+    await expect(
+      repository.requestDriverApproval({ actorUid: 'parent_none' })
+    ).resolves.toMatchObject({
+      status: REQUEST_STATUS.PENDING,
+      idempotent: true,
+    });
+
+    seed(documents, 'users/parent_revoked', {
+      role: 'parent',
+      approved: false,
+      driverRequestStatus: REQUEST_STATUS.REVOKED,
+    });
+    await expect(
+      repository.requestDriverApproval({ actorUid: 'parent_revoked' })
+    ).resolves.toMatchObject({
+      status: REQUEST_STATUS.PENDING,
+      idempotent: false,
+    });
+
+    seed(documents, 'users/parent_weird', {
+      role: 'parent',
+      approved: false,
+      driverRequestStatus: 'unexpected_status',
+    });
+    await expect(
+      repository.requestDriverApproval({ actorUid: 'parent_weird' })
+    ).rejects.toMatchObject({
+      code: 'failed-precondition',
+    });
+  });
+
+  test('createDriverApprovalCallables validates inputs and maps errors safely', async () => {
+    expect(() => createDriverApprovalCallables({})).toThrow(TypeError);
+
+    seed(documents, 'users/parent_callable', { role: 'parent', approved: false });
+    await expect(
+      callables.requestDriverApproval({ auth: { uid: 'parent_callable' }, data: [] })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(
+      callables.requestDriverApproval({ auth: { uid: 'parent_callable' }, data: { extra: 1 } })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(
+      callables.requestDriverApproval({ auth: { uid: 'parent_callable' } })
+    ).resolves.toMatchObject({ status: REQUEST_STATUS.PENDING, idempotent: false });
+
+    await expect(
+      callables.reviewDriverRequest({ auth: { uid: 'admin' }, data: 'bad' })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(
+      callables.reviewDriverRequest({
+        auth: { uid: 'admin' },
+        data: { targetUid: 'target', decision: 'approve', unexpected: true },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(
+      callables.reviewDriverRequest({
+        auth: { uid: 'admin' },
+        data: { targetUid: 'bad/id', decision: 'approve' },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    await expect(
+      callables.reviewDriverRequest({
+        auth: { uid: 'admin' },
+        data: { targetUid: 'target', decision: 'invalid_decision' },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    const brokenCallables = createDriverApprovalCallables({
+      repository: {
+        requestDriverApproval: async () => {
+          throw new Error('sensitive backend detail');
+        },
+        reviewDriverRequest: async () => {
+          throw new Error('sensitive backend detail');
+        },
+      },
+      logger: jest.fn(),
+    });
+    const errorPromise = brokenCallables.requestDriverApproval({
+      auth: { uid: 'parent_callable' },
+      data: {},
+    });
+    await expect(errorPromise).rejects.toMatchObject({
+      code: 'internal',
+    });
+    await expect(errorPromise).rejects.toBeInstanceOf(Error);
+    await errorPromise.catch((err) => {
+      expect(err.message).not.toContain('sensitive backend detail');
+    });
+  });
 });
