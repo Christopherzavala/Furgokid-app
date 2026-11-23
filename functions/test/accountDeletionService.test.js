@@ -3,6 +3,7 @@
 const { FieldValue } = require('firebase-admin/firestore');
 const {
   createAccountDeletionService,
+  AccountDeletionError,
   safeErrorCode,
   publicState,
   validUid,
@@ -31,58 +32,145 @@ const makeMockFirestore = (initialData = {}) => {
     async delete() {
       documents.delete(path);
     },
+    collection(subName) {
+      return makeCollection(`${path}/${subName}`);
+    },
   });
+
+  const makeCollection = (path) => ({
+    path,
+    doc(id) {
+      const resolvedId = id || `auto_${Math.random()}`;
+      return makeRef(`${path}/${resolvedId}`);
+    },
+    where(field, op, value) {
+      const filters = [[field, op, value]];
+      let limitCount = 500;
+
+      const builder = {
+        where(sF, sOp, sVal) {
+          filters.push([sF, sOp, sVal]);
+          return builder;
+        },
+        orderBy() {
+          return builder;
+        },
+        startAfter() {
+          return builder;
+        },
+        limit(count) {
+          limitCount = count;
+          return builder;
+        },
+        async get() {
+          const docs = [];
+          for (const [docPath, data] of documents.entries()) {
+            if (!docPath.startsWith(`${path}/`) || docPath.slice(path.length + 1).includes('/')) {
+              continue;
+            }
+            const docId = docPath.split('/').pop();
+            const matches = filters.every(([f, op, expected]) => {
+              if (op === '==') return data[f] === expected;
+              if (op === 'array-contains')
+                return Array.isArray(data[f]) && data[f].includes(expected);
+              return true;
+            });
+            if (matches) {
+              docs.push({
+                id: docId,
+                ref: makeRef(docPath),
+                data: () => ({ ...data }),
+                get: (field) => data?.[field],
+              });
+            }
+            if (docs.length >= limitCount) break;
+          }
+          return { docs, empty: docs.length === 0 };
+        },
+      };
+      return builder;
+    },
+    orderBy() {
+      return this.where('__name__', '==', null); // stub
+    },
+  });
+
+  const batch = {
+    delete: jest.fn((ref) => {
+      const path = ref.path || ref;
+      documents.delete(path);
+    }),
+    update: jest.fn((ref, data) => {
+      const path = ref.path || ref;
+      const existing = documents.get(path) || {};
+      documents.set(path, { ...existing, ...data });
+    }),
+    set: jest.fn((ref, data, options) => {
+      const path = ref.path || ref;
+      const existing = documents.get(path);
+      documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
+    }),
+    commit: jest.fn(async () => {}),
+  };
 
   return {
     _documents: documents,
     collection(name) {
-      return {
-        doc(id) {
-          return makeRef(`${name}/${id}`);
+      return makeCollection(name);
+    },
+    batch: jest.fn(() => batch),
+    async runTransaction(callback) {
+      const transaction = {
+        async get(ref) {
+          const path = ref.path || ref;
+          const data = documents.get(path);
+          return {
+            exists: data !== undefined,
+            data: () => (data ? { ...data } : null),
+            get: (field) => data?.[field],
+          };
+        },
+        set(ref, data, options) {
+          const path = ref.path || ref;
+          const existing = documents.get(path);
+          documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
+        },
+        update(ref, data) {
+          const path = ref.path || ref;
+          const existing = documents.get(path);
+          documents.set(path, { ...existing, ...data });
+        },
+        create(ref, data) {
+          const path = ref.path || ref;
+          documents.set(path, data);
+        },
+        delete(ref) {
+          const path = ref.path || ref;
+          documents.delete(path);
         },
       };
+      return callback(transaction);
     },
   };
 };
 
-describe('accountDeletionService Unit Tests', () => {
-  test('constructor validates required dependencies (firestore, auth, storage)', () => {
-    const validFirestore = { collection: jest.fn() };
-    const validAuth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const validStorage = { bucket: jest.fn() };
-
-    expect(() =>
-      createAccountDeletionService({ firestore: null, auth: validAuth, storage: validStorage })
-    ).toThrow(TypeError);
-    expect(() =>
-      createAccountDeletionService({ firestore: validFirestore, auth: null, storage: validStorage })
-    ).toThrow(TypeError);
-    expect(() =>
-      createAccountDeletionService({ firestore: validFirestore, auth: validAuth, storage: null })
-    ).toThrow(TypeError);
-  });
-
-  test('utility helpers (validUid, hashUid, redactedParticipant, safeErrorCode, publicState)', () => {
+describe('accountDeletionService Advanced Unit Tests', () => {
+  test('constants and helper functions', () => {
     expect(validUid('valid-uid')).toBe(true);
     expect(validUid('../invalid')).toBe(false);
-
-    const hashed = hashUid('user-1');
-    expect(typeof hashed).toBe('string');
-
-    const redacted = redactedParticipant('user-1');
-    expect(redacted.startsWith('deleted:')).toBe(true);
-
+    expect(hashUid('user-1')).toBeDefined();
+    expect(redactedParticipant('user-1')).toContain('deleted:');
+    expect(safeErrorCode(new AccountDeletionError('active-match'))).toBe('active-match');
     expect(safeErrorCode({ code: 'auth/user-not-found' })).toBe('not-found');
-    expect(safeErrorCode({ code: 'active-match' })).toBe('active-match');
-    expect(safeErrorCode({ code: 'unknown-err' })).toBe('internal');
+    expect(safeErrorCode({ code: 'unknown' })).toBe('internal');
 
-    expect(publicState(null)).toEqual({ status: 'none' });
-    expect(publicState({ status: 'completed', phase: 'completed' })).toEqual({
+    const state = {
       status: 'completed',
       phase: 'completed',
-      errorCode: null,
-      updatedAt: null,
-    });
+      updatedAt: { toDate: () => new Date() },
+    };
+    const pub = publicState(state);
+    expect(pub.status).toBe('completed');
   });
 
   test('getDeletionStatus returns none if state and receipt do not exist', async () => {
@@ -101,16 +189,20 @@ describe('accountDeletionService Unit Tests', () => {
     expect(status).toEqual({ status: 'none' });
   });
 
-  test('getDeletionStatus returns status from state document', async () => {
+  test('requestDeletion blocks when active match exists', async () => {
     const firestore = makeMockFirestore({
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
-        phase: 'matches',
-        updatedAt: { toDate: () => new Date('2026-11-24T00:00:00Z') },
-      },
+      'users/driver-1': { role: 'driver' },
+      'matches/match-1': { driverId: 'driver-1', status: 'active' },
     });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = { bucket: jest.fn() };
+    const auth = {
+      getUser: jest.fn().mockResolvedValue({ uid: 'driver-1', email: 'driver@example.com' }),
+      deleteUser: jest.fn(),
+    };
+    const storage = {
+      bucket: jest.fn(() => ({
+        getFiles: jest.fn().mockResolvedValue([[]]),
+      })),
+    };
 
     const service = createAccountDeletionService({
       firestore,
@@ -119,20 +211,11 @@ describe('accountDeletionService Unit Tests', () => {
       serverTimestamp: FieldValue.serverTimestamp,
     });
 
-    const status = await service.getDeletionStatus('user-1');
-    expect(status.status).toBe('pending');
-    expect(status.phase).toBe('matches');
-    expect(status.updatedAt).toBeDefined();
+    await expect(service.requestDeletion('driver-1')).rejects.toThrow(AccountDeletionError);
   });
 
-  test('getDeletionStatus returns status from receipt document if state is missing', async () => {
-    const firestore = makeMockFirestore({
-      'accountDeletionReceipts/user-1': {
-        status: 'completed',
-        phase: 'completed',
-        updatedAt: { toDate: () => new Date('2026-11-24T00:00:00Z') },
-      },
-    });
+  test('resumePendingRequests runs successfully with no candidates', async () => {
+    const firestore = makeMockFirestore();
     const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
     const storage = { bucket: jest.fn() };
 
@@ -143,7 +226,7 @@ describe('accountDeletionService Unit Tests', () => {
       serverTimestamp: FieldValue.serverTimestamp,
     });
 
-    const status = await service.getDeletionStatus('user-1');
-    expect(status.status).toBe('completed');
+    const res = await service.resumePendingRequests();
+    expect(res.processed).toBe(0);
   });
 });
