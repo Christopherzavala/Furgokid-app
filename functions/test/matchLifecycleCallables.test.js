@@ -32,6 +32,15 @@ const createHarness = () => {
 };
 
 describe('match lifecycle callable adapters', () => {
+  test('constructor validates required dependencies', () => {
+    expect(() => createMatchLifecycleCallables({ repository: null, logger: jest.fn() })).toThrow(
+      TypeError
+    );
+    expect(() => createMatchLifecycleCallables({ repository: {}, logger: null })).toThrow(
+      TypeError
+    );
+  });
+
   test('requires verified Firebase authentication context', async () => {
     const { callables, repository } = createHarness();
     await expect(
@@ -64,6 +73,41 @@ describe('match lifecycle callable adapters', () => {
     expect(repository.createOrAddMatch.mock.calls[0][0]).not.toHaveProperty('driverId');
   });
 
+  test('successfully invokes acceptMatch, cancelMatch, completeMatch, closeRequest, updateVacancyCapacity, and initializeVacancyCapacity', async () => {
+    const { callables, repository } = createHarness();
+    const auth = { uid: 'user-1' };
+
+    await expect(callables.acceptMatch({ auth, data: { matchId: 'm-1' } })).resolves.toBeDefined();
+    await expect(callables.cancelMatch({ auth, data: { matchId: 'm-1' } })).resolves.toBeDefined();
+    await expect(
+      callables.completeMatch({ auth, data: { matchId: 'm-1' } })
+    ).resolves.toBeDefined();
+    await expect(
+      callables.closeRequest({ auth, data: { requestId: 'r-1' } })
+    ).resolves.toBeDefined();
+    await expect(
+      callables.updateVacancyCapacity({ auth, data: { vacancyId: 'v-1', totalSeats: 6 } })
+    ).resolves.toBeDefined();
+    await expect(
+      callables.initializeVacancyCapacity({ auth, data: { vacancyId: 'v-1' } })
+    ).resolves.toBeDefined();
+
+    expect(repository.acceptMatch).toHaveBeenCalled();
+    expect(repository.cancelMatch).toHaveBeenCalled();
+    expect(repository.completeMatch).toHaveBeenCalled();
+    expect(repository.closeRequest).toHaveBeenCalled();
+    expect(repository.updateVacancyCapacity).toHaveBeenCalled();
+    expect(repository.initializeVacancyCapacity).toHaveBeenCalled();
+  });
+
+  test('rejects deleteRequests if requestIds is not an array', async () => {
+    const { callables, repository } = createHarness();
+    await expect(
+      callables.deleteRequests({ auth: { uid: 'user-1' }, data: { requestIds: 'not-an-array' } })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    expect(repository.deleteRequests).not.toHaveBeenCalled();
+  });
+
   test('maps lifecycle validation errors to callable errors without exposing details', async () => {
     const { callables, repository, logger } = createHarness();
     repository.acceptMatch.mockRejectedValueOnce(
@@ -80,6 +124,22 @@ describe('match lifecycle callable adapters', () => {
       message: 'The requested match operation is not allowed.',
     });
     expect(JSON.stringify(logger.mock.calls)).not.toContain('private details');
+  });
+
+  test('maps generic non-lifecycle errors or unknown codes to internal error safely', async () => {
+    const { callables, repository, logger } = createHarness();
+    repository.acceptMatch.mockRejectedValueOnce(new Error('Database crash'));
+
+    await expect(
+      callables.acceptMatch({
+        auth: { uid: 'verified-driver' },
+        data: { matchId: 'match-1' },
+      })
+    ).rejects.toMatchObject({
+      code: 'internal',
+      message: 'Unable to complete the match operation.',
+    });
+    expect(JSON.stringify(logger.mock.calls)).toContain('internal');
   });
 
   test('uses authenticated identity for request deletion and returns a clear match-blocked error', async () => {
