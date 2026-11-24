@@ -13,6 +13,13 @@ const {
   DELETION_STATUS,
 } = require('../src/accountDeletionService');
 
+const isDocumentIdField = (field) =>
+  field === '__name__' ||
+  (field &&
+    typeof field === 'object' &&
+    Array.isArray(field._segments) &&
+    field._segments.join('.') === '__name__');
+
 const makeMockFirestore = (initialData = {}) => {
   const documents = new Map(Object.entries(initialData));
 
@@ -23,13 +30,15 @@ const makeMockFirestore = (initialData = {}) => {
       const data = documents.get(path);
       return {
         exists: data !== undefined,
+        id: path.split('/').pop(),
+        ref: makeRef(path),
         data: () => (data ? { ...data } : null),
         get: (field) => data?.[field],
       };
     },
     async set(data, options) {
       const existing = documents.get(path);
-      documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
+      documents.set(path, options?.merge && existing ? { ...existing, ...data } : { ...data });
     },
     async delete() {
       documents.delete(path);
@@ -43,24 +52,25 @@ const makeMockFirestore = (initialData = {}) => {
     const createQuery = (
       filters = [],
       orderedBy = null,
-      startAfterDoc = null,
+      startAfterCursor = null,
       limitCount = 500
     ) => ({
-      _filters: filters,
-      _orderedBy: orderedBy,
-      _startAfter: startAfterDoc,
-      _limit: limitCount,
-      where(sF, sOp, sVal) {
-        return createQuery([...filters, [sF, sOp, sVal]], orderedBy, startAfterDoc, limitCount);
+      where(field, op, value) {
+        return createQuery(
+          [...filters, [field, op, value]],
+          orderedBy,
+          startAfterCursor,
+          limitCount
+        );
       },
       orderBy(field) {
-        return createQuery(filters, field, startAfterDoc, limitCount);
+        return createQuery(filters, field, startAfterCursor, limitCount);
       },
-      startAfter(val) {
-        return createQuery(filters, orderedBy, val, limitCount);
+      startAfter(cursor) {
+        return createQuery(filters, orderedBy, cursor, limitCount);
       },
       limit(count) {
-        return createQuery(filters, orderedBy, startAfterDoc, count);
+        return createQuery(filters, orderedBy, startAfterCursor, count);
       },
       async get() {
         const docs = [];
@@ -70,10 +80,13 @@ const makeMockFirestore = (initialData = {}) => {
           }
           const docId = docPath.split('/').pop();
           const matches = filters.every(([f, op, expected]) => {
-            if (op === '==' && expected === null) return true;
-            if (op === '==') return data[f] === expected;
-            if (op === 'array-contains')
-              return Array.isArray(data[f]) && data[f].includes(expected);
+            const actual = isDocumentIdField(f) ? docId : data[f];
+            if (op === '==') return actual === expected;
+            if (op === '!=') return actual !== expected;
+            if (op === 'in') return Array.isArray(expected) && expected.includes(actual);
+            if (op === 'array-contains') {
+              return Array.isArray(actual) && actual.includes(expected);
+            }
             return true;
           });
           if (matches) {
@@ -84,20 +97,21 @@ const makeMockFirestore = (initialData = {}) => {
               get: (field) => data?.[field],
             });
           }
-          if (docs.length >= limitCount) break;
         }
 
-        if (orderedBy) {
-          docs.sort((a, b) => {
-            const valA = orderedBy === '__name__' ? a.id : a.data()[orderedBy];
-            const valB = orderedBy === '__name__' ? b.id : b.data()[orderedBy];
-            return String(valA || '').localeCompare(String(valB || ''));
-          });
-        }
+        docs.sort((a, b) => {
+          if (!orderedBy || isDocumentIdField(orderedBy)) {
+            return a.id.localeCompare(b.id);
+          }
+          const valA = a.data()[orderedBy];
+          const valB = b.data()[orderedBy];
+          return String(valA || '').localeCompare(String(valB || ''));
+        });
 
         let finalDocs = docs;
-        if (startAfterDoc) {
-          const cursorId = typeof startAfterDoc === 'string' ? startAfterDoc : startAfterDoc.id;
+        if (startAfterCursor) {
+          const cursorId =
+            typeof startAfterCursor === 'string' ? startAfterCursor : startAfterCursor.id;
           const index = docs.findIndex((d) => d.id === cursorId);
           if (index !== -1) {
             finalDocs = docs.slice(index + 1);
@@ -105,14 +119,14 @@ const makeMockFirestore = (initialData = {}) => {
         }
 
         const limited = finalDocs.slice(0, limitCount);
-        return { docs: limited, empty: limited.length === 0 };
+        return { docs: limited, empty: limited.length === 0, size: limited.length };
       },
     });
 
     return {
       path,
       doc(id) {
-        const resolvedId = id || `auto_${Math.random()}`;
+        const resolvedId = id || `auto_${Math.random().toString(36).slice(2)}`;
         return makeRef(`${path}/${resolvedId}`);
       },
       where(field, op, value) {
@@ -120,6 +134,12 @@ const makeMockFirestore = (initialData = {}) => {
       },
       orderBy(field) {
         return createQuery([], field);
+      },
+      limit(count) {
+        return createQuery([], null, null, count);
+      },
+      async get() {
+        return createQuery().get();
       },
     };
   };
@@ -130,14 +150,21 @@ const makeMockFirestore = (initialData = {}) => {
       if (
         v &&
         typeof v === 'object' &&
+        typeof v.isEqual === 'function' &&
+        v.isEqual(FieldValue.delete())
+      ) {
+        delete next[k];
+      } else if (
+        v &&
+        typeof v === 'object' &&
         v.constructor?.name === 'FieldTransform' &&
         v.methodName === 'DELETE'
       ) {
         delete next[k];
+      } else if (v && typeof v === 'object' && Array.isArray(v.elements)) {
+        next[k] = (next[k] || []).filter((item) => !v.elements.includes(item));
       } else if (v && typeof v === 'object' && v._arrayRemove) {
         next[k] = (next[k] || []).filter((item) => item !== v._arrayRemove);
-      } else if (v && typeof v === 'object' && v.isEqual && v.isEqual(FieldValue.delete())) {
-        delete next[k];
       } else {
         next[k] = v;
       }
@@ -145,57 +172,68 @@ const makeMockFirestore = (initialData = {}) => {
     return next;
   };
 
-  const batch = {
-    delete: jest.fn((ref) => {
-      const path = ref?.path || ref;
-      documents.delete(path);
-    }),
-    update: jest.fn((ref, data) => {
-      const path = ref?.path || ref;
-      const existing = documents.get(path) || {};
-      documents.set(path, applyUpdates(existing, data));
-    }),
-    set: jest.fn((ref, data, options) => {
-      const path = ref?.path || ref;
-      const existing = documents.get(path);
-      documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
-    }),
-    commit: jest.fn(async () => {}),
-  };
-
   return {
     _documents: documents,
     collection(name) {
       return makeCollection(name);
     },
-    batch: jest.fn(() => batch),
+    batch: jest.fn(() => {
+      const ops = [];
+      return {
+        delete(ref) {
+          ops.push(() => documents.delete(ref.path || ref));
+        },
+        update(ref, data) {
+          ops.push(() => {
+            const path = ref.path || ref;
+            const existing = documents.get(path) || {};
+            documents.set(path, applyUpdates(existing, data));
+          });
+        },
+        set(ref, data, options) {
+          ops.push(() => {
+            const path = ref.path || ref;
+            const existing = documents.get(path);
+            documents.set(
+              path,
+              options?.merge && existing ? { ...existing, ...data } : { ...data }
+            );
+          });
+        },
+        async commit() {
+          for (const op of ops) op();
+        },
+      };
+    }),
     async runTransaction(callback) {
       const transaction = {
         async get(ref) {
-          const path = ref?.path || ref;
+          const path = ref.path || ref;
           const data = documents.get(path);
           return {
             exists: data !== undefined,
+            id: path.split('/').pop(),
+            ref: makeRef(path),
             data: () => (data ? { ...data } : null),
             get: (field) => data?.[field],
           };
         },
         set(ref, data, options) {
-          const path = ref?.path || ref;
+          const path = ref.path || ref;
           const existing = documents.get(path);
-          documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
+          documents.set(path, options?.merge && existing ? { ...existing, ...data } : { ...data });
         },
         update(ref, data) {
-          const path = ref?.path || ref;
+          const path = ref.path || ref;
           const existing = documents.get(path) || {};
           documents.set(path, applyUpdates(existing, data));
         },
         create(ref, data) {
-          const path = ref?.path || ref;
-          documents.set(path, data);
+          const path = ref.path || ref;
+          documents.set(path, { ...data });
         },
         delete(ref) {
-          const path = ref?.path || ref;
+          const path = ref.path || ref;
           documents.delete(path);
         },
       };
@@ -204,12 +242,28 @@ const makeMockFirestore = (initialData = {}) => {
   };
 };
 
-describe('accountDeletionService Extended Unit Tests', () => {
-  test('constants and helper functions', () => {
+const runUntilComplete = async (service, firestore, uid) => {
+  for (let i = 0; i < 10; i += 1) {
+    const res = await service.requestDeletion(uid);
+    if (res.status === DELETION_STATUS.COMPLETED) return res;
+    if (res.status === DELETION_STATUS.FAILED) {
+      throw new Error(
+        `Deletion failed: ${JSON.stringify(
+          firestore._documents.get(`accountDeletionRequests/${uid}`)
+        )}`
+      );
+    }
+  }
+  return service.getDeletionStatus(uid);
+};
+
+describe('accountDeletionService', () => {
+  test('helpers, validators, error mapping and publicState', () => {
     expect(validUid('valid-uid')).toBe(true);
     expect(validUid('../invalid')).toBe(false);
     expect(hashUid('user-1')).toBeDefined();
     expect(redactedParticipant('user-1')).toContain('deleted:');
+
     expect(safeErrorCode(new AccountDeletionError('active-match'))).toBe('active-match');
     expect(safeErrorCode(new AccountDeletionError('already-completed'))).toBe('already-completed');
     expect(safeErrorCode(new AccountDeletionError('auth-delete-failed'))).toBe(
@@ -231,49 +285,79 @@ describe('accountDeletionService Extended Unit Tests', () => {
     expect(safeErrorCode({ code: 'unavailable' })).toBe('unavailable');
     expect(safeErrorCode({ code: 'unknown' })).toBe('internal');
 
-    const state1 = {
-      status: DELETION_STATUS.COMPLETED,
-      phase: 'completed',
-      updatedAt: { toDate: () => new Date() },
-    };
-    expect(publicState(state1).status).toBe('completed');
+    expect(
+      publicState({
+        status: DELETION_STATUS.COMPLETED,
+        phase: DELETION_PHASE.COMPLETED,
+        updatedAt: { toDate: () => new Date() },
+      }).status
+    ).toBe('completed');
 
-    const state2 = {
-      status: DELETION_STATUS.FAILED,
-      lastErrorCode: 'active-match',
-      updatedAt: { toDate: () => new Date() },
-    };
-    expect(publicState(state2).errorCode).toBe('active-match');
+    expect(
+      publicState({
+        status: DELETION_STATUS.FAILED,
+        lastErrorCode: 'active-match',
+        updatedAt: { toDate: () => new Date() },
+      }).errorCode
+    ).toBe('active-match');
   });
 
-  test('getDeletionStatus returns none if state and receipt do not exist', async () => {
-    const firestore = makeMockFirestore();
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = { bucket: jest.fn() };
-
-    const service = createAccountDeletionService({
-      firestore,
-      auth,
-      storage,
-      serverTimestamp: FieldValue.serverTimestamp,
-    });
-
-    const status = await service.getDeletionStatus('user-1');
-    expect(status).toEqual({ status: 'none' });
-  });
-
-  test('requestDeletion blocks when active match exists', async () => {
+  test('full lifecycle completes and cleans profile, collections, matches, chats, storage, auth and creates receipt', async () => {
     const firestore = makeMockFirestore({
-      'users/driver-1': { role: 'driver' },
-      'matches/match-1': { driverId: 'driver-1', status: 'active' },
+      'users/uid-full': { role: 'driver', email: 'driver@test.com', name: 'Driver Test' },
+      'routes/r1': { driverId: 'uid-full' },
+      'requests/req1': { parentId: 'uid-full' },
+      'requests/req2': { parentId: 'other-parent', activeMatchId: 'm-pending' },
+      'vacancies/v1': { driverId: 'uid-full' },
+      'vacancies/v2': { driverId: 'uid-full' },
+      'notification_logs/nl1': { vacancyId: 'v1', driverId: 'uid-full' },
+      'matches/m-completed': {
+        parentId: 'uid-full',
+        driverId: 'other-driver',
+        status: 'completed',
+        parentName: 'Secret',
+      },
+      'matches/m-pending': {
+        driverId: 'uid-full',
+        parentId: 'other-parent',
+        status: 'pending',
+        capacityReservationStatus: 'unreserved',
+        reservedSeats: 0,
+        requestId: 'req2',
+        vacancyId: 'v2',
+        driverName: 'Driver',
+      },
+      'matches/m-pending/tracking/current': { lat: -36.8 },
+      'chats/c-solo': { participants: ['uid-full'] },
+      'chats/c-solo/messages/msg1': { authorId: 'uid-full' },
+      'chats/c-shared': { participants: ['uid-full', 'other-user'] },
+      'chats/c-shared/messages/msg2': { senderId: 'uid-full' },
     });
+
     const auth = {
-      getUser: jest.fn().mockResolvedValue({ uid: 'driver-1', email: 'driver@example.com' }),
-      deleteUser: jest.fn(),
+      getUser: jest.fn().mockResolvedValue({ uid: 'uid-full', email: 'driver@test.com' }),
+      deleteUser: jest.fn().mockResolvedValue(),
     };
+
+    const deleteFileMock = jest.fn().mockResolvedValue();
+    let getFilesCall = 0;
     const storage = {
       bucket: jest.fn(() => ({
-        getFiles: jest.fn().mockResolvedValue([[]]),
+        getFiles: jest.fn(async () => {
+          if (getFilesCall === 0) {
+            getFilesCall += 1;
+            return [
+              [
+                {
+                  name: 'users/uid-full/avatar.jpg',
+                  metadata: { generation: '1' },
+                  delete: deleteFileMock,
+                },
+              ],
+            ];
+          }
+          return [[]];
+        }),
       })),
     };
 
@@ -284,208 +368,249 @@ describe('accountDeletionService Extended Unit Tests', () => {
       serverTimestamp: FieldValue.serverTimestamp,
     });
 
-    await expect(service.requestDeletion('driver-1')).rejects.toThrow(AccountDeletionError);
+    const res = await runUntilComplete(service, firestore, 'uid-full');
+    expect(res.status).toBe(DELETION_STATUS.COMPLETED);
+    expect(auth.deleteUser).toHaveBeenCalledWith('uid-full');
+    expect(deleteFileMock).toHaveBeenCalled();
+    expect(firestore._documents.has('accountDeletionReceipts/uid-full')).toBe(true);
+    expect(firestore._documents.has('users/uid-full')).toBe(false);
+    expect(firestore._documents.get('chats/c-shared').participants).toEqual(['other-user']);
   });
 
-  test('resumePendingRequests runs successfully with candidates', async () => {
+  test('resumePendingRequests processes only eligible pending, retryable failed and expired processing requests', async () => {
+    const nowMs = Date.now();
     const firestore = makeMockFirestore({
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
-        requestId: 'req-1',
-        uid: 'user-1',
+      'accountDeletionRequests/u-pending': {
+        requestId: 'req-p',
+        status: DELETION_STATUS.PENDING,
+        phase: DELETION_PHASE.AUTH,
+        lease: null,
+      },
+      'accountDeletionRequests/u-failed-retry': {
+        requestId: 'req-fr',
+        status: DELETION_STATUS.FAILED,
+        retryable: true,
+        phase: DELETION_PHASE.AUTH,
+        lease: null,
+      },
+      'accountDeletionRequests/u-failed-nonretry': {
+        requestId: 'req-fnr',
+        status: DELETION_STATUS.FAILED,
+        retryable: false,
         phase: DELETION_PHASE.MATCHES,
         lease: null,
-        retryable: true,
       },
-      'users/user-1': { role: 'parent' },
+      'accountDeletionRequests/u-expired': {
+        requestId: 'req-exp',
+        status: DELETION_STATUS.PROCESSING,
+        phase: DELETION_PHASE.AUTH,
+        lease: { ownerToken: 'old', expiresAt: nowMs - 10000 },
+      },
+      'accountDeletionRequests/u-active': {
+        requestId: 'req-act',
+        status: DELETION_STATUS.PROCESSING,
+        phase: DELETION_PHASE.AUTH,
+        lease: { ownerToken: 'live', expiresAt: nowMs + 60000 },
+      },
     });
+
     const auth = {
-      getUser: jest.fn().mockResolvedValue({ uid: 'user-1', email: 'u@test.com' }),
+      getUser: jest.fn().mockResolvedValue({}),
+      deleteUser: jest.fn().mockResolvedValue(),
+    };
+    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
+
+    const service = createAccountDeletionService({
+      firestore,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+
+    const summary = await service.resumePendingRequests();
+    expect(summary.processed).toBe(3);
+    expect(auth.deleteUser).toHaveBeenCalledTimes(3);
+    expect(auth.deleteUser).not.toHaveBeenCalledWith('u-failed-nonretry');
+    expect(auth.deleteUser).not.toHaveBeenCalledWith('u-active');
+  });
+
+  test('edge & error branches: active lease, existing receipt, active/reserved matches, storage, auth and residual data', async () => {
+    const auth = {
+      getUser: jest.fn().mockResolvedValue({}),
       deleteUser: jest.fn().mockResolvedValue(),
     };
     const storage = {
-      bucket: jest.fn(() => ({
-        getFiles: jest.fn().mockResolvedValue([[]]),
-      })),
+      bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })),
     };
 
-    const service = createAccountDeletionService({
-      firestore,
-      auth,
-      storage,
-      serverTimestamp: FieldValue.serverTimestamp,
-    });
-
-    const res = await service.resumePendingRequests({ maxSteps: 5 });
-    expect(res.processed).toBeGreaterThanOrEqual(1);
-  });
-
-  test('cleanupChats handles exclusive chat deletion', async () => {
-    const firestore = makeMockFirestore({
-      'chats/c-solo': { participants: ['user-1'] },
-      'chats/c-solo/messages/msg1': { authorId: 'user-1', text: 'hi' },
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
-        phase: DELETION_PHASE.CHATS,
-        lease: null,
-      },
-    });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
-
-    const service = createAccountDeletionService({
-      firestore,
-      auth,
-      storage,
-      serverTimestamp: FieldValue.serverTimestamp,
-    });
-
-    const token = await service.acquireLease('user-1');
-    const res = await service.cleanupChats('user-1', token);
-    expect(res.count).toBe(1);
-    expect(firestore._documents.has('chats/c-solo')).toBe(false);
-  });
-
-  test('cleanupchats handles shared chat participant removal', async () => {
-    const firestore = makeMockFirestore({
-      'chats/c-shared': { participants: ['user-1', 'user-2'] },
-      'chats/c-shared/messages/msg1': { senderId: 'user-1', text: 'hi' },
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
-        phase: DELETION_PHASE.CHATS,
-        lease: null,
-      },
-    });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
-
-    const service = createAccountDeletionService({
-      firestore,
-      auth,
-      storage,
-      serverTimestamp: FieldValue.serverTimestamp,
-    });
-
-    const token = await service.acquireLease('user-1');
-    const res = await service.cleanupChats('user-1', token);
-    expect(res.count).toBe(1);
-    expect(firestore._documents.get('chats/c-shared').participants).toEqual(['user-2']);
-  });
-
-  test('cleanupMatches anonymizes completed/cancelled matches with PII redaction', async () => {
-    const firestore = makeMockFirestore({
-      'users/user-1': { role: 'parent' },
-      'matches/m-comp': { parentId: 'user-1', status: 'completed', parentName: 'Jane' },
-      'matches/m-canc': { driverId: 'user-1', status: 'cancelled', driverName: 'Bob' },
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
+    // 1. Active lease returns processing without running steps
+    const fsActiveLease = makeMockFirestore({
+      'accountDeletionRequests/u-lease': {
+        requestId: 'r-lease',
+        status: DELETION_STATUS.PROCESSING,
         phase: DELETION_PHASE.MATCHES,
-        lease: null,
+        lease: { ownerToken: 'tok', expiresAt: Date.now() + 60000 },
       },
     });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
-
-    const service = createAccountDeletionService({
-      firestore,
+    const svcLease = createAccountDeletionService({
+      firestore: fsActiveLease,
       auth,
       storage,
       serverTimestamp: FieldValue.serverTimestamp,
     });
+    const resLease = await svcLease.requestDeletion('u-lease');
+    expect(resLease.status).toBe(DELETION_STATUS.PROCESSING);
 
-    const token = await service.acquireLease('user-1');
-    const res = await service.cleanupMatches('user-1', token);
-    expect(res.count).toBe(2);
-  });
-
-  test('verifyNoResidualData returns false when profile or storage files exist', async () => {
-    const firestore = makeMockFirestore({
-      'users/user-1': { role: 'parent' },
+    // 2. Existing receipt returns completed immediately
+    const fsReceipt = makeMockFirestore({
+      'accountDeletionReceipts/u-done': {
+        requestId: 'r-done',
+        status: DELETION_STATUS.COMPLETED,
+        phase: DELETION_PHASE.COMPLETED,
+      },
     });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const storage = {
+    const svcReceipt = createAccountDeletionService({
+      firestore: fsReceipt,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+    const resDone = await svcReceipt.requestDeletion('u-done');
+    expect(resDone.status).toBe(DELETION_STATUS.COMPLETED);
+
+    // 3. Active match blocks deletion with active-match
+    const fsActiveMatch = makeMockFirestore({
+      'users/u-act': { role: 'driver' },
+      'matches/m-act': { driverId: 'u-act', status: 'active' },
+    });
+    const svcActiveMatch = createAccountDeletionService({
+      firestore: fsActiveMatch,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+    await expect(svcActiveMatch.requestDeletion('u-act')).rejects.toMatchObject({
+      code: 'active-match',
+    });
+
+    // 4. Pending match with reserved capacity fails with invalid-data
+    const fsReservedMatch = makeMockFirestore({
+      'users/u-res': { role: 'driver' },
+      'requests/r1': { parentId: 'p1' },
+      'vacancies/v1': { driverId: 'u-res' },
+      'matches/m-res': {
+        driverId: 'u-res',
+        parentId: 'p1',
+        requestId: 'r1',
+        vacancyId: 'v1',
+        status: 'pending',
+        capacityReservationStatus: 'reserved',
+        reservedSeats: 1,
+      },
+    });
+    const svcReservedMatch = createAccountDeletionService({
+      firestore: fsReservedMatch,
+      auth,
+      storage,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+    await expect(svcReservedMatch.requestDeletion('u-res')).rejects.toMatchObject({
+      code: 'invalid-data',
+    });
+
+    // 5. Storage HTTP 412 ignored vs generic error throws storage-delete-failed
+    const fsStorage = makeMockFirestore({
+      'accountDeletionRequests/u-st': {
+        lease: { ownerToken: 't-st', expiresAt: Date.now() + 60000 },
+      },
+    });
+    const storage412 = {
       bucket: jest.fn(() => ({
         getFiles: jest
           .fn()
           .mockResolvedValue([
-            [{ name: 'users/user-1/avatar.jpg', delete: jest.fn().mockResolvedValue() }],
+            [
+              {
+                name: 'users/u-st/a.jpg',
+                metadata: { generation: '1' },
+                delete: jest.fn().mockRejectedValue({ code: 412 }),
+              },
+            ],
           ]),
       })),
     };
-
-    const service = createAccountDeletionService({
-      firestore,
+    const svcStorage412 = createAccountDeletionService({
+      firestore: fsStorage,
       auth,
-      storage,
+      storage: storage412,
       serverTimestamp: FieldValue.serverTimestamp,
     });
-    expect(await service.verifyNoResidualData('user-1')).toBe(false);
-  });
+    await expect(svcStorage412.cleanupStorage('u-st', 't-st')).resolves.toMatchObject({
+      completed: true,
+    });
 
-  test('cleanupStorage deletes files successfully', async () => {
-    const firestore = makeMockFirestore();
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn() };
-    const deleteFn = jest.fn().mockResolvedValue();
-    const storage = {
+    const storageFail = {
       bucket: jest.fn(() => ({
         getFiles: jest
           .fn()
-          .mockResolvedValue([[{ name: 'users/user-1/avatar.jpg', delete: deleteFn }]]),
+          .mockResolvedValue([
+            [{ name: 'users/u-st/a.jpg', delete: jest.fn().mockRejectedValue(new Error('boom')) }],
+          ]),
       })),
     };
-
-    const service = createAccountDeletionService({
-      firestore,
+    const svcStorageFail = createAccountDeletionService({
+      firestore: fsStorage,
       auth,
+      storage: storageFail,
+      serverTimestamp: FieldValue.serverTimestamp,
+    });
+    await expect(svcStorageFail.cleanupStorage('u-st', 't-st')).rejects.toMatchObject({
+      code: 'storage-delete-failed',
+    });
+
+    // 6. Auth user-not-found ignored vs generic error throws auth-delete-failed
+    const svcAuthNotFound = createAccountDeletionService({
+      firestore: fsStorage,
+      auth: {
+        getUser: jest.fn().mockResolvedValue({}),
+        deleteUser: jest.fn().mockRejectedValue({ code: 'auth/user-not-found' }),
+      },
       storage,
       serverTimestamp: FieldValue.serverTimestamp,
     });
-    firestore._documents.set('accountDeletionRequests/user-1', {
-      lease: { ownerToken: 'token-1', expiresAt: Date.now() + 600000 },
-    });
+    await expect(svcAuthNotFound.deleteAuthUser('u-st')).resolves.toBeUndefined();
 
-    const res = await service.cleanupStorage('user-1', 'token-1');
-    expect(res.count).toBe(1);
-    expect(deleteFn).toHaveBeenCalled();
-  });
-
-  test('deleteAuthUser throws auth-delete-failed on general error', async () => {
-    const firestore = makeMockFirestore();
-    const auth = {
-      getUser: jest.fn(),
-      deleteUser: jest.fn().mockRejectedValue(new Error('Firebase auth error')),
-    };
-    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
-
-    const service = createAccountDeletionService({
-      firestore,
-      auth,
+    const svcAuthFail = createAccountDeletionService({
+      firestore: fsStorage,
+      auth: {
+        getUser: jest.fn().mockResolvedValue({}),
+        deleteUser: jest.fn().mockRejectedValue(new Error('auth down')),
+      },
       storage,
       serverTimestamp: FieldValue.serverTimestamp,
     });
+    await expect(svcAuthFail.deleteAuthUser('u-st')).rejects.toMatchObject({
+      code: 'auth-delete-failed',
+    });
 
-    await expect(service.deleteAuthUser('user-1')).rejects.toThrow(AccountDeletionError);
-  });
-
-  test('runOneStep executes profile and verification phases successfully', async () => {
-    const firestore = makeMockFirestore({
-      'users/user-1': { role: 'parent' },
-      'accountDeletionRequests/user-1': {
-        status: 'pending',
-        phase: DELETION_PHASE.PROFILE,
+    // 7. Residual data fails verification with cleanup-incomplete
+    const fsResidual = makeMockFirestore({
+      'accountDeletionRequests/u-resid': {
+        requestId: 'r-resid',
+        status: DELETION_STATUS.PENDING,
+        phase: DELETION_PHASE.VERIFICATION,
         lease: null,
       },
+      'routes/residual-route': { driverId: 'u-resid' },
     });
-    const auth = { getUser: jest.fn(), deleteUser: jest.fn().mockResolvedValue() };
-    const storage = { bucket: jest.fn(() => ({ getFiles: jest.fn().mockResolvedValue([[]]) })) };
-
-    const service = createAccountDeletionService({
-      firestore,
+    const svcResidual = createAccountDeletionService({
+      firestore: fsResidual,
       auth,
       storage,
       serverTimestamp: FieldValue.serverTimestamp,
     });
-    const res = await service.requestDeletion('user-1', { maxSteps: 3 });
-    expect(res).toBeDefined();
+    const resResidual = await svcResidual.requestDeletion('u-resid');
+    expect(resResidual.status).toBe(DELETION_STATUS.FAILED);
+    expect(resResidual.errorCode).toBe('cleanup-incomplete');
   });
 });
