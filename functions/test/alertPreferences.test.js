@@ -97,7 +97,7 @@ describe('alertPreferences Unit Tests', () => {
     });
   });
 
-  test('shouldSendAlertForEvent evaluates event types correctly', () => {
+  test('shouldSendAlertForEvent evaluates event types correctly including null and undefined', () => {
     const prefs = {
       boardingAlert: false,
       etaProximityAlert: true,
@@ -113,10 +113,12 @@ describe('alertPreferences Unit Tests', () => {
     expect(shouldSendAlertForEvent(prefs, 'ARRIVAL')).toBe(false);
     expect(shouldSendAlertForEvent(prefs, 'ABSENCE')).toBe(true);
     expect(shouldSendAlertForEvent(prefs, 'UNKNOWN_EVENT')).toBe(true);
+    expect(shouldSendAlertForEvent(prefs, null)).toBe(true);
+    expect(shouldSendAlertForEvent(prefs, undefined)).toBe(true);
     expect(shouldSendAlertForEvent(null, 'BOARDING')).toBe(true);
   });
 
-  test('buildActionablePushPayload builds payloads for different event types', () => {
+  test('buildActionablePushPayload builds payloads for different event types and fallback parameters', () => {
     const absencePayload = buildActionablePushPayload({
       eventType: 'ABSENCE',
       title: 'Ausencia',
@@ -133,6 +135,14 @@ describe('alertPreferences Unit Tests', () => {
     });
     expect(defaultPayload.data.action).toBe('OPEN_TRACKING');
     expect(defaultPayload.title).toBe('FurgoKid Notificación');
+
+    const emptyPayload = buildActionablePushPayload({});
+    expect(emptyPayload.data.type).toBe('GENERAL');
+    expect(emptyPayload.title).toBe('FurgoKid Notificación');
+    expect(emptyPayload.body).toBe('Actualización de tu transporte escolar');
+    expect(emptyPayload.data.matchId).toBe('');
+    expect(emptyPayload.data.passengerId).toBe('');
+    expect(emptyPayload.data.shareToken).toBe('');
   });
 
   describe('updateAlertPreferencesCallable', () => {
@@ -160,6 +170,26 @@ describe('alertPreferences Unit Tests', () => {
 
       const savedUser = mockDb._documents.get('users/user-1');
       expect(savedUser.alertPreferences.boardingAlert).toBe(false);
+    });
+
+    test('3. Rate limit enforcement (max 10 calls per 10 min window)', async () => {
+      const mockDb = makeFirestore({
+        'users/user-1': { role: 'parent' },
+      });
+      setupFirestoreSpy(mockDb);
+
+      const req = {
+        auth: { uid: 'user-1' },
+        data: { preferences: { boardingAlert: false } },
+      };
+
+      for (let i = 0; i < 10; i++) {
+        await updateAlertPreferencesCallable(req, mockDb);
+      }
+
+      await expect(updateAlertPreferencesCallable(req, mockDb)).rejects.toMatchObject({
+        code: 'resource-exhausted',
+      });
     });
   });
 });
