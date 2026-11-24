@@ -2,6 +2,7 @@ const {
   buildInitialProfile,
   createEnsureUserProfileHandler,
   handleUserCreated,
+  provisionProfileIfMissing,
 } = require('../src/userProfileTrigger');
 
 const createFirestoreMock = ({ snapshot, fail = false } = {}) => {
@@ -42,6 +43,22 @@ describe('user profile provisioning', () => {
     expect(timestamp).toHaveBeenCalledTimes(2);
   });
 
+  test('provisionProfileIfMissing validates inputs (uid, firestore, serverTimestamp)', async () => {
+    await expect(
+      provisionProfileIfMissing({ uid: '../bad', firestore: {}, serverTimestamp: () => {} })
+    ).rejects.toThrow(TypeError);
+    await expect(
+      provisionProfileIfMissing({ uid: 'user-1', firestore: null, serverTimestamp: () => {} })
+    ).rejects.toThrow(TypeError);
+    await expect(
+      provisionProfileIfMissing({
+        uid: 'user-1',
+        firestore: { collection: () => {} },
+        serverTimestamp: null,
+      })
+    ).rejects.toThrow(TypeError);
+  });
+
   test('creates one initial profile for a new Auth user', async () => {
     const { firestore, transaction } = createFirestoreMock();
     const logger = jest.fn();
@@ -69,6 +86,37 @@ describe('user profile provisioning', () => {
       expect.objectContaining({
         role: 'parent',
         approved: false,
+      })
+    );
+  });
+
+  test('handleUserCreated uses default admin.firestore when firestore option is omitted', async () => {
+    const { firestore } = createFirestoreMock();
+    const admin = require('firebase-admin');
+    jest.spyOn(admin, 'firestore').mockReturnValue(firestore);
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+
+    const res = await handleUserCreated(
+      { data: { uid: 'test-user' } },
+      { serverTimestamp: () => 'now' }
+    );
+    expect(res).toBeDefined();
+    consoleSpy.mockRestore();
+  });
+
+  test('handles invalid event uid in handleUserCreated safely', async () => {
+    const { firestore } = createFirestoreMock();
+    const logger = jest.fn();
+
+    await expect(
+      handleUserCreated({ data: { uid: '../bad' } }, { firestore, logger })
+    ).rejects.toThrow('Unable to provision the user profile.');
+
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'provision_user_profile',
+        result: 'failed',
+        errorCode: 'invalid-argument',
       })
     );
   });
@@ -147,18 +195,22 @@ describe('user profile provisioning', () => {
     expect(serializedLogs).not.toContain('private-password');
   });
 
-  test('recovers a missing profile through the authenticated callable', async () => {
+  test('createEnsureUserProfileHandler validates firestore dependency', () => {
+    expect(() => createEnsureUserProfileHandler({ firestore: null })).toThrow(TypeError);
+  });
+
+  test('recovers a missing profile through the authenticated callable with default parameters', async () => {
     const { firestore, transaction } = createFirestoreMock();
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const handler = createEnsureUserProfileHandler({
       firestore,
-      serverTimestamp: () => 'server-time',
-      logger: jest.fn(),
     });
 
     await expect(handler({ auth: { uid: 'test-user' }, data: {} })).resolves.toEqual({
       created: true,
     });
     expect(transaction.create).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
   });
 
   test('rejects unauthenticated recovery requests', async () => {
@@ -172,5 +224,22 @@ describe('user profile provisioning', () => {
     await expect(handler({ data: {} })).rejects.toMatchObject({
       code: 'unauthenticated',
     });
+  });
+
+  test('handles provisioning errors in createEnsureUserProfileHandler safely', async () => {
+    const { firestore } = createFirestoreMock({ fail: true });
+    const logger = jest.fn();
+    const handler = createEnsureUserProfileHandler({
+      firestore,
+      serverTimestamp: () => 'server-time',
+      logger,
+    });
+
+    await expect(handler({ auth: { uid: 'test-user' }, data: {} })).rejects.toMatchObject({
+      code: 'internal',
+    });
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'ensure_user_profile', result: 'failed' })
+    );
   });
 });

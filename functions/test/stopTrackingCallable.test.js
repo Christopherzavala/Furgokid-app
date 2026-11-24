@@ -1,9 +1,12 @@
+'use strict';
+
 const { createStopTrackingHandler } = require('../src/stopTrackingCallable');
 
 const createHarness = ({
   profile = { role: 'driver', approved: true },
   cleanupResult = 'deleted',
   deleteFailure,
+  repositoryPromise,
 } = {}) => {
   const repository = {
     deleteMatchCurrentTracking: jest.fn(async (matchId, owner) => {
@@ -13,16 +16,17 @@ const createHarness = ({
         owner.field !== 'driverId' ||
         owner.uid !== 'verified-driver'
       ) {
+        if (matchId === 'match-missing') return 'match-missing';
         return 'denied';
       }
       return cleanupResult;
     }),
-    listActiveMatchesByDriver: jest.fn(),
-    deleteDriverCurrentTrackingIfActiveMatch: jest.fn(),
+    listActiveMatchesByDriver: jest.fn(async () => ({ matches: [] })),
+    deleteDriverCurrentTrackingIfActiveMatch: jest.fn(async () => 'deleted'),
   };
   const logger = jest.fn();
   const handler = createStopTrackingHandler({
-    createRepository: jest.fn(async () => repository),
+    createRepository: repositoryPromise || jest.fn(async () => repository),
     getUserProfile: jest.fn(async () => profile),
     logger,
   });
@@ -31,6 +35,15 @@ const createHarness = ({
 };
 
 describe('stopTracking callable handler', () => {
+  test('constructor validates required dependencies', () => {
+    expect(() => createStopTrackingHandler({ createRepository: null, logger: jest.fn() })).toThrow(
+      TypeError
+    );
+    expect(() => createStopTrackingHandler({ createRepository: jest.fn(), logger: null })).toThrow(
+      TypeError
+    );
+  });
+
   test('rejects requests without verified auth context', async () => {
     const { handler } = createHarness();
 
@@ -50,6 +63,73 @@ describe('stopTracking callable handler', () => {
       expect(repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
     }
   );
+
+  test('handles repository creation failure safely', async () => {
+    const { handler, logger } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 8, message: 'Resource exhausted error' };
+      }),
+    });
+
+    await expect(
+      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+    expect(logger).toHaveBeenCalled();
+  });
+
+  test('handles repository creation failure with numeric and unknown error codes', async () => {
+    const { handler: h1 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 4, message: 'Deadline exceeded' };
+      }),
+    });
+    await expect(
+      h1({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    const { handler: h10 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 10, message: 'Aborted error' };
+      }),
+    });
+    await expect(
+      h10({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    const { handler: h14 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 14, message: 'Unavailable error' };
+      }),
+    });
+    await expect(
+      h14({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    const { handler: h2 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 'unknown-code', message: 'Unknown error' };
+      }),
+    });
+    await expect(
+      h2({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  test('uses default logger and handles repository creation failure', async () => {
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    const defaultLoggerHandler = createStopTrackingHandler({
+      createRepository: jest.fn(async () => {
+        throw new Error('Repo init fail');
+      }),
+    });
+
+    await expect(
+      defaultLoggerHandler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    expect(consoleSpy).toHaveBeenCalledWith('GPS cleanup', expect.anything());
+    consoleSpy.mockRestore();
+  });
 
   test('uses only request.auth.uid and ignores client-supplied identity fields', async () => {
     const { handler, repository } = createHarness();
@@ -108,6 +188,14 @@ describe('stopTracking callable handler', () => {
     await expect(
       handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
     ).resolves.toEqual({ status: 'already-stopped', locationDeleted: false });
+  });
+
+  test('maps match-missing status to not-found error', async () => {
+    const { handler } = createHarness({ cleanupResult: 'match-missing' });
+
+    await expect(
+      handler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-missing' } })
+    ).rejects.toMatchObject({ code: 'not-found' });
   });
 
   test('maps an unauthorized owner to permission-denied', async () => {

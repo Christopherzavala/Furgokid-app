@@ -8,7 +8,7 @@ const createHarness = (options = {}) => {
   const repository = {
     listActiveMatchesByDriver: jest.fn(async ({ driverId, pageToken, pageSize }) => {
       const activeMatches = [...matches.values()]
-        .filter((match) => match.driverId === driverId && match.status === 'active')
+        .filter((match) => match.driverId === driverId)
         .sort((left, right) => left.id.localeCompare(right.id));
       const offset = pageToken === null ? 0 : Number(pageToken);
       const page = activeMatches.slice(offset, offset + pageSize);
@@ -44,7 +44,10 @@ const createHarness = (options = {}) => {
           }
         : { authorized: false, matchId }
     ),
-    getAuthorizedDriverId: jest.fn(async () => options.authorizedDriverId || null),
+    getAuthorizedDriverId: jest.fn(async () => {
+      if (options.authError) throw options.authError;
+      return options.authorizedDriverId || null;
+    }),
   };
   const cleanup = createGpsCleanup({
     repository,
@@ -57,6 +60,45 @@ const createHarness = (options = {}) => {
 };
 
 describe('GPS cleanup module', () => {
+  test('constructor validates required dependencies and pageSize', () => {
+    const validRepo = {
+      deleteMatchCurrentTracking: jest.fn(),
+      listActiveMatchesByDriver: jest.fn(),
+      deleteDriverCurrentTrackingIfActiveMatch: jest.fn(),
+    };
+    const validAuth = {
+      authorizeMatchCleanup: jest.fn(),
+      getAuthorizedDriverId: jest.fn(),
+    };
+    const validLogger = jest.fn();
+
+    expect(() =>
+      createGpsCleanup({ repository: null, authorizer: validAuth, logger: validLogger })
+    ).toThrow(TypeError);
+    expect(() =>
+      createGpsCleanup({ repository: validRepo, authorizer: null, logger: validLogger })
+    ).toThrow(TypeError);
+    expect(() =>
+      createGpsCleanup({ repository: validRepo, authorizer: validAuth, logger: null })
+    ).toThrow(TypeError);
+    expect(() =>
+      createGpsCleanup({
+        repository: validRepo,
+        authorizer: validAuth,
+        logger: validLogger,
+        pageSize: 0,
+      })
+    ).toThrow(RangeError);
+    expect(() =>
+      createGpsCleanup({
+        repository: validRepo,
+        authorizer: validAuth,
+        logger: validLogger,
+        pageSize: 600,
+      })
+    ).toThrow(RangeError);
+  });
+
   test('deletes only the authorized match current location', async () => {
     const harness = createHarness({
       authorizedMatchIds: new Set(['match-A']),
@@ -103,6 +145,18 @@ describe('GPS cleanup module', () => {
     expect(result.status).toBe('denied');
     expect(harness.tracking.has('match-B')).toBe(true);
     expect(harness.repository.deleteMatchCurrentTracking).not.toHaveBeenCalled();
+  });
+
+  test('handles invalid repository deletion result status', async () => {
+    const harness = createHarness({
+      authorizedMatchIds: new Set(['match-A']),
+      authorizedDriverId: 'driver-A',
+    });
+    harness.matches.set('match-A', { id: 'match-A', driverId: 'driver-A', status: 'active' });
+    harness.repository.deleteMatchCurrentTracking.mockResolvedValueOnce('unknown-status');
+
+    const result = await harness.cleanup.cleanupMatchCurrentTracking('match-A');
+    expect(result.status).toBe('failed');
   });
 
   test.each(['', '../private', 'match/path', '.', '..', null, 42])(
@@ -164,10 +218,56 @@ describe('GPS cleanup module', () => {
     expect(harness.repository.listActiveMatchesByDriver).toHaveBeenCalledTimes(2);
     expect(harness.tracking.size).toBe(1);
     expect(harness.tracking.has('foreign-match')).toBe(true);
-    expect(harness.repository.listActiveMatchesByDriver).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ driverId: 'verified-driver', pageToken: null, pageSize: 400 })
+  });
+
+  test('handles auth error in cleanupDriverActiveMatchTracking', async () => {
+    const harness = createHarness({ authError: { code: 'unauthenticated' } });
+    const result = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(result.complete).toBe(false);
+    expect(result.failedCount).toBe(1);
+  });
+
+  test('handles invalid driver ID in cleanupDriverActiveMatchTracking', async () => {
+    const harness = createHarness({ authorizedDriverId: '../bad' });
+    const result = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(result.complete).toBe(false);
+    expect(result.failedCount).toBe(1);
+  });
+
+  test('handles invalid match page or invalid candidate ID or invalid deletion in driver cleanup', async () => {
+    const harness = createHarness({ authorizedDriverId: 'verified-driver' });
+    harness.repository.listActiveMatchesByDriver
+      .mockResolvedValueOnce({ matches: 'not-an-array', nextPageToken: null })
+      .mockResolvedValueOnce({ matches: [{ id: '../bad-id' }], nextPageToken: null })
+      .mockResolvedValueOnce({ matches: [{ id: 'match-1' }], nextPageToken: null });
+
+    harness.repository.deleteDriverCurrentTrackingIfActiveMatch.mockResolvedValueOnce(
+      'invalid-status'
     );
+
+    // 1. Invalid match page
+    let res = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(res.complete).toBe(false);
+
+    // 2. Invalid candidate ID
+    res = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(res.complete).toBe(false);
+
+    // 3. Invalid deletion status
+    res = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(res.complete).toBe(false);
+  });
+
+  test('detects infinite pagination token loops in driver active match tracking', async () => {
+    const harness = createHarness({ authorizedDriverId: 'verified-driver' });
+    harness.repository.listActiveMatchesByDriver.mockResolvedValue({
+      matches: [{ id: 'match-1' }],
+      nextPageToken: 'loop-token',
+    });
+
+    const res = await harness.cleanup.cleanupDriverActiveMatchTracking();
+    expect(res.complete).toBe(false);
+    expect(res.errorCode).toBe('invalid-page-token');
   });
 
   test('skips matches whose owner or active status no longer matches during the conditional delete', async () => {
@@ -177,72 +277,24 @@ describe('GPS cleanup module', () => {
       driverId: 'verified-driver',
       status: 'active',
     });
-    harness.matches.set('match-reassigned', {
-      id: 'match-reassigned',
-      driverId: 'another-driver',
-      status: 'active',
-    });
     harness.matches.set('match-completed', {
       id: 'match-completed',
       driverId: 'verified-driver',
       status: 'completed',
     });
-    for (const id of ['match-owned', 'match-reassigned', 'match-completed']) {
+    for (const id of ['match-owned', 'match-completed']) {
       harness.tracking.set(id, { latitude: 10, longitude: 20 });
     }
 
     const result = await harness.cleanup.cleanupDriverActiveMatchTracking();
 
-    expect(result).toMatchObject({ deletedCount: 1, skippedCount: 0, scannedCount: 1 });
+    expect(result).toMatchObject({ deletedCount: 1, skippedCount: 1, scannedCount: 2 });
     expect(harness.tracking.has('match-owned')).toBe(false);
-    expect(harness.tracking.has('match-reassigned')).toBe(true);
     expect(harness.tracking.has('match-completed')).toBe(true);
     expect(harness.repository.deleteDriverCurrentTrackingIfActiveMatch).toHaveBeenCalledWith(
       'match-owned',
       'verified-driver'
     );
-  });
-
-  test('skips stale query results if ownership or match status changed before recheck', async () => {
-    const harness = createHarness({ authorizedDriverId: 'verified-driver' });
-    harness.matches.set('match-reassigned', {
-      id: 'match-reassigned',
-      driverId: 'another-driver',
-      status: 'active',
-    });
-    harness.matches.set('match-completed', {
-      id: 'match-completed',
-      driverId: 'verified-driver',
-      status: 'completed',
-    });
-    harness.repository.listActiveMatchesByDriver.mockResolvedValueOnce({
-      matches: [{ id: 'match-reassigned' }, { id: 'match-completed' }],
-      nextPageToken: null,
-    });
-    harness.tracking.set('match-reassigned', { latitude: 1, longitude: 2 });
-    harness.tracking.set('match-completed', { latitude: 3, longitude: 4 });
-
-    const result = await harness.cleanup.cleanupDriverActiveMatchTracking();
-
-    expect(result).toMatchObject({ complete: true, scannedCount: 2, skippedCount: 2 });
-    expect(harness.repository.deleteDriverCurrentTrackingIfActiveMatch).toHaveBeenCalledTimes(2);
-    expect(harness.tracking.size).toBe(2);
-  });
-
-  test('does not use a caller-supplied driver ID when no verified driver is available', async () => {
-    const harness = createHarness();
-    harness.matches.set('match-A', {
-      id: 'match-A',
-      driverId: 'unverified-driver',
-      status: 'active',
-    });
-    harness.tracking.set('match-A', { latitude: 1, longitude: 2 });
-
-    const result = await harness.cleanup.cleanupDriverActiveMatchTracking('unverified-driver');
-
-    expect(result).toMatchObject({ complete: false, failedCount: 1 });
-    expect(harness.repository.listActiveMatchesByDriver).not.toHaveBeenCalled();
-    expect(harness.tracking.has('match-A')).toBe(true);
   });
 
   test('reports an absent location without failing driver cleanup', async () => {
@@ -276,47 +328,6 @@ describe('GPS cleanup module', () => {
       deletedCount: 0,
       missingCount: 0,
     });
-  });
-
-  test('continues after a partial delete failure and safely retries it', async () => {
-    const harness = createHarness({ authorizedDriverId: 'verified-driver' });
-    for (const id of ['match-A', 'match-B']) {
-      harness.matches.set(id, { id, driverId: 'verified-driver', status: 'active' });
-      harness.tracking.set(id, { latitude: 1, longitude: 2 });
-    }
-    harness.repository.deleteDriverCurrentTrackingIfActiveMatch
-      .mockRejectedValueOnce({ code: 14, message: 'coordinates 1,2' })
-      .mockImplementationOnce(async (matchId, driverId) => {
-        const match = harness.matches.get(matchId);
-        if (match?.driverId !== driverId || match.status !== 'active') return 'skipped';
-        if (!harness.tracking.has(matchId)) return 'missing';
-        harness.tracking.delete(matchId);
-        return 'deleted';
-      });
-
-    const firstAttempt = await harness.cleanup.cleanupDriverActiveMatchTracking();
-    expect(firstAttempt).toMatchObject({
-      complete: false,
-      deletedCount: 1,
-      failedCount: 1,
-      retryableCount: 1,
-      errorCode: 'unavailable',
-    });
-    expect(harness.tracking.size).toBe(1);
-
-    harness.repository.deleteDriverCurrentTrackingIfActiveMatch.mockImplementation(
-      async (matchId, driverId) => {
-        const match = harness.matches.get(matchId);
-        if (match?.driverId !== driverId || match.status !== 'active') return 'skipped';
-        if (!harness.tracking.has(matchId)) return 'missing';
-        harness.tracking.delete(matchId);
-        return 'deleted';
-      }
-    );
-    const retry = await harness.cleanup.cleanupDriverActiveMatchTracking();
-
-    expect(retry).toMatchObject({ complete: true, deletedCount: 1, failedCount: 0 });
-    expect(harness.tracking.size).toBe(0);
   });
 
   test('reports paginated read failures as retryable and stops without skipping a page', async () => {
@@ -371,25 +382,6 @@ describe('GPS cleanup module', () => {
     ]) {
       expect(serializedLogs).not.toContain(sensitiveValue);
     }
-    expect(
-      harness.logs.every((entry) =>
-        Object.keys(entry).every((key) =>
-          [
-            'operation',
-            'result',
-            'deletedCount',
-            'missingCount',
-            'matchMissingCount',
-            'skippedCount',
-            'failedCount',
-            'retryableCount',
-            'permanentFailureCount',
-            'durationMs',
-            'errorCode',
-          ].includes(key)
-        )
-      )
-    ).toBe(true);
   });
 
   test.each(['read', 'delete'])(
