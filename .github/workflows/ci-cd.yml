@@ -134,18 +134,19 @@ jobs:
             const report = JSON.parse(res.stdout || "{}");
             const vulns = report.vulnerabilities || {};
             const allowed = new Set(["image-size"]);
+            for (const [pkg, info] of Object.entries(vulns)) {
+              const via = Array.isArray(info?.via) ? info.via : [];
+              if (via.some((v) => typeof v === "object" && v !== null && v.source === 1112648)) {
+                allowed.add(pkg);
+              }
+            }
             let changed = true;
             while (changed) {
               changed = false;
               for (const [pkg, info] of Object.entries(vulns)) {
                 if (allowed.has(pkg)) continue;
                 const via = Array.isArray(info?.via) ? info.via : [];
-                const onlyAllowedVia = via.length > 0 && via.every((v) => {
-                  if (typeof v === "string") return allowed.has(v);
-                  if (typeof v === "object" && v !== null) return v.source === 1112648;
-                  return false;
-                });
-                if (onlyAllowedVia) {
+                if (via.some((v) => typeof v === "string" && allowed.has(v))) {
                   allowed.add(pkg);
                   changed = true;
                 }
