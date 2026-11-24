@@ -126,7 +126,7 @@ jobs:
           "
 
       - name: Security Audit
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high --omit=dev
 
       # TruffleHog is pinned to an immutable SHA. A scanner failure must fail
       # the workflow: do not add continue-on-error to this step. Verified
