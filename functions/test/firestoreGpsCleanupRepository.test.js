@@ -1,6 +1,5 @@
 'use strict';
 
-const { FieldPath } = require('firebase-admin/firestore');
 const { createFirestoreGpsCleanupRepository } = require('../src/firestoreGpsCleanupRepository');
 
 const makeMockFirestore = (initialData = {}) => {
