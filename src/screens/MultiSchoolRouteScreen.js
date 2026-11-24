@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   SafeAreaView,
   ScrollView,
   StatusBar,

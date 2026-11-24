@@ -28,11 +28,7 @@ import {
   verifyStudentHandover,
 } from '../services/custodyService';
 import { triggerSosAlert } from '../services/emergencyService';
-import {
-  buildWhatsAppShareUrl,
-  createTrackingShareLink,
-  revokeTrackingShareLink,
-} from '../services/webTrackingService';
+import { buildWhatsAppShareUrl, createTrackingShareLink } from '../services/webTrackingService';
 import toastService from '../services/toastService';
 import notificationService from '../utils/notificationService';
 import VerifiedTripCredentialCard from '../components/VerifiedTripCredentialCard';

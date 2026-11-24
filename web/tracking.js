@@ -4,10 +4,7 @@
   const token = urlParams.get('token');
 
   const liveBadge = document.getElementById('liveBadge');
-  const schoolSubtitle = document.getElementById('schoolSubtitle');
   const tripStatus = document.getElementById('tripStatus');
-  const lastUpdated = document.getElementById('lastUpdated');
-  const passengerSummary = document.getElementById('passengerSummary');
 
   if (!token) {
     if (liveBadge) {

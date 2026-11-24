@@ -94,28 +94,6 @@ const SchoolPortalScreen = ({ navigation }) => {
     }
   };
 
-  const handleAuthorizeDriver = async () => {
-    if (!newDriverId.trim() || !schoolId) return;
-    try {
-      setAuthorizing(true);
-      await authorizeSchoolDriver({
-        schoolId,
-        driverId: newDriverId.trim(),
-        action: 'authorize',
-      });
-      toastService.success(
-        'Conductor Autorizado',
-        'El transportista ha sido vinculado al colegio.'
-      );
-      setNewDriverId('');
-      loadSnapshot();
-    } catch (error) {
-      toastService.error('Error', error.message);
-    } finally {
-      setAuthorizing(false);
-    }
-  };
-
   const handleRevokeDriver = (driverId) => {
     Alert.alert(
       'Revocar Conductor',
