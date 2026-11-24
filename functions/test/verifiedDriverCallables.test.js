@@ -191,6 +191,12 @@ describe('verifiedDriverCallables Unit Tests', () => {
 
       expect(res.success).toBe(true);
       expect(res.driverVerificationStatus).toBe('pending_review');
+      expect(
+        mockDb._documents.get('driverFleets/owner-1/authorizedDrivers/driver-target')
+      ).toMatchObject({
+        driverUid: 'driver-target',
+        authorizedBy: 'owner-1',
+      });
     });
   });
 
@@ -306,6 +312,12 @@ describe('verifiedDriverCallables Unit Tests', () => {
 
       expect(res.success).toBe(true);
       expect(res.driverUid).toBe('driver-verified');
+      expect(
+        mockDb._documents.get('driverFleets/owner-1/authorizedDrivers/driver-verified')
+      ).toMatchObject({
+        driverUid: 'driver-verified',
+        authorizedBy: 'owner-1',
+      });
     });
   });
 });
