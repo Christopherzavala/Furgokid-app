@@ -147,6 +147,17 @@ service cloud.firestore {
               request.resource.data.driverRequestUpdatedAt == resource.data.driverRequestUpdatedAt);
     }
 
+    function verifiedChecksUnchanged() {
+      return request.resource.data.keys().hasAll(['verifiedChecks']) ==
+             resource.data.keys().hasAll(['verifiedChecks']) &&
+             (!request.resource.data.keys().hasAll(['verifiedChecks']) ||
+              request.resource.data.verifiedChecks == resource.data.verifiedChecks) &&
+             request.resource.data.keys().hasAll(['driverVerificationStatus']) ==
+             resource.data.keys().hasAll(['driverVerificationStatus']) &&
+             (!request.resource.data.keys().hasAll(['driverVerificationStatus']) ||
+              request.resource.data.driverVerificationStatus == resource.data.driverVerificationStatus);
+    }
+
     // Temporary privacy containment: the client may remove existing child
     // data for data minimization, but may not add or modify it. Trusted
     // backend writes (Admin SDK / callable functions) bypass Security Rules.
@@ -193,6 +204,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /driverAssignmentLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
     // ============================================================================
     // USERS COLLECTION
     // ============================================================================
@@ -212,6 +228,7 @@ service cloud.firestore {
                       roleUnchanged() &&
                       approvedUnchanged() &&
                       driverRequestStateUnchanged() &&
+                      verifiedChecksUnchanged() &&
                       childFieldsUnchangedOrRemoved() &&
                       rateLimit(60) &&
                       validRequestSize();
