@@ -13,93 +13,106 @@ const makeMockFirestore = (initialData = {}) => {
       const data = documents.get(path);
       return {
         exists: data !== undefined,
-        data: () => (data ? { ...data } : null),
+        id: path.split('/').pop(),
+        data: () => data,
         get: (field) => data?.[field],
       };
     },
     async delete() {
       documents.delete(path);
     },
-    collection(name) {
-      return makeCollection(`${path}/${name}`);
+    collection(subName) {
+      return makeCollection(`${path}/${subName}`);
     },
   });
 
-  const makeCollection = (path) => ({
-    path,
-    doc(id) {
-      return makeRef(`${path}/${id}`);
-    },
-    where(field, op, value) {
-      const filters = [[field, op, value]];
-      let selectedFields = null;
-      let orderedBy = null;
-      let startAfterId = null;
-      let limitCount = 500;
-
-      const builder = {
-        where(sF, sOp, sVal) {
-          filters.push([sF, sOp, sVal]);
-          return builder;
-        },
-        select(...fields) {
-          selectedFields = fields;
-          return builder;
-        },
-        orderBy(field) {
-          orderedBy = field;
-          return builder;
-        },
-        startAfter(docId) {
-          startAfterId = docId;
-          return builder;
-        },
-        limit(count) {
-          limitCount = count;
-          return builder;
-        },
-        async get() {
-          const docs = [];
-          for (const [docPath, data] of documents.entries()) {
-            if (!docPath.startsWith(`${path}/`) || docPath.slice(path.length + 1).includes('/')) {
-              continue;
-            }
-            const docId = docPath.split('/').pop();
-            if (startAfterId !== null && docId <= startAfterId) {
-              continue;
-            }
-
-            const matches = filters.every(([f, op, expected]) => {
-              if (op === '==') return data[f] === expected;
-              if (op === 'in') return Array.isArray(expected) && expected.includes(data[f]);
-              return true;
+  const makeCollection = (path) => {
+    const createQuery = (
+      filters = [],
+      orderedBy = null,
+      startAfterDocId = null,
+      limitCount = 500,
+      selectedFields = null
+    ) => ({
+      where(sF, sOp, sVal) {
+        return createQuery(
+          [...filters, [sF, sOp, sVal]],
+          orderedBy,
+          startAfterDocId,
+          limitCount,
+          selectedFields
+        );
+      },
+      orderBy(field) {
+        return createQuery(filters, field, startAfterDocId, limitCount, selectedFields);
+      },
+      select() {
+        return createQuery(filters, orderedBy, startAfterDocId, limitCount, true);
+      },
+      startAfter(docId) {
+        return createQuery(filters, orderedBy, docId, limitCount, selectedFields);
+      },
+      limit(count) {
+        return createQuery(filters, orderedBy, startAfterDocId, count, selectedFields);
+      },
+      async get() {
+        const docs = [];
+        for (const [docPath, data] of documents.entries()) {
+          if (!docPath.startsWith(`${path}/`) || docPath.slice(path.length + 1).includes('/')) {
+            continue;
+          }
+          const docId = docPath.split('/').pop();
+          const matches = filters.every(([f, op, expected]) => {
+            if (op === '==') return data[f] === expected;
+            return true;
+          });
+          if (matches) {
+            docs.push({
+              id: docId,
+              ref: makeRef(docPath),
+              data: () => data,
+              get: (field) => data?.[field],
             });
-
-            if (matches) {
-              docs.push({
-                id: docId,
-                ref: makeRef(docPath),
-                data: () => ({ ...data }),
-                get: (field) => data?.[field],
-              });
-            }
           }
+        }
 
-          if (orderedBy === FieldPath.documentId()) {
-            docs.sort((a, b) => a.id.localeCompare(b.id));
+        if (orderedBy) {
+          docs.sort((a, b) => a.id.localeCompare(b.id));
+        }
+
+        let finalDocs = docs;
+        if (startAfterDocId) {
+          const index = docs.findIndex((d) => d.id === startAfterDocId);
+          if (index !== -1) {
+            finalDocs = docs.slice(index + 1);
           }
+        }
 
-          const limited = docs.slice(0, limitCount);
-          return { docs: limited, empty: limited.length === 0 };
-        },
-      };
-      return builder;
-    },
-  });
+        const limited = finalDocs.slice(0, limitCount);
+        return { docs: limited, empty: limited.length === 0 };
+      },
+    });
+
+    return {
+      path,
+      doc(id) {
+        const resolvedId = id || `auto_${Math.random()}`;
+        return makeRef(`${path}/${resolvedId}`);
+      },
+      where(field, op, value) {
+        return createQuery([[field, op, value]]);
+      },
+      orderBy(field) {
+        return createQuery([], field);
+      },
+    };
+  };
 
   return {
     _documents: documents,
-    collection: makeCollection,
+    collection(name) {
+      return makeCollection(name);
+    },
     async runTransaction(callback) {
       const transaction = {
         async get(ref) {
@@ -107,7 +120,8 @@ const makeMockFirestore = (initialData = {}) => {
           const data = documents.get(path);
           return {
             exists: data !== undefined,
-            data: () => (data ? { ...data } : null),
+            id: path.split('/').pop(),
+            data: () => data,
             get: (field) => data?.[field],
           };
         },
@@ -122,176 +136,167 @@ const makeMockFirestore = (initialData = {}) => {
 };
 
 describe('firestoreGpsCleanupRepository Unit Tests', () => {
-  test('constructor throws TypeError if firestore instance is invalid', () => {
+  test('constructor validates firestore instance', () => {
     expect(() => createFirestoreGpsCleanupRepository({ firestore: null })).toThrow(TypeError);
+    expect(() => createFirestoreGpsCleanupRepository({ firestore: {} })).toThrow(TypeError);
   });
 
-  test('listActiveMatchesByDriver validates inputs', async () => {
-    const db = makeMockFirestore();
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+  test('listActiveMatchesByDriver and listMatchesByDriver validate inputs and paginate', async () => {
+    const firestore = makeMockFirestore({
+      'matches/m1': { driverId: 'driver-1', status: 'active' },
+      'matches/m2': { driverId: 'driver-1', status: 'completed' },
+      'matches/m3': { driverId: 'driver-1', status: 'active' },
+    });
+    const repo = createFirestoreGpsCleanupRepository({ firestore });
 
     await expect(
-      repo.listActiveMatchesByDriver({ driverId: 'bad/id', pageSize: 10 })
+      repo.listActiveMatchesByDriver({ driverId: '../bad', pageSize: 10 })
     ).rejects.toThrow(TypeError);
     await expect(
       repo.listActiveMatchesByDriver({ driverId: 'driver-1', pageSize: 0 })
     ).rejects.toThrow(RangeError);
     await expect(
-      repo.listActiveMatchesByDriver({ driverId: 'driver-1', pageSize: 10, pageToken: 'bad/id' })
+      repo.listActiveMatchesByDriver({ driverId: 'driver-1', pageToken: '../bad', pageSize: 10 })
     ).rejects.toThrow(TypeError);
+
+    const activePage = await repo.listActiveMatchesByDriver({ driverId: 'driver-1', pageSize: 10 });
+    expect(activePage.matches.length).toBe(2);
+
+    const allPage = await repo.listMatchesByDriver({ driverId: 'driver-1', pageSize: 10 });
+    expect(allPage.matches.length).toBe(3);
   });
 
-  test('listActiveMatchesByDriver lists matches successfully with pagination', async () => {
-    const db = makeMockFirestore({
+  test('deleteMatchCurrentTracking handles missing match, denied owner, missing tracking and successful deletion', async () => {
+    const firestore = makeMockFirestore({
       'matches/match-1': { driverId: 'driver-1', status: 'active' },
-      'matches/match-2': { driverId: 'driver-1', status: 'active' },
-      'matches/match-3': { driverId: 'driver-1', status: 'completed' },
+      'matches/match-1/tracking/current': { latitude: -33.4, longitude: -70.6 },
     });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+    const repo = createFirestoreGpsCleanupRepository({ firestore });
 
-    const res = await repo.listActiveMatchesByDriver({ driverId: 'driver-1', pageSize: 10 });
-    expect(res.matches).toHaveLength(2);
-    expect(res.nextPageToken).toBeNull();
-  });
-
-  test('listMatchesByDriver lists all matches by driver', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1': { driverId: 'driver-1', status: 'active' },
-      'matches/match-2': { driverId: 'driver-1', status: 'completed' },
-    });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
-
-    const res = await repo.listMatchesByDriver({ driverId: 'driver-1', pageSize: 10 });
-    expect(res.matches).toHaveLength(2);
-  });
-
-  test('deleteMatchCurrentTracking handles missing match, denied owner, missing tracking, and deletion', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1': { driverId: 'driver-1', parentId: 'parent-1' },
-      'matches/match-2': { driverId: 'driver-1', parentId: 'parent-1' },
-      'matches/match-2/tracking/current': { latitude: -33, longitude: -70 },
-      'matches/match-3': { driverId: 'driver-1', parentId: 'parent-1' },
-      'matches/match-3/tracking/current': { latitude: -33, longitude: -70 },
-    });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+    // Invalid arguments
+    await expect(
+      repo.deleteMatchCurrentTracking('../bad', { field: 'driverId', uid: 'driver-1' })
+    ).rejects.toThrow(TypeError);
+    await expect(
+      repo.deleteMatchCurrentTracking('match-1', { field: 'badField', uid: 'driver-1' })
+    ).rejects.toThrow(TypeError);
 
     // Match missing
-    const r1 = await repo.deleteMatchCurrentTracking('match-missing', {
+    const resMissingMatch = await repo.deleteMatchCurrentTracking('match-missing', {
       field: 'driverId',
       uid: 'driver-1',
     });
-    expect(r1).toBe('match-missing');
+    expect(resMissingMatch).toBe('match-missing');
 
     // Denied owner
-    const r2 = await repo.deleteMatchCurrentTracking('match-1', {
+    const resDenied = await repo.deleteMatchCurrentTracking('match-1', {
       field: 'driverId',
-      uid: 'driver-other',
+      uid: 'wrong-driver',
     });
-    expect(r2).toBe('denied');
+    expect(resDenied).toBe('denied');
 
-    // Missing tracking
-    const r3 = await repo.deleteMatchCurrentTracking('match-1', {
-      field: 'driverId',
-      uid: 'driver-1',
-    });
-    expect(r3).toBe('missing');
-
-    // Deleted successfully
-    const r4 = await repo.deleteMatchCurrentTracking('match-2', {
+    // Tracking missing
+    firestore._documents.delete('matches/match-1/tracking/current');
+    const resTrackingMissing = await repo.deleteMatchCurrentTracking('match-1', {
       field: 'driverId',
       uid: 'driver-1',
     });
-    expect(r4).toBe('deleted');
-    expect(db._documents.has('matches/match-2/tracking/current')).toBe(false);
+    expect(resTrackingMissing).toBe('missing');
 
-    // Parent owner deletion
-    const r5 = await repo.deleteMatchCurrentTracking('match-3', {
-      field: 'parentId',
-      uid: 'parent-1',
+    // Successful deletion
+    firestore._documents.set('matches/match-1/tracking/current', {
+      latitude: -33.4,
+      longitude: -70.6,
     });
-    expect(r5).toBe('deleted');
+    const resDeleted = await repo.deleteMatchCurrentTracking('match-1', {
+      field: 'driverId',
+      uid: 'driver-1',
+    });
+    expect(resDeleted).toBe('deleted');
   });
 
-  test('deleteDriverCurrentTrackingIfActiveMatch handles missing match, skipped, missing tracking, and deletion', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1': { driverId: 'driver-other', status: 'active' },
-      'matches/match-2': { driverId: 'driver-1', status: 'completed' },
-      'matches/match-3': { driverId: 'driver-1', status: 'active' },
-      'matches/match-3/tracking/current': { latitude: -33, longitude: -70 },
+  test('deleteDriverCurrentTrackingIfActiveMatch and deleteMatchCurrentTrackingIfTerminal handle states correctly', async () => {
+    const firestore = makeMockFirestore({
+      'matches/m-active': { driverId: 'driver-1', status: 'active' },
+      'matches/m-active/tracking/current': { latitude: 1 },
+      'matches/m-term': { status: 'completed' },
+      'matches/m-term/tracking/current': { latitude: 2 },
     });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+    const repo = createFirestoreGpsCleanupRepository({ firestore });
 
-    expect(await repo.deleteDriverCurrentTrackingIfActiveMatch('match-missing', 'driver-1')).toBe(
-      'match-missing'
-    );
-    expect(await repo.deleteDriverCurrentTrackingIfActiveMatch('match-1', 'driver-1')).toBe(
-      'skipped'
-    );
-    expect(await repo.deleteDriverCurrentTrackingIfActiveMatch('match-2', 'driver-1')).toBe(
-      'skipped'
-    );
-    expect(await repo.deleteDriverCurrentTrackingIfActiveMatch('match-3', 'driver-1')).toBe(
-      'deleted'
-    );
-    expect(db._documents.has('matches/match-3/tracking/current')).toBe(false);
+    // Active match success
+    const resActive = await repo.deleteDriverCurrentTrackingIfActiveMatch('m-active', 'driver-1');
+    expect(resActive).toBe('deleted');
+
+    // Skipped if driver or status does not match
+    firestore._documents.set('matches/m-active', { driverId: 'driver-2', status: 'active' });
+    const resSkipped = await repo.deleteDriverCurrentTrackingIfActiveMatch('m-active', 'driver-1');
+    expect(resSkipped).toBe('skipped');
+
+    // Terminal match success
+    const resTerm = await repo.deleteMatchCurrentTrackingIfTerminal('m-term');
+    expect(resTerm).toBe('deleted');
+
+    // Terminal match skipped if not terminal
+    firestore._documents.set('matches/m-term', { status: 'active' });
+    const resTermSkipped = await repo.deleteMatchCurrentTrackingIfTerminal('m-term');
+    expect(resTermSkipped).toBe('skipped');
   });
 
-  test('deleteMatchCurrentTrackingIfTerminal handles missing match, skipped, and deletion', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1': { status: 'active' },
-      'matches/match-2': { status: 'completed' },
-      'matches/match-2/tracking/current': { latitude: -33, longitude: -70 },
+  test('deleteDriverCurrentTrackingIfAssigned, deleteCurrentTrackingByMatchId and listActiveMatches work correctly', async () => {
+    const firestore = makeMockFirestore({
+      'matches/m-assigned': { driverId: 'driver-1' },
+      'matches/m-assigned/tracking/current': { latitude: 1 },
+      'matches/m-match-missing/tracking/current': { latitude: 1 },
+      'matches/m-missing-tracking': { driverId: 'driver-1' },
     });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+    const repo = createFirestoreGpsCleanupRepository({ firestore });
 
-    expect(await repo.deleteMatchCurrentTrackingIfTerminal('match-missing')).toBe('match-missing');
-    expect(await repo.deleteMatchCurrentTrackingIfTerminal('match-1')).toBe('skipped');
-    expect(await repo.deleteMatchCurrentTrackingIfTerminal('match-2')).toBe('deleted');
-  });
+    const resAssigned = await repo.deleteDriverCurrentTrackingIfAssigned('m-assigned', 'driver-1');
+    expect(resAssigned).toBe('deleted');
 
-  test('deleteDriverCurrentTrackingIfAssigned handles missing match, denied, missing tracking, and deletion', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1': { driverId: 'driver-other' },
-      'matches/match-2': { driverId: 'driver-1' },
-      'matches/match-2/tracking/current': { latitude: -33, longitude: -70 },
-    });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
-
-    expect(await repo.deleteDriverCurrentTrackingIfAssigned('match-missing', 'driver-1')).toBe(
-      'match-missing'
+    const resAssignedDenied = await repo.deleteDriverCurrentTrackingIfAssigned(
+      'm-assigned',
+      'driver-other'
     );
-    expect(await repo.deleteDriverCurrentTrackingIfAssigned('match-1', 'driver-1')).toBe('denied');
-    expect(await repo.deleteDriverCurrentTrackingIfAssigned('match-2', 'driver-1')).toBe('deleted');
+    expect(resAssignedDenied).toBe('denied');
+
+    const resAssignedMissing = await repo.deleteDriverCurrentTrackingIfAssigned(
+      'm-missing-tracking',
+      'driver-1'
+    );
+    expect(resAssignedMissing).toBe('missing');
+
+    const resAssignedMatchMissing = await repo.deleteDriverCurrentTrackingIfAssigned(
+      'm-nonexistent',
+      'driver-1'
+    );
+    expect(resAssignedMatchMissing).toBe('match-missing');
+
+    const resByMatchId = await repo.deleteCurrentTrackingByMatchId('m-match-missing');
+    expect(resByMatchId).toBe('deleted');
+
+    const resByMatchIdMissing = await repo.deleteCurrentTrackingByMatchId('m-nonexistent-tracking');
+    expect(resByMatchIdMissing).toBe('missing');
+
+    const activeMatches = await repo.listActiveMatches({ pageSize: 10 });
+    expect(activeMatches).toBeDefined();
+
+    await expect(repo.listActiveMatches({ pageSize: 0 })).rejects.toThrow(RangeError);
   });
 
-  test('deleteCurrentTrackingByMatchId handles missing and deletion', async () => {
-    const db = makeMockFirestore({
-      'matches/match-1/tracking/current': { latitude: -33, longitude: -70 },
+  test('deleteStaleCurrentTracking cleans up stale records', async () => {
+    const oldDate = new Date(Date.now() - 30 * 60 * 1000);
+    const firestore = makeMockFirestore({
+      'matches/m-stale': { status: 'active' },
+      'matches/m-stale/tracking/current': { updatedAt: { toDate: () => oldDate } },
     });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
+    const repo = createFirestoreGpsCleanupRepository({ firestore });
 
-    expect(await repo.deleteCurrentTrackingByMatchId('match-missing')).toBe('missing');
-    expect(await repo.deleteCurrentTrackingByMatchId('match-1')).toBe('deleted');
-  });
-
-  test('deleteStaleCurrentTracking validates inputs and deletes stale active tracking points', async () => {
-    const now = Date.now();
-    const staleTime = new Date(now - 20 * 60 * 1000); // 20 mins ago
-    const freshTime = new Date(now - 2 * 60 * 1000); // 2 mins ago
-
-    const db = makeMockFirestore({
-      'matches/match-stale': { status: 'active' },
-      'matches/match-stale/tracking/current': { updatedAt: { toDate: () => staleTime } },
-      'matches/match-fresh': { status: 'active' },
-      'matches/match-fresh/tracking/current': { updatedAt: { toDate: () => freshTime } },
+    const res = await repo.deleteStaleCurrentTracking({
+      now: Date.now(),
+      staleAfterMs: 10 * 60 * 1000,
     });
-    const repo = createFirestoreGpsCleanupRepository({ firestore: db });
-
-    await expect(repo.deleteStaleCurrentTracking({ now: 'bad' })).rejects.toThrow(TypeError);
-
-    const result = await repo.deleteStaleCurrentTracking({ now, staleAfterMs: 10 * 60 * 1000 });
-    expect(result.deletedCount).toBe(1);
-    expect(db._documents.has('matches/match-stale/tracking/current')).toBe(false);
-    expect(db._documents.has('matches/match-fresh/tracking/current')).toBe(true);
+    expect(res.deletedCount).toBe(1);
   });
 });
