@@ -126,6 +126,23 @@ describe('match lifecycle callable adapters', () => {
     expect(JSON.stringify(logger.mock.calls)).not.toContain('private details');
   });
 
+  test('maps unknown MatchLifecycleError code to internal and logs unknown error code', async () => {
+    const { callables, repository, logger } = createHarness();
+    repository.acceptMatch.mockRejectedValueOnce(
+      new MatchLifecycleError('custom-unsafe-code', 'details')
+    );
+
+    await expect(
+      callables.acceptMatch({
+        auth: { uid: 'verified-driver' },
+        data: { matchId: 'match-1' },
+      })
+    ).rejects.toMatchObject({
+      code: 'internal',
+    });
+    expect(logger).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'unknown' }));
+  });
+
   test('maps generic non-lifecycle errors or unknown codes to internal error safely', async () => {
     const { callables, repository, logger } = createHarness();
     repository.acceptMatch.mockRejectedValueOnce(new Error('Database crash'));
