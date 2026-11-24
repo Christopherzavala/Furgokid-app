@@ -29,6 +29,7 @@ import TrackingMap from './src/screens/TrackingMap';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import SchoolPortalScreen from './src/screens/SchoolPortalScreen';
 import MultiSchoolRouteScreen from './src/screens/MultiSchoolRouteScreen';
+import FleetDriverAssignmentScreen from './src/screens/FleetDriverAssignmentScreen';
 import analyticsService from './src/services/analyticsService';
 import consentService from './src/services/consentService';
 // import crashlyticsService from './src/services/crashlyticsService';
@@ -132,6 +133,7 @@ function Navigation() {
           <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="SchoolPortal" component={SchoolPortalScreen} />
           <Stack.Screen name="MultiSchoolRoute" component={MultiSchoolRouteScreen} />
+          <Stack.Screen name="FleetDriverAssignment" component={FleetDriverAssignmentScreen} />
         </>
       ) : (
         <>

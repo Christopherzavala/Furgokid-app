@@ -149,6 +149,14 @@ const DriverScreen = ({ navigation }) => {
         )}
 
         <TouchableOpacity
+          style={styles.opsButton}
+          onPress={() => navigation.navigate('FleetDriverAssignment')}
+        >
+          <Ionicons name="people" size={20} color="#fff" />
+          <Text style={styles.opsButtonText}>Gestión de Arriendo / Reemplazos</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.bigButton, isRouteActive ? styles.stopButton : styles.startButton]}
           onPress={toggleRoute}
           accessible={true}
