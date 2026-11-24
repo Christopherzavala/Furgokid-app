@@ -18,8 +18,11 @@ const assertAuthenticated = () => {
 
 /**
  * Submits driver verification documents (Professional License, Criminal Record, Child Inability Registry).
+ * @param {Object} params
+ * @param {string} [params.targetDriverUid]
+ * @param {Object} params.documents
  */
-export const submitDriverVerificationDocs = async ({ targetDriverUid, documents }) => {
+export const submitDriverVerificationDocs = async ({ targetDriverUid, documents } = {}) => {
   assertAuthenticated();
   if (!documents || typeof documents !== 'object') {
     throw new Error('Valid documents object is required.');
@@ -31,14 +34,20 @@ export const submitDriverVerificationDocs = async ({ targetDriverUid, documents 
 
 /**
  * Assigns a verified driver (owner, rental, substitute) to a vehicle and match.
+ * @param {Object} params
+ * @param {string} params.vehicleId
+ * @param {string} params.matchId
+ * @param {string} params.driverUid
+ * @param {'owner'|'rental'|'substitute'} params.assignmentType
+ * @param {string} [params.validUntil]
  */
 export const assignVerifiedVehicleDriver = async ({
   vehicleId,
   matchId,
   driverUid,
   assignmentType,
-  validUntil,
-}) => {
+  validUntil = null,
+} = {}) => {
   assertAuthenticated();
   if (!vehicleId || !matchId || !driverUid || !assignmentType) {
     throw new Error('vehicleId, matchId, driverUid, and assignmentType are required.');

@@ -21,7 +21,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "NODE_ENV": "staging",
+        "NODE_ENV": "production",
         "APP_VARIANT": "staging",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "furgokid-staging",
         "SENTRY_ENABLED": "true",

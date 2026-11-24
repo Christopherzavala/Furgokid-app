@@ -35,8 +35,18 @@ const createTrackingAuthorizationHandler = ({
     if (!match) {
       throw new HttpsErrorClass('not-found', 'Match not found.');
     }
-    if (match.status !== 'active' || match.driverId !== uid) {
+    const activeDriver = match.activeDriverId || match.driverId;
+    if (match.status !== 'active' || activeDriver !== uid) {
       throw new HttpsErrorClass('permission-denied', 'The driver is not assigned to this match.');
+    }
+    if (match.activeDriverSnapshot?.validUntil) {
+      const validUntilMs = Date.parse(match.activeDriverSnapshot.validUntil);
+      if (Number.isFinite(validUntilMs) && validUntilMs < Date.now()) {
+        throw new HttpsErrorClass(
+          'permission-denied',
+          'Driver assignment validity date has expired.'
+        );
+      }
     }
 
     return { matchId };

@@ -448,7 +448,9 @@ const TrackingMap = ({ route, navigation }) => {
     }
   };
 
-  const isDriver = matchData?.driverId === auth.currentUser?.uid;
+  const isDriver =
+    matchData?.activeDriverId === auth.currentUser?.uid ||
+    matchData?.driverId === auth.currentUser?.uid;
   const isParent = matchData?.parentId === auth.currentUser?.uid;
   const currentPassengerState = selectedPassengerId
     ? passengerStates[selectedPassengerId] || 'EXPECTED'

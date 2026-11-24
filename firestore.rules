@@ -106,7 +106,10 @@ service cloud.firestore {
       return isAuthenticated() &&
              (isAdminOrOps() ||
               (isParent() && matchData.parentId == request.auth.uid) ||
-              (isApprovedDriver() && matchData.driverId == request.auth.uid));
+              (isApprovedDriver() && (
+                matchData.driverId == request.auth.uid ||
+                ('activeDriverId' in matchData && matchData.activeDriverId == request.auth.uid)
+              )));
     }
 
     function isMatchParticipant(matchId) {
@@ -114,6 +117,8 @@ service cloud.firestore {
              exists(/databases/$(database)/documents/matches/$(matchId)) &&
              (isAdminOrOps() ||
               get(/databases/$(database)/documents/matches/$(matchId)).data.driverId == request.auth.uid ||
+              ('activeDriverId' in get(/databases/$(database)/documents/matches/$(matchId)).data &&
+               get(/databases/$(database)/documents/matches/$(matchId)).data.activeDriverId == request.auth.uid) ||
               get(/databases/$(database)/documents/matches/$(matchId)).data.parentId == request.auth.uid);
     }
 
@@ -445,9 +450,9 @@ service cloud.firestore {
         allow create, update: if locationId == 'current' &&
                                 isApprovedDriver() &&
                                 activeMatch(matchId) &&
-                                get(
-                                  /databases/$(database)/documents/matches/$(matchId)
-                                ).data.driverId == request.auth.uid &&
+                                (get(/databases/$(database)/documents/matches/$(matchId)).data.driverId == request.auth.uid ||
+                                 ('activeDriverId' in get(/databases/$(database)/documents/matches/$(matchId)).data &&
+                                  get(/databases/$(database)/documents/matches/$(matchId)).data.activeDriverId == request.auth.uid)) &&
                                 !hasActiveDeletionRequest(request.auth.uid) &&
                                 validTrackingLocation();
 
