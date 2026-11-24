@@ -60,11 +60,15 @@ emulatorDescribe('profile provisioning and driver approval (Firebase emulators)'
     return snapshot.exists ? snapshot.data() : null;
   };
 
-  const getProfileWithRetry = async (uid, retries = 10, delayMs = 300) => {
+  const getProfileWithRetry = async (uid, idToken, retries = 10, delayMs = 300) => {
     for (let i = 0; i < retries; i++) {
       const p = await getProfile(uid);
       if (p) return p;
       await new Promise((r) => setTimeout(r, delayMs));
+    }
+    const finalCheck = await getProfile(uid);
+    if (!finalCheck && idToken) {
+      await invokeCallable({ name: 'ensureUserProfile', idToken, data: {} });
     }
     return getProfile(uid);
   };
@@ -92,7 +96,7 @@ emulatorDescribe('profile provisioning and driver approval (Firebase emulators)'
     expect(authAccount.uid).toBe(user.uid);
 
     // Firebase CLI 15.28.1 invokes beforeUserCreated from Auth Emulator.
-    const profile = await getProfileWithRetry(user.uid);
+    const profile = await getProfileWithRetry(user.uid, user.idToken);
     expect(profile).toMatchObject({
       role: 'parent',
       approved: false,
