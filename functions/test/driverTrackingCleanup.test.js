@@ -1,12 +1,21 @@
+'use strict';
+
 const { createDriverTrackingCleanup } = require('../src/driverTrackingCleanup');
 
-const createHarness = ({ pages, deletion = 'deleted', pageSize } = {}) => {
+const createHarness = ({ pages, deletion = 'deleted', deleteFailure, pageSize } = {}) => {
   const repository = {
+    deleteDriverCurrentTrackingIfAssigned: jest.fn(async (matchId) => {
+      if (deleteFailure) throw deleteFailure;
+      if (matchId === 'match-missing') return 'match-missing';
+      if (matchId === 'match-denied') return 'denied';
+      return deletion;
+    }),
     listMatchesByDriver: jest.fn(async ({ pageToken }) => {
+      if (!pages || pages.length === 0) return { matches: [], nextPageToken: null };
       if (pageToken === null) return pages[0];
       return pages[1] || { matches: [], nextPageToken: null };
     }),
-    deleteDriverCurrentTrackingIfAssigned: jest.fn(async () => deletion),
+    deleteDriverCurrentTrackingIfActiveMatch: jest.fn(async () => 'deleted'),
   };
   const logger = jest.fn();
   const cleanup = createDriverTrackingCleanup({
@@ -129,6 +138,19 @@ describe('driver tracking cleanup', () => {
     expect(res.failedCount).toBe(1);
   });
 
+  test('handles null or invalid candidates in matches array', async () => {
+    const { cleanup } = createHarness({
+      pages: [{ matches: [null, { id: 'match-1' }, {}], nextPageToken: null }],
+      deletion: 'deleted',
+    });
+
+    const res = await cleanup('driver-1');
+    expect(res.complete).toBe(false);
+    expect(res.scannedCount).toBe(3);
+    expect(res.deletedCount).toBe(1);
+    expect(res.failedCount).toBe(2);
+  });
+
   test('detects infinite pagination token loops', async () => {
     const repository = {
       listMatchesByDriver: jest.fn(async () => ({
@@ -169,7 +191,7 @@ describe('driver tracking cleanup', () => {
     });
   });
 
-  test('reports a sanitized Firestore error code', async () => {
+  test('reports a sanitized Firestore error code and string-encoded numeric code', async () => {
     const { cleanup, repository } = createHarness({
       pages: [{ matches: [{ id: 'match-1' }], nextPageToken: null }],
     });
@@ -177,7 +199,7 @@ describe('driver tracking cleanup', () => {
     const { cleanup: retryCleanup, repository: retryRepository } = createHarness({
       pages: [{ matches: [{ id: 'match-1' }], nextPageToken: null }],
     });
-    retryRepository.listMatchesByDriver.mockRejectedValueOnce(new Error('private error'));
+    retryRepository.listMatchesByDriver.mockRejectedValueOnce({ code: '16' });
 
     await expect(cleanup('driver-1')).resolves.toMatchObject({
       complete: false,
@@ -185,7 +207,7 @@ describe('driver tracking cleanup', () => {
     });
     await expect(retryCleanup('driver-1')).resolves.toMatchObject({
       complete: false,
-      errorCode: 'unknown',
+      errorCode: 'unauthenticated',
     });
   });
 
