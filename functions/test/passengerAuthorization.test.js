@@ -403,4 +403,136 @@ describe('passenger authorization and fenced cleanup', () => {
       cleanupLeaseId: null,
     });
   });
+
+  test('comprehensive validation branches in createPassengerWithDeclaration and updateAuthorizationStatus', async () => {
+    const firestore = makeFirestore({ 'users/guardian-A': eligibleGuardian() });
+    const manager = createPassengerAuthorizationManager({ firestore, fieldValue: fakeFieldValue });
+
+    // Invalid adultUid
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: '../bad',
+        passengerId: 'p1',
+        requestId: 'req-long-enough-1234567890',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'v1',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+    // Invalid passengerId
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: '../bad',
+        requestId: 'req-long-enough-1234567890',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'v1',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    // Invalid requestId length/format
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        requestId: 'short',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'v1',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    // Invalid purpose
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        requestId: 'req-long-enough-1234567890',
+        purpose: 'bad_purpose',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'v1',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    // Responsibility declared false
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        requestId: 'req-long-enough-1234567890',
+        responsibilityDeclared: false,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'v1',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+    // Missing versions
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        requestId: 'req-long-enough-1234567890',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: '   ',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    // Notice version mismatch
+    await expect(
+      manager.createPassengerWithDeclaration({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        requestId: 'req-long-enough-1234567890',
+        responsibilityDeclared: true,
+        privacyNoticeAccepted: true,
+        privacyNoticeVersion: 'wrong-v',
+        authorizationTextVersion: 'v1',
+      })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+
+    // Update status validation branches
+    await expect(
+      manager.updateAuthorizationStatus({
+        adultUid: '../bad',
+        passengerId: 'p1',
+        newStatus: 'revoked',
+      })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+    await expect(
+      manager.updateAuthorizationStatus({
+        adultUid: 'guardian-A',
+        passengerId: '../bad',
+        newStatus: 'revoked',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    await expect(
+      manager.updateAuthorizationStatus({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        newStatus: 'invalid_status',
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+    // Missing auth record in updateStatus
+    await expect(
+      manager.updateAuthorizationStatus({
+        adultUid: 'guardian-A',
+        passengerId: 'p1',
+        authorizationId: 'missing-auth',
+        newStatus: 'revoked',
+      })
+    ).rejects.toMatchObject({ code: 'not-found' });
+  });
 });
