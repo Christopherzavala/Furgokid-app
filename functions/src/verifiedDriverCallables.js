@@ -43,7 +43,17 @@ exports.submitDriverVerificationDocs = onCall(getCallableSecurityOptions(), asyn
     const callerDoc = await db.collection('users').doc(uid).get();
     const callerData = callerDoc.exists ? callerDoc.data() : {};
     const isAdminOrOps = ['admin', 'ops'].includes(callerData.role);
-    if (!isAdminOrOps) {
+    let isFleetOwner = false;
+    if (callerData.role === 'driver') {
+      const fleetSnap = await db
+        .collection('driverFleets')
+        .doc(uid)
+        .collection('vehicles')
+        .limit(1)
+        .get();
+      isFleetOwner = !fleetSnap.empty;
+    }
+    if (!isAdminOrOps && !isFleetOwner) {
       throw new HttpsError(
         'permission-denied',
         'Only administrators or fleet owners can submit verification docs for other drivers.'
@@ -159,6 +169,13 @@ exports.assignVerifiedVehicleDriver = onCall(getCallableSecurityOptions(), async
     );
   }
 
+  if (validUntil) {
+    const validUntilMs = Date.parse(validUntil);
+    if (Number.isFinite(validUntilMs) && validUntilMs < Date.now()) {
+      throw new HttpsError('failed-precondition', 'Assignment validity date has expired.');
+    }
+  }
+
   // Verify target driver existence and compliance
   const targetDriverRef = db.collection('users').doc(driverUid);
   const targetDriverSnap = await targetDriverRef.get();
@@ -180,14 +197,29 @@ exports.assignVerifiedVehicleDriver = onCall(getCallableSecurityOptions(), async
   }
 
   const checks = driverData.verifiedChecks || {};
-  const isLicenseVerified = checks.professionalLicense?.status === 'verified';
-  const isCriminalVerified = checks.criminalRecord?.status === 'verified';
-  const isInabilityVerified = checks.childInabilityRegistry?.status === 'verified';
 
-  if (!isLicenseVerified || !isCriminalVerified || !isInabilityVerified) {
+  const isCheckValidAndNotExpired = (check) => {
+    if (!check) return false;
+    const status = typeof check === 'string' ? check : check.status;
+    if (status !== 'verified' && check !== true) return false;
+    if (check.expiresAt) {
+      const expMs =
+        typeof check.expiresAt.toMillis === 'function'
+          ? check.expiresAt.toMillis()
+          : Date.parse(check.expiresAt);
+      if (Number.isFinite(expMs) && expMs < Date.now()) return false;
+    }
+    return true;
+  };
+
+  if (
+    !isCheckValidAndNotExpired(checks.professionalLicense) ||
+    !isCheckValidAndNotExpired(checks.criminalRecord) ||
+    !isCheckValidAndNotExpired(checks.childInabilityRegistry)
+  ) {
     throw new HttpsError(
       'failed-precondition',
-      'Driver lacks one or more mandatory verified checks (Professional License, Criminal Record, Child Inability Registry).'
+      'One or more mandatory verified checks are missing, unverified, or expired.'
     );
   }
 

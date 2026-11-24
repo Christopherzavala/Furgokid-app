@@ -526,17 +526,15 @@ describe('accountDeletionService', () => {
     });
     const storage412 = {
       bucket: jest.fn(() => ({
-        getFiles: jest
-          .fn()
-          .mockResolvedValue([
-            [
-              {
-                name: 'users/u-st/a.jpg',
-                metadata: { generation: '1' },
-                delete: jest.fn().mockRejectedValue({ code: 412 }),
-              },
-            ],
-          ]),
+        getFiles: jest.fn().mockResolvedValue([
+          [
+            {
+              name: 'users/u-st/a.jpg',
+              metadata: { generation: '1' },
+              delete: jest.fn().mockRejectedValue({ code: 412 }),
+            },
+          ],
+        ]),
       })),
     };
     const svcStorage412 = createAccountDeletionService({

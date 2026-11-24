@@ -16,6 +16,18 @@ service firebase.storage {
               ('admin' in request.auth.token && request.auth.token.admin == true));
     }
 
+    function isAdminOrOps() {
+      return isAuthenticated() &&
+             (isAdmin() ||
+              (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+               firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'ops']));
+    }
+
+    function isAuthorizedFleetOwnerFor(driverUid) {
+      return isAuthenticated() &&
+             firestore.exists(/databases/(default)/documents/driverFleets/$(request.auth.uid)/authorizedDrivers/$(driverUid));
+    }
+
     function isImageOrPdf() {
       return request.resource.contentType.matches('image/.*') ||
              request.resource.contentType == 'application/pdf';
@@ -43,16 +55,34 @@ service firebase.storage {
 
     // Driver sensitive documents (driver license, background check, vehicle docs)
     match /drivers/{driverId}/documents/{fileName} {
-      allow get: if isOwner(driverId) || isAdmin();
+      allow get: if isOwner(driverId) || isAdminOrOps();
       allow list: if false;
       allow write: if isOwner(driverId) && isImageOrPdf() && validSize(10);
     }
 
     // Minor passenger authorizations & documents
     match /passengers/{parentId}/{passengerId}/{fileName} {
-      allow get: if isOwner(parentId) || isAdmin();
+      allow get: if isOwner(parentId) || isAdminOrOps();
       allow list: if false;
       allow write: if isOwner(parentId) && isImageOrPdf() && validSize(10);
+    }
+
+    // Driver verification documents (owner-isolated + authorized fleet link)
+    match /driverVerificationDocs/{driverUid}/{fileName} {
+      allow get: if isOwner(driverUid) || isAuthorizedFleetOwnerFor(driverUid) || isAdminOrOps();
+      allow list: if false;
+      allow write: if (isOwner(driverUid) || isAuthorizedFleetOwnerFor(driverUid) || isAdminOrOps()) &&
+                      isImageOrPdf() &&
+                      validSize(10);
+    }
+
+    // Fleet owner staged uploads for candidate replacement/rental drivers
+    match /fleetDriverDocs/{fleetOwnerUid}/{driverUid}/{fileName} {
+      allow get: if isOwner(fleetOwnerUid) || isOwner(driverUid) || isAdminOrOps();
+      allow list: if false;
+      allow write: if (isOwner(fleetOwnerUid) || isAdminOrOps()) &&
+                      isImageOrPdf() &&
+                      validSize(10);
     }
   }
 }

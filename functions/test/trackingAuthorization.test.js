@@ -13,6 +13,11 @@ describe('startTracking authorization', () => {
     await expect(handler({ data: { matchId: 'match-1' } })).rejects.toMatchObject({
       code: 'unauthenticated',
     });
+    await expect(
+      handler({ auth: { uid: '' }, data: { matchId: 'match-1' } })
+    ).rejects.toMatchObject({
+      code: 'unauthenticated',
+    });
   });
 
   test('rejects invalid match IDs and ignores client identity fields', async () => {
@@ -77,6 +82,35 @@ describe('startTracking authorization', () => {
     ).resolves.toEqual({ matchId: 'match-1' });
     expect(getUserProfile).toHaveBeenCalledWith('driver-1');
     expect(getMatch).toHaveBeenCalledWith('match-1');
+  });
+
+  test('authorizes activeDriverId and rejects expired validUntil', async () => {
+    const { handler } = createHarness({
+      profile: { role: 'driver', approved: true },
+      match: {
+        status: 'active',
+        driverId: 'owner-1',
+        activeDriverId: 'rental-1',
+        activeDriverSnapshot: { validUntil: '2020-01-01T00:00:00.000Z' },
+      },
+    });
+
+    await expect(
+      handler({ auth: { uid: 'rental-1' }, data: { matchId: 'match-1' } })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+
+    const { handler: validHandler } = createHarness({
+      profile: { role: 'driver', approved: true },
+      match: {
+        status: 'active',
+        driverId: 'owner-1',
+        activeDriverId: 'rental-1',
+        activeDriverSnapshot: { validUntil: '2099-01-01T00:00:00.000Z' },
+      },
+    });
+    await expect(
+      validHandler({ auth: { uid: 'rental-1' }, data: { matchId: 'match-1' } })
+    ).resolves.toEqual({ matchId: 'match-1' });
   });
 
   test('returns not-found for a missing match', async () => {
