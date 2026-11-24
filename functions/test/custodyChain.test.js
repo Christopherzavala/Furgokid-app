@@ -110,12 +110,14 @@ const makeFirestore = (initial = {}) => {
           };
         },
         set(ref, data, options) {
-          const existing = documents.get(ref.path);
-          documents.set(ref.path, options?.merge && existing ? { ...existing, ...data } : data);
+          const path = ref.path || ref;
+          const existing = documents.get(path);
+          documents.set(path, options?.merge && existing ? { ...existing, ...data } : data);
         },
         update(ref, data) {
-          const existing = documents.get(ref.path);
-          documents.set(ref.path, { ...existing, ...data });
+          const path = ref.path || ref;
+          const existing = documents.get(path);
+          documents.set(path, { ...existing, ...data });
         },
       };
       return callback(transaction);
@@ -369,5 +371,77 @@ describe('Hardened Custody Chain Unit Tests', () => {
     });
     expect(res.success).toBe(true);
     expect(res.absenceId).toBeDefined();
+  });
+
+  test('9. Additional validation branches for assertAuthenticated, assertNonEmptyString and extractPassengerIdsFromDoc', async () => {
+    const mockDb = makeFirestore({ 'matches/match-1': baseMatch });
+    const service = createCustodyChainService({ firestore: mockDb });
+
+    await expect(
+      service.updatePassengerState({
+        auth: null,
+        data: { matchId: 'm1', passengerId: 'p1', newState: 'BOARDING_CONFIRMED' },
+      })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(
+      service.updatePassengerState({
+        auth: { uid: '' },
+        data: { matchId: 'm1', passengerId: 'p1', newState: 'BOARDING_CONFIRMED' },
+      })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+    // assertNonEmptyString
+    await expect(
+      service.updatePassengerState({
+        auth: { uid: 'driver-1' },
+        data: { matchId: 123, passengerId: 'p1', newState: 'BOARDING_CONFIRMED' },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  test('10. confirmStudentHandover handles invalid PIN attempts remaining count', async () => {
+    const salt = 'test-salt';
+    const pinHash = __testables.hashPin('4829', salt);
+    const mockDb = makeFirestore({
+      'matches/match-1': baseMatch,
+      'passengerStates/match-1_pass-1': { state: PASSENGER_STATES.ARRIVAL_CONFIRMED },
+      'handoverOtps/otp-1': {
+        matchId: 'match-1',
+        passengerId: 'pass-1',
+        pinHash,
+        pinSalt: salt,
+        status: 'active',
+        failedAttempts: 2,
+        maxAttempts: 5,
+        expiresAt: Timestamp.fromMillis(Date.now() + 600_000),
+      },
+    });
+    const service = createCustodyChainService({ firestore: mockDb });
+
+    await expect(
+      service.confirmStudentHandover({
+        auth: { uid: 'driver-1' },
+        data: { matchId: 'match-1', passengerId: 'pass-1', pin: '0000' },
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  test('11. Additional custodyChain branches: updatePassengerState match not found, assertPassengerBelongsToMatch with requestId', async () => {
+    const mockDb = makeFirestore({
+      'matches/match-req': { ...baseMatch, requestId: 'req-1' },
+      'requests/req-1': { passengerIds: ['pass-req'] },
+    });
+    const service = createCustodyChainService({ firestore: mockDb });
+
+    await expect(
+      service.updatePassengerState({
+        auth: { uid: 'driver-1' },
+        data: {
+          matchId: 'match-missing',
+          passengerId: 'pass-req',
+          newState: PASSENGER_STATES.BOARDING_CONFIRMED,
+        },
+      })
+    ).rejects.toMatchObject({ code: 'not-found' });
   });
 });
