@@ -1,3 +1,5 @@
+'use strict';
+
 const { createStopTrackingHandler } = require('../src/stopTrackingCallable');
 
 const createHarness = ({
@@ -85,6 +87,24 @@ describe('stopTracking callable handler', () => {
       h1({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
     ).rejects.toMatchObject({ code: 'internal' });
 
+    const { handler: h10 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 10, message: 'Aborted error' };
+      }),
+    });
+    await expect(
+      h10({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    const { handler: h14 } = createHarness({
+      repositoryPromise: jest.fn(async () => {
+        throw { code: 14, message: 'Unavailable error' };
+      }),
+    });
+    await expect(
+      h14({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
     const { handler: h2 } = createHarness({
       repositoryPromise: jest.fn(async () => {
         throw { code: 'unknown-code', message: 'Unknown error' };
@@ -93,6 +113,22 @@ describe('stopTracking callable handler', () => {
     await expect(
       h2({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
     ).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  test('uses default logger and handles repository creation failure', async () => {
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    const defaultLoggerHandler = createStopTrackingHandler({
+      createRepository: jest.fn(async () => {
+        throw new Error('Repo init fail');
+      }),
+    });
+
+    await expect(
+      defaultLoggerHandler({ auth: { uid: 'verified-driver' }, data: { matchId: 'match-owned' } })
+    ).rejects.toMatchObject({ code: 'internal' });
+
+    expect(consoleSpy).toHaveBeenCalledWith('GPS cleanup', expect.anything());
+    consoleSpy.mockRestore();
   });
 
   test('uses only request.auth.uid and ignores client-supplied identity fields', async () => {
