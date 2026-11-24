@@ -60,15 +60,6 @@ emulatorDescribe('profile provisioning and driver approval (Firebase emulators)'
     return snapshot.exists ? snapshot.data() : null;
   };
 
-  const getProfileWithRetry = async (uid, retries = 10, delayMs = 300) => {
-    for (let i = 0; i < retries; i++) {
-      const p = await getProfile(uid);
-      if (p) return p;
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-    return getProfile(uid);
-  };
-
   beforeAll(() => {
     app = admin.initializeApp({ projectId }, `security-provisioning-${Date.now()}`);
     firestore = admin.firestore(app);
@@ -92,8 +83,7 @@ emulatorDescribe('profile provisioning and driver approval (Firebase emulators)'
     expect(authAccount.uid).toBe(user.uid);
 
     // Firebase CLI 15.28.1 invokes beforeUserCreated from Auth Emulator.
-    const profile = await getProfileWithRetry(user.uid);
-    expect(profile).toMatchObject({
+    expect(await getProfile(user.uid)).toMatchObject({
       role: 'parent',
       approved: false,
     });
@@ -103,6 +93,135 @@ emulatorDescribe('profile provisioning and driver approval (Firebase emulators)'
       idToken: user.idToken,
       data: {},
     });
-    expect(recovery.status).toBe(200);
+    expect(recovery.body.result).toEqual({ created: false });
+    expect(await getProfile(user.uid)).toMatchObject({
+      role: 'parent',
+      approved: false,
+    });
+  });
+
+  test('does not overwrite an existing profile during recovery', async () => {
+    const user = await createAuthUser('existing');
+    await firestore.collection('users').doc(user.uid).set({
+      role: 'parent',
+      approved: false,
+      displayName: 'Existing name',
+    });
+
+    const response = await invokeCallable({
+      name: 'ensureUserProfile',
+      idToken: user.idToken,
+      data: {},
+    });
+
+    expect(response.body.result).toEqual({ created: false });
+    expect(await getProfile(user.uid)).toMatchObject({
+      role: 'parent',
+      approved: false,
+      displayName: 'Existing name',
+    });
+  });
+
+  test('rejects unauthenticated driver request and review calls', async () => {
+    const request = await invokeCallable({
+      name: 'requestDriverApproval',
+      data: {},
+    });
+    const review = await invokeCallable({
+      name: 'reviewDriverRequest',
+      data: { targetUid: 'some-user', decision: 'approve' },
+    });
+
+    expect(request.body.error.status).toBe('UNAUTHENTICATED');
+    expect(review.body.error.status).toBe('UNAUTHENTICATED');
+  });
+
+  test('enforces requester identity and server-side admin authorization', async () => {
+    const normal = await createAuthUser('normal');
+    const target = await createAuthUser('target');
+    await Promise.all([
+      firestore.collection('users').doc(normal.uid).set({
+        role: 'parent',
+        approved: false,
+      }),
+      firestore.collection('users').doc(target.uid).set({
+        role: 'parent',
+        approved: false,
+      }),
+    ]);
+
+    const request = await invokeCallable({
+      name: 'requestDriverApproval',
+      idToken: normal.idToken,
+      data: {},
+    });
+    expect(request.body.result).toEqual({ status: 'pending', idempotent: false });
+
+    const duplicateRequest = await invokeCallable({
+      name: 'requestDriverApproval',
+      idToken: normal.idToken,
+      data: {},
+    });
+    expect(duplicateRequest.body.result).toEqual({
+      status: 'pending',
+      idempotent: true,
+    });
+
+    const selfApproval = await invokeCallable({
+      name: 'reviewDriverRequest',
+      idToken: normal.idToken,
+      data: { targetUid: normal.uid, decision: 'approve' },
+    });
+    const otherApproval = await invokeCallable({
+      name: 'reviewDriverRequest',
+      idToken: normal.idToken,
+      data: { targetUid: target.uid, decision: 'approve' },
+    });
+    expect(selfApproval.body.error.status).toBe('PERMISSION_DENIED');
+    expect(otherApproval.body.error.status).toBe('PERMISSION_DENIED');
+  });
+
+  test('allows an authorized admin to approve and rejects invalid transitions', async () => {
+    const adminUser = await createAuthUser('admin');
+    const target = await createAuthUser('approved-target');
+    await Promise.all([
+      firestore.collection('users').doc(adminUser.uid).set({
+        role: 'admin',
+        approved: false,
+      }),
+      firestore.collection('users').doc(target.uid).set({
+        role: 'parent',
+        approved: false,
+        driverRequestStatus: 'pending',
+      }),
+    ]);
+
+    const approval = await invokeCallable({
+      name: 'reviewDriverRequest',
+      idToken: adminUser.idToken,
+      data: { targetUid: target.uid, decision: 'approve' },
+    });
+    const duplicateApproval = await invokeCallable({
+      name: 'reviewDriverRequest',
+      idToken: adminUser.idToken,
+      data: { targetUid: target.uid, decision: 'approve' },
+    });
+    const invalidTransition = await invokeCallable({
+      name: 'reviewDriverRequest',
+      idToken: adminUser.idToken,
+      data: { targetUid: target.uid, decision: 'reject' },
+    });
+
+    expect(approval.body.result).toEqual({ status: 'approved', idempotent: false });
+    expect(duplicateApproval.body.result).toEqual({
+      status: 'approved',
+      idempotent: true,
+    });
+    expect(invalidTransition.body.error.status).toBe('FAILED_PRECONDITION');
+    expect(await getProfile(target.uid)).toMatchObject({
+      role: 'driver',
+      approved: true,
+      driverRequestStatus: 'approved',
+    });
   });
 });

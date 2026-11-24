@@ -109,6 +109,17 @@ exports.submitDriverVerificationDocs = onCall(getCallableSecurityOptions(), asyn
     { merge: true }
   );
 
+  if (driverUid !== uid) {
+    await db.collection('driverFleets').doc(uid).collection('authorizedDrivers').doc(driverUid).set(
+      {
+        driverUid,
+        authorizedBy: uid,
+        updatedAt: serverNow,
+      },
+      { merge: true }
+    );
+  }
+
   return {
     success: true,
     driverUid,
@@ -270,6 +281,23 @@ exports.assignVerifiedVehicleDriver = onCall(getCallableSecurityOptions(), async
       validUntil: validUntil || null,
       createdAt: serverNow,
     });
+
+    if (driverUid !== callerUid) {
+      const authDriverRef = db
+        .collection('driverFleets')
+        .doc(callerUid)
+        .collection('authorizedDrivers')
+        .doc(driverUid);
+      transaction.set(
+        authDriverRef,
+        {
+          driverUid,
+          authorizedBy: callerUid,
+          updatedAt: serverNow,
+        },
+        { merge: true }
+      );
+    }
   });
 
   // Notify parent(s) if push token exists
