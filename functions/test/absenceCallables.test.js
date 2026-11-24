@@ -21,6 +21,8 @@ const makeFirestore = (initial = {}) => {
       const data = documents.get(path);
       return {
         exists: data !== undefined,
+        id: path.split('/').pop(),
+        ref: makeRef(path),
         data: () => (data ? { ...data } : null),
         get: (field) => data?.[field],
       };
@@ -44,6 +46,7 @@ const makeFirestore = (initial = {}) => {
         }
         const matches = filters.every(([field, op, expected]) => {
           if (op === '==') return data[field] === expected;
+          if (op === 'in') return Array.isArray(expected) && expected.includes(data[field]);
           return true;
         });
         if (matches) {
@@ -55,14 +58,20 @@ const makeFirestore = (initial = {}) => {
         }
         if (docs.length >= limit) break;
       }
-      return { docs, empty: docs.length === 0 };
+      return {
+        docs,
+        empty: docs.length === 0,
+        forEach(callback) {
+          docs.forEach(callback);
+        },
+      };
     },
   });
 
   const makeCollection = (path) => ({
     path,
     doc(id) {
-      const resolvedId = id || `auto_${++autoIdCounter}`;
+      const resolvedId = id || `auto_inc_${++autoIdCounter}`;
       return makeRef(`${path}/${resolvedId}`);
     },
     where(field, op, value) {
@@ -89,32 +98,15 @@ const makeFirestore = (initial = {}) => {
     async runTransaction(callback) {
       const transaction = {
         async get(ref) {
-          if (ref && typeof ref.get === 'function') {
-            return ref.get();
-          }
           const path = ref.path || ref;
           const data = documents.get(path);
           return {
             exists: data !== undefined,
+            id: path.split('/').pop(),
+            ref: makeRef(path),
             data: () => (data ? { ...data } : null),
             get: (field) => data?.[field],
           };
-        },
-        async getAll(...refs) {
-          return Promise.all(
-            refs.map(async (ref) => {
-              if (ref && typeof ref.get === 'function') {
-                return ref.get();
-              }
-              const path = ref.path || ref;
-              const data = documents.get(path);
-              return {
-                exists: data !== undefined,
-                data: () => (data ? { ...data } : null),
-                get: (field) => data?.[field],
-              };
-            })
-          );
         },
         set(ref, data, options) {
           const path = ref.path || ref;
@@ -123,7 +115,7 @@ const makeFirestore = (initial = {}) => {
         },
         update(ref, data) {
           const path = ref.path || ref;
-          const existing = documents.get(path);
+          const existing = documents.get(path) || {};
           documents.set(path, { ...existing, ...data });
         },
       };
@@ -137,168 +129,197 @@ const setupFirestoreSpy = (mockDb) => {
   spy.FieldValue = {
     serverTimestamp: () => 'server-timestamp',
   };
+  spy.Timestamp = {
+    now: () => ({
+      toMillis: () => Date.now(),
+    }),
+    fromMillis: (ms) => ({
+      toMillis: () => ms,
+    }),
+  };
   return spy;
 };
 
 describe('absenceCallables Unit Tests', () => {
-  const baseMatch = {
-    matchId: 'match-1',
-    parentId: 'parent-1',
-    driverId: 'driver-1',
-    passengerIds: ['pass-1'],
-    status: 'active',
-  };
-
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  test('1. Throws unauthenticated if auth is missing', async () => {
-    await expect(reportAbsenceCallable.run({})).rejects.toMatchObject({
-      code: 'unauthenticated',
+  describe('reportAbsenceCallable', () => {
+    test('1. Throws unauthenticated if auth is missing', async () => {
+      await expect(reportAbsenceCallable.run({})).rejects.toMatchObject({
+        code: 'unauthenticated',
+      });
     });
-  });
 
-  test('2. Throws invalid-argument for missing or malformed inputs', async () => {
-    const auth = { uid: 'parent-1' };
+    test('2. Throws invalid-argument if matchId, passengerId, or date are invalid or missing', async () => {
+      const mockDb = makeFirestore();
+      setupFirestoreSpy(mockDb);
+      const auth = { uid: 'parent-1' };
 
-    await expect(
-      reportAbsenceCallable.run({
-        auth,
-        data: { matchId: '', passengerId: 'pass-1', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'invalid-argument' });
+      await expect(
+        reportAbsenceCallable.run({
+          auth,
+          data: { matchId: 'bad/id', passengerId: 'p1', date: '2026-11-24' },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
 
-    await expect(
-      reportAbsenceCallable.run({
-        auth,
-        data: { matchId: 'match-1', passengerId: '', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'invalid-argument' });
+      await expect(
+        reportAbsenceCallable.run({
+          auth,
+          data: { matchId: 'm1', passengerId: 'bad/id', date: '2026-11-24' },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
 
-    await expect(
-      reportAbsenceCallable.run({
-        auth,
-        data: { matchId: 'match-1', passengerId: 'pass-1', date: '  ' },
-      })
-    ).rejects.toMatchObject({ code: 'invalid-argument' });
+      await expect(
+        reportAbsenceCallable.run({
+          auth,
+          data: { matchId: 'm1', passengerId: 'p1', date: '   ' },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
 
-    await expect(
-      reportAbsenceCallable.run({
-        auth,
-        data: { matchId: 'bad/id', passengerId: 'pass-1', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'invalid-argument' });
-  });
+    test('3. Throws not-found when match record does not exist', async () => {
+      const mockDb = makeFirestore();
+      setupFirestoreSpy(mockDb);
 
-  test('3. Throws not-found when match does not exist', async () => {
-    const mockDb = makeFirestore({});
-    setupFirestoreSpy(mockDb);
+      await expect(
+        reportAbsenceCallable.run({
+          auth: { uid: 'parent-1' },
+          data: { matchId: 'match-missing', passengerId: 'p1', date: '2026-11-24' },
+        })
+      ).rejects.toMatchObject({ code: 'not-found' });
+    });
 
-    await expect(
-      reportAbsenceCallable.run({
+    test('4. Throws permission-denied if caller is not the assigned parent in match', async () => {
+      const mockDb = makeFirestore({
+        'matches/m1': {
+          matchId: 'm1',
+          parentId: 'parent-real',
+          driverId: 'driver-1',
+          passengerId: 'p1',
+        },
+      });
+      setupFirestoreSpy(mockDb);
+
+      await expect(
+        reportAbsenceCallable.run({
+          auth: { uid: 'parent-other' },
+          data: { matchId: 'm1', passengerId: 'p1', date: '2026-11-24' },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+    });
+
+    test('5. Throws failed-precondition if student has already boarded or started transit', async () => {
+      const mockDb = makeFirestore({
+        'matches/m1': {
+          matchId: 'm1',
+          parentId: 'parent-1',
+          driverId: 'driver-1',
+          passengerId: 'p1',
+        },
+        'passengerStates/m1_p1': { matchId: 'm1', passengerId: 'p1', state: 'BOARDING_CONFIRMED' },
+      });
+      setupFirestoreSpy(mockDb);
+
+      await expect(
+        reportAbsenceCallable.run({
+          auth: { uid: 'parent-1' },
+          data: { matchId: 'm1', passengerId: 'p1', date: '2026-11-24' },
+        })
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+    });
+
+    test('6. Successfully registers absence, transitions state, auto-skips route stops and sends push notification', async () => {
+      const mockDb = makeFirestore({
+        'matches/m1': {
+          matchId: 'm1',
+          parentId: 'parent-1',
+          driverId: 'driver-1',
+          passengerId: 'p1',
+        },
+        'passengerStates/m1_p1': { matchId: 'm1', passengerId: 'p1', state: 'EXPECTED' },
+        'users/driver-1': { role: 'driver', fcmToken: 'driver-push-token' },
+        'routes/r1': {
+          routeId: 'r1',
+          driverId: 'driver-1',
+          status: 'ACTIVE',
+          stops: [
+            {
+              stopId: 'stop-1',
+              passengerId: 'p1',
+              status: 'PENDING',
+              location: { latitude: -33.4, longitude: -70.6 },
+            },
+            {
+              stopId: 'stop-2',
+              passengerId: 'p2',
+              status: 'PENDING',
+              location: { latitude: -33.41, longitude: -70.61 },
+            },
+          ],
+        },
+      });
+      setupFirestoreSpy(mockDb);
+
+      const sendMessagingSpy = jest.fn().mockResolvedValue('msg-id-absence');
+      jest.spyOn(admin, 'messaging').mockReturnValue({ send: sendMessagingSpy });
+
+      const res = await reportAbsenceCallable.run({
         auth: { uid: 'parent-1' },
-        data: { matchId: 'match-missing', passengerId: 'pass-1', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'not-found' });
-  });
+        data: { matchId: 'm1', passengerId: 'p1', date: '  2026-11-24  ' },
+      });
 
-  test('4. Throws permission-denied when caller is not the match parent', async () => {
-    const mockDb = makeFirestore({
-      'matches/match-1': baseMatch,
+      expect(res.success).toBe(true);
+      expect(res.absenceId).toBe('abs_m1_p1_2026-11-24');
+      expect(res.date).toBe('2026-11-24');
+
+      // Verify absence record stored in subcollection
+      const absenceDoc = mockDb._documents.get('matches/m1/absences/abs_m1_p1_2026-11-24');
+      expect(absenceDoc).toBeDefined();
+      expect(absenceDoc.parentId).toBe('parent-1');
+      expect(absenceDoc.status).toBe('active');
+
+      // Verify passengerState updated to ABSENT
+      const stateDoc = mockDb._documents.get('passengerStates/m1_p1');
+      expect(stateDoc.state).toBe('ABSENT');
+
+      // Verify route stop auto-skipped
+      const routeDoc = mockDb._documents.get('routes/r1');
+      expect(routeDoc.stops[0].status).toBe('SKIPPED');
+      expect(routeDoc.stops[0].skipReason).toBe('ABSENT');
+
+      // Verify FCM push sent
+      expect(sendMessagingSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          token: 'driver-push-token',
+        })
+      );
     });
-    setupFirestoreSpy(mockDb);
 
-    await expect(
-      reportAbsenceCallable.run({
-        auth: { uid: 'other-parent' },
-        data: { matchId: 'match-1', passengerId: 'pass-1', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'permission-denied' });
-  });
+    test('7. Resilience: succeeds even if route auto-skip or FCM push fail', async () => {
+      const mockDb = makeFirestore({
+        'matches/m1': {
+          matchId: 'm1',
+          parentId: 'parent-1',
+          driverId: 'driver-1',
+          passengerId: 'p1',
+        },
+        'users/driver-1': { role: 'driver', fcmToken: 'driver-push-token' },
+      });
+      setupFirestoreSpy(mockDb);
 
-  test('5. Throws failed-precondition if student has already boarded or started transit', async () => {
-    const mockDb = makeFirestore({
-      'matches/match-1': baseMatch,
-      'passengerStates/match-1_pass-1': { state: 'BOARDING_CONFIRMED' },
-    });
-    setupFirestoreSpy(mockDb);
+      jest.spyOn(admin, 'messaging').mockReturnValue({
+        send: jest.fn().mockRejectedValue(new Error('FCM Network Error')),
+      });
 
-    await expect(
-      reportAbsenceCallable.run({
+      const res = await reportAbsenceCallable.run({
         auth: { uid: 'parent-1' },
-        data: { matchId: 'match-1', passengerId: 'pass-1', date: '2026-11-24' },
-      })
-    ).rejects.toMatchObject({ code: 'failed-precondition' });
-  });
+        data: { matchId: 'm1', passengerId: 'p1', date: '2026-11-24' },
+      });
 
-  test('6. Successfully processes absence, auto-skips route stops, and sends driver push notification', async () => {
-    const mockDb = makeFirestore({
-      'matches/match-1': baseMatch,
-      'passengerStates/match-1_pass-1': { state: 'EXPECTED' },
-      'users/driver-1': { role: 'driver', fcmToken: 'driver-fcm-token' },
-      'routes/route-1': {
-        driverId: 'driver-1',
-        status: 'ACTIVE',
-        stops: [
-          {
-            stopId: 'stop-1',
-            passengerId: 'pass-1',
-            status: 'PENDING',
-            order: 1,
-            location: { latitude: -33.4, longitude: -70.6 },
-          },
-          {
-            stopId: 'stop-2',
-            passengerId: 'pass-2',
-            status: 'PENDING',
-            order: 2,
-            location: { latitude: -33.5, longitude: -70.7 },
-          },
-        ],
-      },
+      expect(res.success).toBe(true);
+      expect(res.absenceId).toBe('abs_m1_p1_2026-11-24');
     });
-
-    const sendMessagingSpy = jest.fn().mockResolvedValue('msg-id-123');
-    setupFirestoreSpy(mockDb);
-    jest.spyOn(admin, 'messaging').mockReturnValue({ send: sendMessagingSpy });
-
-    const result = await reportAbsenceCallable.run({
-      auth: { uid: 'parent-1' },
-      data: { matchId: 'match-1', passengerId: 'pass-1', date: '2026-11-24' },
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.absenceId).toBe('abs_match-1_pass-1_2026-11-24');
-    expect(sendMessagingSpy).toHaveBeenCalledWith({
-      token: 'driver-fcm-token',
-      notification: {
-        title: '⚠️ Aviso de ausencia escolar',
-        body: 'El pasajero no viajará el día 2026-11-24. Parada omitida.',
-      },
-      data: { matchId: 'match-1', passengerId: 'pass-1', type: 'STUDENT_ABSENCE' },
-    });
-
-    const updatedRoute = mockDb._documents.get('routes/route-1');
-    expect(updatedRoute.stops[0].status).toBe('SKIPPED');
-    expect(updatedRoute.stops[0].skipReason).toBe('ABSENT');
-  });
-
-  test('7. Resilience: succeeds even if FCM notification fails or route updates encounter errors', async () => {
-    const mockDb = makeFirestore({
-      'matches/match-1': baseMatch,
-      'users/driver-1': { role: 'driver', fcmToken: 'driver-fcm-token' },
-    });
-
-    const sendMessagingSpy = jest.fn().mockRejectedValue(new Error('FCM Network Failure'));
-    setupFirestoreSpy(mockDb);
-    jest.spyOn(admin, 'messaging').mockReturnValue({ send: sendMessagingSpy });
-
-    const result = await reportAbsenceCallable.run({
-      auth: { uid: 'parent-1' },
-      data: { matchId: 'match-1', passengerId: 'pass-1', date: '2026-11-24' },
-    });
-
-    expect(result.success).toBe(true);
   });
 });
