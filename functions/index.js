@@ -560,3 +560,10 @@ exports.updateAlertPreferences = onCall(
   require('./src/securityGuard').getCallableSecurityOptions(),
   async (req) => updateAlertPreferencesCallable(req, admin.firestore())
 );
+
+const {
+  submitDriverVerificationDocs,
+  assignVerifiedVehicleDriver,
+} = require('./src/verifiedDriverCallables');
+exports.submitDriverVerificationDocs = submitDriverVerificationDocs;
+exports.assignVerifiedVehicleDriver = assignVerifiedVehicleDriver;

@@ -35,6 +35,7 @@ import {
 } from '../services/webTrackingService';
 import toastService from '../services/toastService';
 import notificationService from '../utils/notificationService';
+import VerifiedTripCredentialCard from '../components/VerifiedTripCredentialCard';
 
 const { width, height } = Dimensions.get('window');
 
@@ -514,6 +515,10 @@ const TrackingMap = ({ route, navigation }) => {
 
       {/* PANEL DE CUSTODIA & INFO */}
       <View style={styles.infoPanel}>
+        <VerifiedTripCredentialCard
+          activeDriver={matchData?.activeDriverSnapshot}
+          isVerified={Boolean(matchData?.activeDriverId || matchData?.driverId)}
+        />
         {matchData?.passengerIds && matchData.passengerIds.length > 1 && (
           <ScrollView
             horizontal
