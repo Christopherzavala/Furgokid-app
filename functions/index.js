@@ -147,7 +147,9 @@ exports.startTracking = onCall(
   })
 );
 
-exports.provisionUserProfile = provisionUserProfile;
+if (process.env.ENABLE_BLOCKING_FUNCTIONS === 'true') {
+  exports.provisionUserProfile = provisionUserProfile;
+}
 
 exports.ensureUserProfile = onCall(
   callOpts,
