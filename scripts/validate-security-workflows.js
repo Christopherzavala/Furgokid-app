@@ -47,8 +47,8 @@ assert.match(build, /- name: Run EAS build[\s\S]*?EXPO_TOKEN: \$\{\{ secrets\.EA
 assert.doesNotMatch(build, /^\s+token:\s*\$\{\{\s*secrets\./m);
 validatePinnedActions(build, 'build.yml');
 
-// High/critical npm audit findings are a blocking CI result.
-assert.match(ci, /^\s+run: npm audit --audit-level=high --omit=dev$/m);
+// High/critical npm audit findings block CI, excluding only tracked GHSA-5p2g-fcmc-qvqq (source 1112648).
+assert.match(ci, /name: Security Audit[\s\S]*?--audit-level=high[\s\S]*?--omit=dev[\s\S]*?1112648/);
 assert.doesNotMatch(ci, /npm audit[^\n]*\|\|\s*true/);
 
 // Codecov is deliberately visible as informational, not a silently-failing gate.
