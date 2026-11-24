@@ -90,6 +90,20 @@ describe('user profile provisioning', () => {
     );
   });
 
+  test('handleUserCreated uses default admin.firestore when firestore option is omitted', async () => {
+    const { firestore } = createFirestoreMock();
+    const admin = require('firebase-admin');
+    jest.spyOn(admin, 'firestore').mockReturnValue(firestore);
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+
+    const res = await handleUserCreated(
+      { data: { uid: 'test-user' } },
+      { serverTimestamp: () => 'now' }
+    );
+    expect(res).toBeDefined();
+    consoleSpy.mockRestore();
+  });
+
   test('handles invalid event uid in handleUserCreated safely', async () => {
     const { firestore } = createFirestoreMock();
     const logger = jest.fn();
@@ -185,18 +199,18 @@ describe('user profile provisioning', () => {
     expect(() => createEnsureUserProfileHandler({ firestore: null })).toThrow(TypeError);
   });
 
-  test('recovers a missing profile through the authenticated callable', async () => {
+  test('recovers a missing profile through the authenticated callable with default parameters', async () => {
     const { firestore, transaction } = createFirestoreMock();
+    const consoleSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const handler = createEnsureUserProfileHandler({
       firestore,
-      serverTimestamp: () => 'server-time',
-      logger: jest.fn(),
     });
 
     await expect(handler({ auth: { uid: 'test-user' }, data: {} })).resolves.toEqual({
       created: true,
     });
     expect(transaction.create).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
   });
 
   test('rejects unauthenticated recovery requests', async () => {
