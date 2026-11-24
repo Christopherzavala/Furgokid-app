@@ -133,19 +133,33 @@ jobs:
             const res = spawnSync("npm", ["audit", "--audit-level=high", "--omit=dev", "--json"], { encoding: "utf8" });
             const report = JSON.parse(res.stdout || "{}");
             const vulns = report.vulnerabilities || {};
-            const blocking = Object.entries(vulns).filter(([, info]) => {
+            const allowed = new Set(["image-size"]);
+            let changed = true;
+            while (changed) {
+              changed = false;
+              for (const [pkg, info] of Object.entries(vulns)) {
+                if (allowed.has(pkg)) continue;
+                const via = Array.isArray(info?.via) ? info.via : [];
+                const onlyAllowedVia = via.length > 0 && via.every((v) => {
+                  if (typeof v === "string") return allowed.has(v);
+                  if (typeof v === "object" && v !== null) return v.source === 1112648;
+                  return false;
+                });
+                if (onlyAllowedVia) {
+                  allowed.add(pkg);
+                  changed = true;
+                }
+              }
+            }
+            const blocking = Object.entries(vulns).filter(([pkg, info]) => {
               if (!info || !["high", "critical"].includes(info.severity)) return false;
-              const via = Array.isArray(info.via) ? info.via : [];
-              const onlyKnownImageSizeDoS = via.length > 0 && via.every(
-                (v) => typeof v === "object" && v !== null && (v.source === 1112648 || v.name === "image-size")
-              );
-              return !onlyKnownImageSizeDoS;
+              return !allowed.has(pkg);
             });
             if (blocking.length > 0) {
               console.error("Blocking high/critical audit findings:", blocking.map(([pkg]) => pkg));
               process.exit(1);
             }
-            console.log("Security Audit passed (only known GHSA-5p2g-fcmc-qvqq / source 1112648 ignored).");
+            console.log("Security Audit passed (only tracked GHSA-5p2g-fcmc-qvqq / source 1112648 chain allowed).");
           '
 
       # TruffleHog is pinned to an immutable SHA. A scanner failure must fail
