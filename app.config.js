@@ -31,6 +31,9 @@ export default {
       supportsTablet: true,
       bundleIdentifier: 'com.furgokid.app',
       jsEngine: 'hermes',
+      config: {
+        googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+      },
     },
     android: {
       adaptiveIcon: {
@@ -49,6 +52,11 @@ export default {
         'FOREGROUND_SERVICE_LOCATION',
         'POST_NOTIFICATIONS',
       ],
+      config: {
+        googleMaps: {
+          apiKey: process.env.GOOGLE_MAPS_API_KEY,
+        },
+      },
     },
     web: {
       favicon: './assets/favicon.png',
