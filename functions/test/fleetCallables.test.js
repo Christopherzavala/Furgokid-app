@@ -9,6 +9,7 @@ const { upsertDriverFleetAsset, verifyDriverFleetAsset } = require('../src/fleet
 
 const makeFirestore = (initial = {}) => {
   const documents = new Map(Object.entries(initial));
+  let autoIdCounter = 0;
 
   const makeRef = (path) => ({
     path,
@@ -34,10 +35,36 @@ const makeFirestore = (initial = {}) => {
     },
   });
 
+  const makeQuery = (path, filters = [], limit = Infinity) => ({
+    async get() {
+      const docs = [];
+      for (const [docPath, data] of documents.entries()) {
+        if (!docPath.startsWith(`${path}/`) || docPath.slice(path.length + 1).includes('/')) {
+          continue;
+        }
+        const matches = filters.every(([field, op, expected]) => {
+          if (op === '==') return data[field] === expected;
+          if (op === 'in') return Array.isArray(expected) && expected.includes(data[field]);
+          return true;
+        });
+        if (matches) {
+          docs.push({
+            id: docPath.split('/').pop(),
+            ref: makeRef(docPath),
+            data: () => ({ ...data }),
+          });
+        }
+        if (docs.length >= limit) break;
+      }
+      return { docs, empty: docs.length === 0 };
+    },
+  });
+
   const makeCollection = (path) => ({
     path,
     doc(id) {
-      return makeRef(`${path}/${id}`);
+      const resolvedId = id || `auto_inc_${++autoIdCounter}`;
+      return makeRef(`${path}/${resolvedId}`);
     },
     where(field, op, value) {
       const filters = [[field, op, value]];
@@ -46,21 +73,12 @@ const makeFirestore = (initial = {}) => {
           filters.push([sF, sOp, sVal]);
           return builder;
         },
-        async get() {
-          const matchedDocs = [];
-          for (const [docPath, data] of documents.entries()) {
-            if (!docPath.startsWith(`${path}/`)) continue;
-            const matches = filters.every(([f, _op, v]) => data[f] === v);
-            if (matches) {
-              matchedDocs.push({
-                id: docPath.split('/').pop(),
-                ref: makeRef(docPath),
-                data: () => ({ ...data }),
-              });
-            }
-          }
-          return { docs: matchedDocs, empty: matchedDocs.length === 0 };
+        limit(limitCount) {
+          return {
+            get: () => makeQuery(path, filters, limitCount).get(),
+          };
         },
+        get: () => makeQuery(path, filters).get(),
       };
       return builder;
     },
@@ -77,6 +95,7 @@ const makeFirestore = (initial = {}) => {
           return {
             exists: data !== undefined,
             data: () => (data ? { ...data } : null),
+            get: (field) => data?.[field],
           };
         },
         set(ref, data, options) {
@@ -86,7 +105,7 @@ const makeFirestore = (initial = {}) => {
         },
         update(ref, data) {
           const path = ref.path || ref;
-          const existing = documents.get(path);
+          const existing = documents.get(path) || {};
           documents.set(path, { ...existing, ...data });
         },
       };
@@ -115,16 +134,23 @@ describe('fleetCallables Unit Tests', () => {
       });
     });
 
-    test('2. Throws permission-denied if user profile is missing or is not driver', async () => {
+    test('2. Throws permission-denied if user is not a driver or doc does not exist', async () => {
       const mockDb = makeFirestore({
-        'users/user-parent': { role: 'parent' },
+        'users/parent-1': { role: 'parent' },
       });
       setupFirestoreSpy(mockDb);
 
       await expect(
         upsertDriverFleetAsset.run({
-          auth: { uid: 'user-parent' },
-          data: { assetType: 'vehicle', payload: { plate: 'ABCD12' } },
+          auth: { uid: 'parent-1' },
+          data: { assetType: 'vehicle', payload: { plate: 'AB1234' } },
+        })
+      ).rejects.toMatchObject({ code: 'permission-denied' });
+
+      await expect(
+        upsertDriverFleetAsset.run({
+          auth: { uid: 'missing-driver' },
+          data: { assetType: 'vehicle', payload: { plate: 'AB1234' } },
         })
       ).rejects.toMatchObject({ code: 'permission-denied' });
     });
@@ -134,37 +160,33 @@ describe('fleetCallables Unit Tests', () => {
         'users/driver-1': { role: 'driver' },
       });
       setupFirestoreSpy(mockDb);
+      const auth = { uid: 'driver-1' };
 
       await expect(
-        upsertDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
-          data: { assetType: 'invalid_type', payload: {} },
-        })
+        upsertDriverFleetAsset.run({ auth, data: { assetType: 'unknown', payload: {} } })
       ).rejects.toMatchObject({ code: 'invalid-argument' });
 
       await expect(
-        upsertDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
-          data: { assetType: 'vehicle', payload: 'not-an-object' },
-        })
+        upsertDriverFleetAsset.run({ auth, data: { assetType: 'vehicle', payload: null } })
       ).rejects.toMatchObject({ code: 'invalid-argument' });
     });
 
-    test('4. Throws invalid-argument when vehicle plate is missing or invalid', async () => {
+    test('4. Vehicle: Throws invalid-argument if plate is missing or empty', async () => {
       const mockDb = makeFirestore({
         'users/driver-1': { role: 'driver' },
       });
       setupFirestoreSpy(mockDb);
+      const auth = { uid: 'driver-1' };
 
       await expect(
         upsertDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
+          auth,
           data: { assetType: 'vehicle', payload: { plate: '   ' } },
         })
       ).rejects.toMatchObject({ code: 'invalid-argument' });
     });
 
-    test('5. Successfully upserts vehicle asset with fallback defaults', async () => {
+    test('5. Vehicle: Successfully creates/updates vehicle asset with formatted plate and fields', async () => {
       const mockDb = makeFirestore({
         'users/driver-1': { role: 'driver' },
       });
@@ -175,106 +197,169 @@ describe('fleetCallables Unit Tests', () => {
         data: {
           assetType: 'vehicle',
           payload: {
-            plate: '  CL-99-99 ',
-            brand: '  Toyota ',
-            model: ' HiAce ',
+            plate: '  ab-1234  ',
+            brand: 'Mercedes',
+            model: 'Sprinter',
             year: 2022,
-            capacity: 12,
+            capacity: 15,
+            technicalReviewExpiry: '2026-12-31',
+            insuranceExpiry: '2026-12-31',
           },
         },
       });
 
       expect(res.success).toBe(true);
       expect(res.assetType).toBe('vehicle');
-      expect(res.vehicleId).toBe('veh_CL9999');
+      expect(res.vehicleId).toBe('veh_AB1234');
+      expect(res.status).toBe('PENDING');
 
-      const savedDoc = mockDb._documents.get('driverFleets/driver-1/vehicles/veh_CL9999');
-      expect(savedDoc).toBeDefined();
-      expect(savedDoc.plate).toBe('CL-99-99');
-      expect(savedDoc.brand).toBe('Toyota');
-      expect(savedDoc.model).toBe('HiAce');
-      expect(savedDoc.capacity).toBe(12);
-      expect(savedDoc.status).toBe('PENDING');
+      const vehicleDoc = mockDb._documents.get('driverFleets/driver-1/vehicles/veh_AB1234');
+      expect(vehicleDoc).toBeDefined();
+      expect(vehicleDoc.plate).toBe('AB-1234');
+      expect(vehicleDoc.brand).toBe('Mercedes');
+      expect(vehicleDoc.capacity).toBe(15);
+      expect(vehicleDoc.status).toBe('PENDING');
     });
 
-    test('6. Throws invalid-argument when assistant fullName or rut is missing', async () => {
+    test('6. Vehicle: Handles fallback parsing for string year and default capacity', async () => {
       const mockDb = makeFirestore({
-        'users/driver-1': { role: 'driver' },
-      });
-      setupFirestoreSpy(mockDb);
-
-      await expect(
-        upsertDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
-          data: { assetType: 'assistant', payload: { fullName: '', rut: '12345678-9' } },
-        })
-      ).rejects.toMatchObject({ code: 'invalid-argument' });
-
-      await expect(
-        upsertDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
-          data: { assetType: 'assistant', payload: { fullName: 'Juan Perez', rut: '  ' } },
-        })
-      ).rejects.toMatchObject({ code: 'invalid-argument' });
-    });
-
-    test('7. Successfully upserts assistant asset with custom or generated ID', async () => {
-      const mockDb = makeFirestore({
-        'users/driver-1': { role: 'driver' },
+        'users/driver-2': { role: 'driver' },
       });
       setupFirestoreSpy(mockDb);
 
       const res = await upsertDriverFleetAsset.run({
-        auth: { uid: 'driver-1' },
+        auth: { uid: 'driver-2' },
         data: {
-          assetType: 'assistant',
+          assetType: 'vehicle',
           payload: {
-            fullName: '  María González  ',
-            rut: ' 12.345.678-9 ',
-            phone: ' +56912345678 ',
-            assistantId: 'ast_custom_1',
+            plate: 'CD5678',
+            year: '2020',
+            capacity: 'invalid',
           },
         },
       });
 
       expect(res.success).toBe(true);
-      expect(res.assetType).toBe('assistant');
-      expect(res.assistantId).toBe('ast_custom_1');
-
-      const savedDoc = mockDb._documents.get('driverFleets/driver-1/assistants/ast_custom_1');
-      expect(savedDoc).toBeDefined();
-      expect(savedDoc.fullName).toBe('María González');
-      expect(savedDoc.rut).toBe('12.345.678-9');
-      expect(savedDoc.backgroundCheckStatus).toBe('PENDING');
+      const vehicleDoc = mockDb._documents.get('driverFleets/driver-2/vehicles/veh_CD5678');
+      expect(vehicleDoc.year).toBe(2020);
+      expect(vehicleDoc.capacity).toBe(4);
     });
-  });
 
-  describe('verifyDriverFleetAsset', () => {
-    test('8. Throws unauthenticated / permission-denied for non-admin/ops users', async () => {
+    test('7. Assistant: Throws invalid-argument if fullName or RUT are missing', async () => {
+      const mockDb = makeFirestore({
+        'users/driver-1': { role: 'driver' },
+      });
+      setupFirestoreSpy(mockDb);
+      const auth = { uid: 'driver-1' };
+
+      await expect(
+        upsertDriverFleetAsset.run({
+          auth,
+          data: { assetType: 'assistant', payload: { fullName: '  ', rut: '12.345.678-9' } },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+
+      await expect(
+        upsertDriverFleetAsset.run({
+          auth,
+          data: { assetType: 'assistant', payload: { fullName: 'Jane Doe', rut: '  ' } },
+        })
+      ).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
+
+    test('8. Assistant: Successfully creates/updates assistant asset with custom ID or generated ID', async () => {
       const mockDb = makeFirestore({
         'users/driver-1': { role: 'driver' },
       });
       setupFirestoreSpy(mockDb);
 
+      const resAuto = await upsertDriverFleetAsset.run({
+        auth: { uid: 'driver-1' },
+        data: {
+          assetType: 'assistant',
+          payload: {
+            fullName: 'Jane Doe',
+            rut: '12.345.678-K',
+            phone: '+56987654321',
+          },
+        },
+      });
+
+      expect(resAuto.success).toBe(true);
+      expect(resAuto.assetType).toBe('assistant');
+      expect(resAuto.assistantId).toBe('ast_12345678k');
+      expect(resAuto.backgroundCheckStatus).toBe('PENDING');
+
+      const assistantDoc = mockDb._documents.get('driverFleets/driver-1/assistants/ast_12345678k');
+      expect(assistantDoc.fullName).toBe('Jane Doe');
+
+      // Custom ID test
+      const resCustom = await upsertDriverFleetAsset.run({
+        auth: { uid: 'driver-1' },
+        data: {
+          assetType: 'assistant',
+          payload: {
+            fullName: 'Maria Perez',
+            rut: '98.765.432-1',
+            assistantId: 'custom_ast_id',
+          },
+        },
+      });
+      expect(resCustom.assistantId).toBe('custom_ast_id');
+    });
+
+    test('9. Rate limit enforcement (max 10 calls per 10 min window)', async () => {
+      const mockDb = makeFirestore({
+        'users/driver-1': { role: 'driver' },
+      });
+      setupFirestoreSpy(mockDb);
+
+      const req = {
+        auth: { uid: 'driver-1' },
+        data: { assetType: 'vehicle', payload: { plate: 'RL1234' } },
+      };
+
+      for (let i = 0; i < 10; i++) {
+        await upsertDriverFleetAsset.run(req);
+      }
+
+      await expect(upsertDriverFleetAsset.run(req)).rejects.toMatchObject({
+        code: 'resource-exhausted',
+      });
+    });
+  });
+
+  describe('verifyDriverFleetAsset', () => {
+    test('10. Throws unauthenticated if auth is missing', async () => {
+      await expect(verifyDriverFleetAsset.run({})).rejects.toMatchObject({
+        code: 'unauthenticated',
+      });
+    });
+
+    test('11. Throws permission-denied if user is not admin or ops', async () => {
+      const mockDb = makeFirestore({
+        'users/driver-user': { role: 'driver' },
+      });
+      setupFirestoreSpy(mockDb);
+
       await expect(
         verifyDriverFleetAsset.run({
-          auth: { uid: 'driver-1' },
+          auth: { uid: 'driver-user' },
           data: {
-            driverId: 'driver-1',
+            driverId: 'driver-target',
             assetType: 'vehicle',
-            assetId: 'veh_1',
+            assetId: 'veh_123',
             decision: 'approve',
           },
         })
       ).rejects.toMatchObject({ code: 'permission-denied' });
     });
 
-    test('9. Throws invalid-argument for malformed inputs or invalid decision', async () => {
+    test('12. Throws invalid-argument for bad driverId, assetId, assetType or decision', async () => {
       const mockDb = makeFirestore({
         'users/admin-1': { role: 'admin' },
       });
       setupFirestoreSpy(mockDb);
-
       const auth = { uid: 'admin-1' };
 
       await expect(
@@ -288,8 +373,8 @@ describe('fleetCallables Unit Tests', () => {
         verifyDriverFleetAsset.run({
           auth,
           data: {
-            driverId: 'driver-1',
-            assetType: 'unknown',
+            driverId: 'drv1',
+            assetType: 'invalid_type',
             assetId: 'veh_1',
             decision: 'approve',
           },
@@ -299,17 +384,12 @@ describe('fleetCallables Unit Tests', () => {
       await expect(
         verifyDriverFleetAsset.run({
           auth,
-          data: {
-            driverId: 'driver-1',
-            assetType: 'vehicle',
-            assetId: 'veh_1',
-            decision: 'invalid',
-          },
+          data: { driverId: 'drv1', assetType: 'vehicle', assetId: 'veh_1', decision: 'unknown' },
         })
       ).rejects.toMatchObject({ code: 'invalid-argument' });
     });
 
-    test('10. Throws not-found when target vehicle or assistant record does not exist', async () => {
+    test('13. Throws not-found if vehicle or assistant document does not exist', async () => {
       const mockDb = makeFirestore({
         'users/admin-1': { role: 'admin' },
       });
@@ -319,7 +399,7 @@ describe('fleetCallables Unit Tests', () => {
         verifyDriverFleetAsset.run({
           auth: { uid: 'admin-1' },
           data: {
-            driverId: 'driver-1',
+            driverId: 'driver-target',
             assetType: 'vehicle',
             assetId: 'veh_missing',
             decision: 'approve',
@@ -328,62 +408,67 @@ describe('fleetCallables Unit Tests', () => {
       ).rejects.toMatchObject({ code: 'not-found' });
     });
 
-    test('11. Successfully approves vehicle asset as admin/ops', async () => {
+    test('14. Admin/Ops approves or rejects vehicle asset', async () => {
       const mockDb = makeFirestore({
         'users/admin-1': { role: 'admin' },
-        'driverFleets/driver-1/vehicles/veh_CL9999': {
-          vehicleId: 'veh_CL9999',
-          driverId: 'driver-1',
-          status: 'PENDING',
-        },
+        'driverFleets/driver-10/vehicles/veh_AB12': { status: 'PENDING', plate: 'AB12' },
       });
       setupFirestoreSpy(mockDb);
 
-      const res = await verifyDriverFleetAsset.run({
+      const resApprove = await verifyDriverFleetAsset.run({
         auth: { uid: 'admin-1' },
         data: {
-          driverId: 'driver-1',
+          driverId: 'driver-10',
           assetType: 'vehicle',
-          assetId: 'veh_CL9999',
+          assetId: 'veh_AB12',
           decision: 'approve',
         },
       });
 
-      expect(res.success).toBe(true);
-      expect(res.status).toBe('VERIFIED');
+      expect(resApprove.success).toBe(true);
+      expect(resApprove.status).toBe('VERIFIED');
 
-      const updatedDoc = mockDb._documents.get('driverFleets/driver-1/vehicles/veh_CL9999');
-      expect(updatedDoc.status).toBe('VERIFIED');
-      expect(updatedDoc.verifiedBy).toBe('admin-1');
-    });
+      const vehDoc = mockDb._documents.get('driverFleets/driver-10/vehicles/veh_AB12');
+      expect(vehDoc.status).toBe('VERIFIED');
+      expect(vehDoc.verifiedBy).toBe('admin-1');
 
-    test('12. Successfully rejects assistant asset as ops user', async () => {
-      const mockDb = makeFirestore({
-        'users/ops-1': { role: 'ops' },
-        'driverFleets/driver-1/assistants/ast_1': {
-          assistantId: 'ast_1',
-          driverId: 'driver-1',
-          backgroundCheckStatus: 'PENDING',
-        },
-      });
-      setupFirestoreSpy(mockDb);
-
-      const res = await verifyDriverFleetAsset.run({
-        auth: { uid: 'ops-1' },
+      // Test reject decision
+      const resReject = await verifyDriverFleetAsset.run({
+        auth: { uid: 'admin-1' },
         data: {
-          driverId: 'driver-1',
-          assetType: 'assistant',
-          assetId: 'ast_1',
+          driverId: 'driver-10',
+          assetType: 'vehicle',
+          assetId: 'veh_AB12',
           decision: 'reject',
         },
       });
 
-      expect(res.success).toBe(true);
-      expect(res.status).toBe('REJECTED');
+      expect(resReject.status).toBe('REJECTED');
+    });
 
-      const updatedDoc = mockDb._documents.get('driverFleets/driver-1/assistants/ast_1');
-      expect(updatedDoc.backgroundCheckStatus).toBe('REJECTED');
-      expect(updatedDoc.verifiedBy).toBe('ops-1');
+    test('15. Admin/Ops approves or rejects assistant asset', async () => {
+      const mockDb = makeFirestore({
+        'users/ops-1': { role: 'ops' },
+        'driverFleets/driver-10/assistants/ast_jane': { backgroundCheckStatus: 'PENDING' },
+      });
+      setupFirestoreSpy(mockDb);
+
+      const resApprove = await verifyDriverFleetAsset.run({
+        auth: { uid: 'ops-1' },
+        data: {
+          driverId: 'driver-10',
+          assetType: 'assistant',
+          assetId: 'ast_jane',
+          decision: 'approve',
+        },
+      });
+
+      expect(resApprove.success).toBe(true);
+      expect(resApprove.status).toBe('VERIFIED');
+
+      const astDoc = mockDb._documents.get('driverFleets/driver-10/assistants/ast_jane');
+      expect(astDoc.backgroundCheckStatus).toBe('VERIFIED');
+      expect(astDoc.verifiedBy).toBe('ops-1');
     });
   });
 });
