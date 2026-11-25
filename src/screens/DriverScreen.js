@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -93,6 +94,9 @@ const DriverScreen = ({ navigation }) => {
     ]);
   };
 
+  const appVariant = Constants.expoConfig?.extra?.APP_VARIANT || 'development';
+  const isStaging = appVariant === 'staging';
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2196F3" />
@@ -101,7 +105,14 @@ const DriverScreen = ({ navigation }) => {
       <LinearGradient colors={['#2196F3', '#1976D2']} style={styles.header}>
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.headerTitle}>Panel de Conductor</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.headerTitle}>Panel de Conductor</Text>
+              {isStaging && (
+                <View style={styles.stagingBadge}>
+                  <Text style={styles.stagingBadgeText}>STAGING</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.headerSubtitle}>{user?.email?.split('@')[0] || 'Conductor'}</Text>
           </View>
           <View style={styles.headerButtons}>
@@ -303,6 +314,18 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  stagingBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  stagingBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   headerSubtitle: {
     fontSize: 16,
