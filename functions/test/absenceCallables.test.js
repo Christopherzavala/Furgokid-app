@@ -321,5 +321,36 @@ describe('absenceCallables Unit Tests', () => {
       expect(res.success).toBe(true);
       expect(res.absenceId).toBe('abs_m1_p1_2026-11-24');
     });
+
+    test('8. Propagates idempotencyKey and responds idempotently on duplicate retry', async () => {
+      const mockDb = makeFirestore({
+        'matches/m1': {
+          matchId: 'm1',
+          parentId: 'parent-1',
+          driverId: 'driver-1',
+          passengerId: 'p1',
+        },
+        'passengerStates/m1_p1': {
+          matchId: 'm1',
+          passengerId: 'p1',
+          state: 'ABSENT',
+          lastIdempotencyKey: 'm1_p1_2026-11-24_ABSENCE_2026-11-24',
+        },
+      });
+      setupFirestoreSpy(mockDb);
+
+      const res = await reportAbsenceCallable.run({
+        auth: { uid: 'parent-1' },
+        data: {
+          matchId: 'm1',
+          passengerId: 'p1',
+          date: '2026-11-24',
+          idempotencyKey: 'm1_p1_2026-11-24_ABSENCE_2026-11-24',
+        },
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.idempotent).toBe(true);
+    });
   });
 });
