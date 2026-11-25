@@ -63,7 +63,7 @@ export const transitionPassengerState = async ({
   matchId,
   passengerId,
   newState,
-  idempotencyKey,
+  idempotencyKey = undefined,
 }) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !newState) {
@@ -83,7 +83,7 @@ export const transitionPassengerState = async ({
 /**
  * Solicita o regenera un PIN OTP de entrega (Apoderado / Delegado autorizado)
  */
-export const requestHandoverOtp = async ({ matchId, passengerId, idempotencyKey }) => {
+export const requestHandoverOtp = async ({ matchId, passengerId, idempotencyKey = undefined }) => {
   assertAuthenticated();
   if (!matchId || !passengerId) {
     throw new Error('matchId and passengerId are required.');
@@ -97,7 +97,12 @@ export const requestHandoverOtp = async ({ matchId, passengerId, idempotencyKey 
 /**
  * Verifica el PIN OTP y confirma la entrega segura del estudiante (Conductor)
  */
-export const verifyStudentHandover = async ({ matchId, passengerId, pin, idempotencyKey }) => {
+export const verifyStudentHandover = async ({
+  matchId,
+  passengerId,
+  pin,
+  idempotencyKey = undefined,
+}) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !pin) {
     throw new Error('matchId, passengerId, and pin are required.');
@@ -111,7 +116,12 @@ export const verifyStudentHandover = async ({ matchId, passengerId, pin, idempot
 /**
  * Reporta la inasistencia de un estudiante antes del abordaje (Apoderado)
  */
-export const reportStudentAbsence = async ({ matchId, passengerId, date, idempotencyKey }) => {
+export const reportStudentAbsence = async ({
+  matchId,
+  passengerId,
+  date,
+  idempotencyKey = undefined,
+}) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !date) {
     throw new Error('matchId, passengerId, and date are required.');
