@@ -19,7 +19,7 @@ import Constants from 'expo-constants';
 interface SentryConfig {
   enabled: boolean;
   dsn: string | undefined;
-  environment: 'development' | 'preview' | 'production';
+  environment: 'development' | 'staging' | 'preview' | 'production';
   sampleRate: number;
   tracesSampleRate: number;
 }
