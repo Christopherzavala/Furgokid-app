@@ -53,11 +53,13 @@ const TrackingMap = ({ route, navigation }) => {
   const [activeOtpInfo, setActiveOtpInfo] = useState(null);
   const [countdown, setCountdown] = useState(null);
   const [activeShareUrl, setActiveShareUrl] = useState(null);
+  const [gpsStale, setGpsStale] = useState(false);
 
   const mapRef = useRef(null);
   const lastAnimateTsRef = useRef(0);
   const lastPointRef = useRef(null);
   const pickupPointRef = useRef(null);
+  const lastLocationUpdateTsRef = useRef(Date.now());
   const arrivalNotifiedRef = useRef(false);
 
   const MIN_MOVE_METERS = 8;
@@ -95,6 +97,16 @@ const TrackingMap = ({ route, navigation }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const matchId = route?.params?.matchId;
+      if (matchId && Date.now() - lastLocationUpdateTsRef.current > 30000) {
+        setGpsStale(true);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [route?.params?.matchId]);
 
   const loadMatchDetails = async (matchId) => {
     try {
@@ -178,6 +190,8 @@ const TrackingMap = ({ route, navigation }) => {
       docRef,
       async (snapshot) => {
         if (snapshot.exists()) {
+          lastLocationUpdateTsRef.current = Date.now();
+          setGpsStale(false);
           const data = snapshot.data();
           if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
             setLoading(false);
@@ -496,6 +510,16 @@ const TrackingMap = ({ route, navigation }) => {
           <Ionicons name="alert-circle" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      {/* BANNER RECONEXION GPS */}
+      {gpsStale && (
+        <View style={styles.gpsStaleBanner}>
+          <Ionicons name="warning-outline" size={16} color="#B78103" />
+          <Text style={styles.gpsStaleText}>
+            Reconectando señal GPS... Última ubicación hace más de 30s
+          </Text>
+        </View>
+      )}
 
       <View style={styles.bottomControls}>
         <TouchableOpacity
@@ -835,6 +859,32 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: '#333', fontWeight: '600' },
   confirmBtn: { backgroundColor: '#4CAF50' },
   confirmBtnText: { color: '#fff', fontWeight: 'bold' },
+  gpsStaleBanner: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: '#FFF8E1',
+    borderColor: '#FFE082',
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  gpsStaleText: {
+    color: '#B78103',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
 });
 
 export default TrackingMap;
