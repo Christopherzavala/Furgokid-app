@@ -25,7 +25,9 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Authentication is required.');
   }
 
-  const { matchId, passengerId, date } = request?.data || {};
+  const { matchId, passengerId, date, idempotencyKey } = request?.data || {};
+  const parsedIdempotencyKey =
+    typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : null;
   if (
     !VALID_DOCUMENT_ID(matchId) ||
     !VALID_DOCUMENT_ID(passengerId) ||
@@ -71,13 +73,14 @@ exports.reportAbsenceCallable = onCall(async (request) => {
   }
 
   // Synchronize state to ABSENT
-  await transitionPassengerStateInternal({
+  const transitionResult = await transitionPassengerStateInternal({
     db,
     matchId,
     passengerId,
     newState: 'ABSENT',
     actorUid: parentUid,
     actorRole: 'parent',
+    metadata: { ...(parsedIdempotencyKey ? { idempotencyKey: parsedIdempotencyKey } : {}) },
   });
 
   const absenceId = `abs_${matchId}_${passengerId}_${date.trim()}`;
@@ -164,5 +167,6 @@ exports.reportAbsenceCallable = onCall(async (request) => {
     success: true,
     absenceId,
     date: date.trim(),
+    idempotent: Boolean(transitionResult?.idempotent),
   };
 });

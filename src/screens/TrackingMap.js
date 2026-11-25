@@ -101,12 +101,22 @@ const TrackingMap = ({ route, navigation }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       const matchId = route?.params?.matchId;
-      if (matchId && Date.now() - lastLocationUpdateTsRef.current > 30000) {
+      const isActive = matchData?.status === 'active';
+      const hasLocation = Boolean(driverLocation);
+
+      if (
+        matchId &&
+        isActive &&
+        hasLocation &&
+        Date.now() - lastLocationUpdateTsRef.current > 30000
+      ) {
         setGpsStale(true);
+      } else if (!hasLocation || !isActive) {
+        setGpsStale(false);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [route?.params?.matchId]);
+  }, [route?.params?.matchId, matchData?.status, driverLocation]);
 
   const loadMatchDetails = async (matchId) => {
     try {
