@@ -90,6 +90,8 @@ const sanitizeObject = (obj: any): any => {
   return sanitized;
 };
 
+let sessionCounter = 0;
+
 class AnalyticsService {
   private enabled = false;
   private sessionId: string;
@@ -117,7 +119,8 @@ class AnalyticsService {
     } catch {
       // fallback
     }
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    sessionCounter = (sessionCounter + 1) % 1000000;
+    return `${Date.now()}-${sessionCounter.toString(36).padStart(6, '0')}`;
   }
 
   private async initialize(): Promise<void> {
