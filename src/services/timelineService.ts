@@ -4,7 +4,7 @@
  * Fetches immutable daily trip timeline events for parents to review milestones.
  */
 
-import { collection, doc, getDocsFromServer, query, orderBy } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 export interface TimelineEvent {

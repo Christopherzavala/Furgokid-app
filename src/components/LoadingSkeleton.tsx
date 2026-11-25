@@ -4,9 +4,7 @@
  */
 
 import React from 'react';
-import { Animated, Dimensions, StyleSheet, View } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { Animated, StyleSheet, View } from 'react-native';
 
 interface SkeletonProps {
   width?: number | string;

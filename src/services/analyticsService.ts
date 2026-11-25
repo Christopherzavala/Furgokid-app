@@ -106,6 +106,17 @@ class AnalyticsService {
   }
 
   private generateSessionId(): string {
+    try {
+      if (
+        typeof globalThis !== 'undefined' &&
+        globalThis.crypto &&
+        typeof globalThis.crypto.randomUUID === 'function'
+      ) {
+        return globalThis.crypto.randomUUID();
+      }
+    } catch {
+      // fallback
+    }
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
