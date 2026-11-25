@@ -72,7 +72,12 @@ const DriverScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error toggling route:', error);
-      toastService.error('Error GPS', 'No se pudo iniciar el GPS: ' + error.message);
+      setIsRouteActive(false);
+      setActiveTrackingMatchId(null);
+      toastService.error(
+        'Error GPS',
+        'No se pudo iniciar el GPS: ' + (error.message || 'Verifica tu conexión y permisos.')
+      );
     }
   };
 

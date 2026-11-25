@@ -21,12 +21,49 @@ import {
   saveAlertPreferences,
 } from '../services/alertPreferencesService';
 import toastService from '../services/toastService';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 
 const SettingsScreen = ({ navigation }) => {
   const { user, userProfile, signOut } = useAuth();
   const [alertPrefs, setAlertPrefs] = useState(DEFAULT_ALERT_PREFERENCES);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [permissionsStatus, setPermissionsStatus] = useState({
+    fgLocation: 'verificando...',
+    bgLocation: 'verificando...',
+    pushNotifications: 'verificando...',
+  });
+
+  useEffect(() => {
+    let active = true;
+    const checkPermissions = async () => {
+      try {
+        const fg = await Location.getForegroundPermissionsAsync();
+        const bg = await Location.getBackgroundPermissionsAsync();
+        const notif = await Notifications.getPermissionsAsync();
+        if (active) {
+          setPermissionsStatus({
+            fgLocation: fg.granted ? 'Concedido' : 'Denegado',
+            bgLocation: bg.granted ? 'Concedido' : 'Denegado',
+            pushNotifications: notif.granted ? 'Concedido' : 'Denegado',
+          });
+        }
+      } catch {
+        if (active) {
+          setPermissionsStatus({
+            fgLocation: 'No disponible',
+            bgLocation: 'No disponible',
+            pushNotifications: 'No disponible',
+          });
+        }
+      }
+    };
+    checkPermissions();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -228,6 +265,67 @@ const SettingsScreen = ({ navigation }) => {
               </View>
             </View>
           )}
+        </View>
+
+        {/* DIAGNÓSTICO DE ENTORNO */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Diagnóstico de Entorno (Staging)</Text>
+          <View style={styles.card}>
+            <View style={styles.diagRow}>
+              <Text style={styles.diagLabel}>Entorno Activo:</Text>
+              <Text style={styles.diagValBold}>
+                {((Constants.expoConfig?.extra?.APP_VARIANT || 'development') + '').toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.diagRow}>
+              <Text style={styles.diagLabel}>Proyecto Firebase:</Text>
+              <Text style={styles.diagVal}>
+                {Constants.expoConfig?.extra?.firebaseProjectId ||
+                  process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ||
+                  'furgokid-staging'}
+              </Text>
+            </View>
+            <View style={styles.diagRow}>
+              <Text style={styles.diagLabel}>GPS Primer Plano:</Text>
+              <Text
+                style={
+                  permissionsStatus.fgLocation === 'Concedido'
+                    ? styles.permGranted
+                    : styles.permDenied
+                }
+              >
+                {permissionsStatus.fgLocation}
+              </Text>
+            </View>
+            <View style={styles.diagRow}>
+              <Text style={styles.diagLabel}>GPS Segundo Plano:</Text>
+              <Text
+                style={
+                  permissionsStatus.bgLocation === 'Concedido'
+                    ? styles.permGranted
+                    : styles.permDenied
+                }
+              >
+                {permissionsStatus.bgLocation}
+              </Text>
+            </View>
+            <View style={[styles.diagRow, { borderBottomWidth: 0 }]}>
+              <Text style={styles.diagLabel}>Notificaciones Push:</Text>
+              <Text
+                style={
+                  permissionsStatus.pushNotifications === 'Concedido'
+                    ? styles.permGranted
+                    : styles.permDenied
+                }
+              >
+                {permissionsStatus.pushNotifications}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.openSettingsBtn} onPress={() => Linking.openSettings()}>
+              <Ionicons name="settings-outline" size={16} color="#fff" />
+              <Text style={styles.openSettingsText}>Abrir Ajustes del Sistema</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -437,6 +535,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
+  diagRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  diagLabel: { fontSize: 13, color: '#666' },
+  diagVal: { fontSize: 13, color: '#333' },
+  diagValBold: { fontSize: 13, fontWeight: 'bold', color: '#FF9800' },
+  permGranted: { fontSize: 13, fontWeight: 'bold', color: '#4CAF50' },
+  permDenied: { fontSize: 13, fontWeight: 'bold', color: '#F44336' },
+  openSettingsBtn: {
+    backgroundColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  openSettingsText: { color: '#fff', fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
 });
 
 export default SettingsScreen;
