@@ -1,6 +1,7 @@
 // locationService.js - GPS Background Tracking Service with expo-task-manager
 import * as Location from 'expo-location';
 import analyticsService from './analyticsService';
+import toastService from './toastService';
 
 import {
   LOCATION_TASK_NAME,
@@ -80,6 +81,10 @@ export const startBackgroundLocationTracking = async (matchId) => {
 
     if (!permissions.background) {
       console.warn('Background permission not granted. Starting foreground tracking only.');
+      toastService.warning(
+        'Permiso en segundo plano limitado',
+        'El rastreo puede pausarse con la pantalla apagada. Se recomienda activar ubicación "Permitir todo el tiempo".'
+      );
       const ok = await startForegroundLocationTracking(matchId);
       analyticsService.trackPerformance('location_start_bg_ms', Date.now() - startedAt, {
         ok: !!ok,
