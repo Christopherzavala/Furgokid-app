@@ -43,12 +43,25 @@ const distanceMeters = (left, right) => {
   return 2 * earthRadiusMeters * Math.asin(Math.min(1, Math.sqrt(haversine)));
 };
 
+const MIN_STATIONARY_INTERVAL_MS = 15000;
+
 export const shouldPublishLocation = (lastPoint, nextPoint, now, lastPublishedAt) => {
   if (!lastPoint || !lastPublishedAt) return true;
+  if (
+    typeof nextPoint?.accuracy === 'number' &&
+    Number.isFinite(nextPoint.accuracy) &&
+    nextPoint.accuracy > 50
+  ) {
+    return false;
+  }
   const movedMeters = distanceMeters(lastPoint, nextPoint);
-  return (
-    movedMeters >= MIN_PUBLISH_DISTANCE_METERS || now - lastPublishedAt >= MAX_PUBLISH_INTERVAL_MS
-  );
+  const speed = Number.isFinite(nextPoint?.speed) ? Math.max(0, nextPoint.speed) : 0;
+  const isMoving = speed > 1 || movedMeters >= MIN_PUBLISH_DISTANCE_METERS;
+
+  if (isMoving) {
+    return movedMeters >= MIN_PUBLISH_DISTANCE_METERS || now - lastPublishedAt >= 5000;
+  }
+  return now - lastPublishedAt >= MIN_STATIONARY_INTERVAL_MS;
 };
 
 export const setTrackingMatchId = async (matchId) => {
@@ -83,6 +96,15 @@ export const publishCurrentLocation = async (matchId, coordinates) => {
     !isValidCoordinate(coordinates.longitude, -180, 180)
   ) {
     throw new Error('Invalid location coordinates.');
+  }
+
+  if (
+    typeof coordinates.accuracy === 'number' &&
+    Number.isFinite(coordinates.accuracy) &&
+    coordinates.accuracy > 50
+  ) {
+    console.warn('GPS location discarded due to low accuracy:', coordinates.accuracy);
+    return false;
   }
 
   const speed = Number.isFinite(coordinates.speed) ? Math.max(0, coordinates.speed) : 0;

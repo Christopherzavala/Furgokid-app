@@ -48,55 +48,77 @@ export const mapCustodyError = (error) => {
   return message || 'Ha ocurrido un error inesperado en el servicio de custodia.';
 };
 
+const buildIdempotencyKey = (matchId, passengerId, action, customKey) => {
+  if (typeof customKey === 'string' && customKey.trim()) {
+    return customKey.trim();
+  }
+  const dateStr = new Date().toISOString().split('T')[0];
+  return `${matchId}_${passengerId}_${dateStr}_${action}`;
+};
+
 /**
  * Transiciona el estado del pasajero (Conductor: BOARDING_CONFIRMED, IN_TRANSIT, ARRIVAL_CONFIRMED)
  */
-export const transitionPassengerState = async ({ matchId, passengerId, newState }) => {
+export const transitionPassengerState = async ({
+  matchId,
+  passengerId,
+  newState,
+  idempotencyKey,
+}) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !newState) {
     throw new Error('matchId, passengerId, and newState are required.');
   }
+  const key = buildIdempotencyKey(matchId, passengerId, newState, idempotencyKey);
   const updatePassengerStateFn = httpsCallable(functions, 'updatePassengerState');
-  const result = await updatePassengerStateFn({ matchId, passengerId, newState });
+  const result = await updatePassengerStateFn({
+    matchId,
+    passengerId,
+    newState,
+    idempotencyKey: key,
+  });
   return result.data;
 };
 
 /**
  * Solicita o regenera un PIN OTP de entrega (Apoderado / Delegado autorizado)
  */
-export const requestHandoverOtp = async ({ matchId, passengerId }) => {
+export const requestHandoverOtp = async ({ matchId, passengerId, idempotencyKey }) => {
   assertAuthenticated();
   if (!matchId || !passengerId) {
     throw new Error('matchId and passengerId are required.');
   }
+  const key = buildIdempotencyKey(matchId, passengerId, 'REQUEST_OTP', idempotencyKey);
   const generateOtpFn = httpsCallable(functions, 'generateHandoverOtp');
-  const result = await generateOtpFn({ matchId, passengerId });
+  const result = await generateOtpFn({ matchId, passengerId, idempotencyKey: key });
   return result.data; // { otpId, expiresAt }
 };
 
 /**
  * Verifica el PIN OTP y confirma la entrega segura del estudiante (Conductor)
  */
-export const verifyStudentHandover = async ({ matchId, passengerId, pin }) => {
+export const verifyStudentHandover = async ({ matchId, passengerId, pin, idempotencyKey }) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !pin) {
     throw new Error('matchId, passengerId, and pin are required.');
   }
+  const key = buildIdempotencyKey(matchId, passengerId, 'VERIFY_HANDOVER', idempotencyKey);
   const confirmHandoverFn = httpsCallable(functions, 'confirmStudentHandover');
-  const result = await confirmHandoverFn({ matchId, passengerId, pin });
+  const result = await confirmHandoverFn({ matchId, passengerId, pin, idempotencyKey: key });
   return result.data;
 };
 
 /**
  * Reporta la inasistencia de un estudiante antes del abordaje (Apoderado)
  */
-export const reportStudentAbsence = async ({ matchId, passengerId, date }) => {
+export const reportStudentAbsence = async ({ matchId, passengerId, date, idempotencyKey }) => {
   assertAuthenticated();
   if (!matchId || !passengerId || !date) {
     throw new Error('matchId, passengerId, and date are required.');
   }
+  const key = buildIdempotencyKey(matchId, passengerId, `ABSENCE_${date}`, idempotencyKey);
   const reportAbsenceFn = httpsCallable(functions, 'reportAbsenceCallable');
-  const result = await reportAbsenceFn({ matchId, passengerId, date });
+  const result = await reportAbsenceFn({ matchId, passengerId, date, idempotencyKey: key });
   return result.data;
 };
 

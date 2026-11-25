@@ -61,17 +61,24 @@ describe('custodyService unit tests', () => {
       newState: 'BOARDING_CONFIRMED',
     });
     expect(res.name).toBe('updatePassengerState');
-    expect(res.data).toEqual({
-      matchId: 'match-1',
-      passengerId: 'pass-1',
-      newState: 'BOARDING_CONFIRMED',
-    });
+    expect(res.data).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        passengerId: 'pass-1',
+        newState: 'BOARDING_CONFIRMED',
+      })
+    );
   });
 
   test('requestHandoverOtp calls generateHandoverOtp callable', async () => {
     const res = await requestHandoverOtp({ matchId: 'match-1', passengerId: 'pass-1' });
     expect(res.name).toBe('generateHandoverOtp');
-    expect(res.data).toEqual({ matchId: 'match-1', passengerId: 'pass-1' });
+    expect(res.data).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        passengerId: 'pass-1',
+      })
+    );
   });
 
   test('verifyStudentHandover calls confirmStudentHandover callable', async () => {
@@ -81,7 +88,13 @@ describe('custodyService unit tests', () => {
       pin: '4829',
     });
     expect(res.name).toBe('confirmStudentHandover');
-    expect(res.data).toEqual({ matchId: 'match-1', passengerId: 'pass-1', pin: '4829' });
+    expect(res.data).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        passengerId: 'pass-1',
+        pin: '4829',
+      })
+    );
   });
 
   test('reportStudentAbsence calls reportAbsenceCallable', async () => {
@@ -91,11 +104,13 @@ describe('custodyService unit tests', () => {
       date: '2026-11-24',
     });
     expect(res.name).toBe('reportAbsenceCallable');
-    expect(res.data).toEqual({
-      matchId: 'match-1',
-      passengerId: 'pass-1',
-      date: '2026-11-24',
-    });
+    expect(res.data).toEqual(
+      expect.objectContaining({
+        matchId: 'match-1',
+        passengerId: 'pass-1',
+        date: '2026-11-24',
+      })
+    );
   });
 
   test('subscribeToPassengerState subscribes to correct firestore doc path', () => {

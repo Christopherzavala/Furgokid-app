@@ -284,6 +284,18 @@ async function transitionPassengerStateInternal({
 
     const currentData = stateSnap.exists ? stateSnap.data() : null;
     const currentState = currentData?.state || PASSENGER_STATES.EXPECTED;
+    const idempotencyKey =
+      typeof metadata?.idempotencyKey === 'string' ? metadata.idempotencyKey.trim() : null;
+
+    if (idempotencyKey && currentData?.lastIdempotencyKey === idempotencyKey) {
+      return {
+        matchId,
+        passengerId,
+        previousState: currentData.previousState || PASSENGER_STATES.EXPECTED,
+        state: currentState,
+        idempotent: true,
+      };
+    }
 
     const allowedNextStates = ALLOWED_PASSENGER_STATE_TRANSITIONS[currentState] || [];
     if (!allowedNextStates.includes(newState)) {
@@ -302,6 +314,7 @@ async function transitionPassengerStateInternal({
       updatedAt: now,
       updatedBy: actorUid,
       updatedByRole: actorRole,
+      ...(idempotencyKey ? { lastIdempotencyKey: idempotencyKey } : {}),
       ...(stateSnap.exists ? {} : { createdAt: now }),
     };
 
@@ -338,7 +351,10 @@ const createCustodyChainService = ({ firestore } = {}) => {
     const matchId = assertNonEmptyString(data.matchId, 'matchId');
     const passengerId = assertNonEmptyString(data.passengerId, 'passengerId');
     const newState = assertNonEmptyString(data.newState, 'newState');
-    const metadata = data.metadata && typeof data.metadata === 'object' ? data.metadata : {};
+    const metadata = data.metadata && typeof data.metadata === 'object' ? { ...data.metadata } : {};
+    if (typeof data.idempotencyKey === 'string' && data.idempotencyKey.trim()) {
+      metadata.idempotencyKey = data.idempotencyKey.trim();
+    }
 
     if (newState === PASSENGER_STATES.HANDOVER_CONFIRMED) {
       throw new HttpsError(
