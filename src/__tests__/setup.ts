@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 // Jest setup file
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 import '@testing-library/jest-native/extend-expect';
 
 // Mock expo-secure-store
