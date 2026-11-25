@@ -62,6 +62,55 @@ interface LoggerConfig {
   remoteEndpoint?: string;
 }
 
+const SENSITIVE_KEYS = new Set([
+  'name',
+  'nombre',
+  'childname',
+  'studentname',
+  'rut',
+  'dni',
+  'phone',
+  'telefono',
+  'address',
+  'direccion',
+  'email',
+  'token',
+  'pin',
+  'otp',
+  'password',
+  'secret',
+]);
+
+const sanitizeValue = (key: string, value: any): any => {
+  if (value === null || value === undefined) return value;
+  const lowerKey = key.toLowerCase();
+  if (
+    SENSITIVE_KEYS.has(lowerKey) ||
+    lowerKey.includes('token') ||
+    lowerKey.includes('pin') ||
+    lowerKey.includes('otp') ||
+    lowerKey.includes('pass') ||
+    lowerKey.includes('secret')
+  ) {
+    return '[REDACTED]';
+  }
+  return value;
+};
+
+const sanitizeObject = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeObject);
+  const sanitized: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === 'object') {
+      sanitized[k] = sanitizeObject(v);
+    } else {
+      sanitized[k] = sanitizeValue(k, v);
+    }
+  }
+  return sanitized;
+};
+
 class Logger {
   private config: LoggerConfig;
   private correlationId: string | null = null;
@@ -133,7 +182,7 @@ class Logger {
       timestamp: new Date().toISOString(),
       level,
       message,
-      context,
+      context: context ? sanitizeObject(context) : undefined,
       error,
       correlationId: privacySafe ? undefined : this.correlationId || undefined,
       userId: privacySafe ? undefined : this.userId || undefined,
